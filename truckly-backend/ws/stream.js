@@ -6,6 +6,7 @@ import { DeviceMonitoring } from "../services/DeviceMonitoringService.js";
 export default function registerStream(app) {
   app.ws("/stream", { verifyClient: wsAuth }, async (ws, req) => {
     const user = req.user;
+    consoler.log(req.user);
 
     console.log(`WS CONNECTED: ${user.email}`);
 
@@ -32,7 +33,7 @@ export default function registerStream(app) {
 
           ws.deviceImeis = new Set(finalImeis);
 
-          console.log(`${user.email} subscribed`, [...ws.deviceImeis]);
+          console.log(`[WS] ${user.email} subscribed`, [...ws.deviceImeis]);
 
           // snapshot + attiva watcher ad ogni imei
           await DeviceMonitoring.sendInitialState(ws, finalImeis);

@@ -8,4 +8,4 @@ const authorizedSchema = new mongoose.Schema({
 
 export const AuthorizedIMEIS =
   mongoose.models.AuthorizedIMEIS ||
-  mongoose.model("AuthorizedIMEIS", authorizedSchema, "authorizedimeis");
+  mongoose.model("AuthorizedIMEIS", authorizedSchema, "AuthorizedIMEIS");

@@ -29,9 +29,6 @@ startDatabases()
       console.log(`🔌 Backend online su http://localhost:${port}`)
     );
 
-    User.find({}).then((data,err) => {
-      console.log(data);
-    })
 
   })
   .catch((err) => {
