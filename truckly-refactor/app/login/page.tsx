@@ -19,10 +19,11 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const res = await fetch("http://localhost:5050/auth/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include",
       });
 
       if (!res.ok) {
@@ -30,12 +31,9 @@ export default function LoginPage() {
         throw new Error(data.error || "Login failed");
       }
 
-      const data = await res.json();
-
-      // Store token in a cookie readable by middleware/server components
-      document.cookie = `accessToken=${data.accessToken}; path=/;`;
-
+      await res.json();
       router.push(next);
+      router.refresh();
     } catch (err: any) {
       setError(err.message || "Unexpected error");
     } finally {

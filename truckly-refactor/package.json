@@ -13,15 +13,20 @@
     "@radix-ui/react-navigation-menu": "^1.2.14",
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.556.0",
     "maplibre-gl": "^3.6.1",
+    "mongoose": "^9.0.1",
     "next": "16.0.8",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

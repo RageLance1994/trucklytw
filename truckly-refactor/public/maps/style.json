@@ -14,8 +14,6 @@
       "attribution": "© OpenStreetMap contributors"
     }
   },
-  "sprite": "https://demotiles.maplibre.org/font-glyphs/sprite",
-  "glyphs": "https://demotiles.maplibre.org/font-glyphs/{fontstack}/{range}.pbf",
   "layers": [
     {
       "id": "osm-tiles",

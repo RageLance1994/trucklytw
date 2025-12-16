@@ -64,11 +64,13 @@ export class TrucklyMap {
   map: MlMap;
   markers: Map<string, ManagedMarker> = new Map();
   _clusterUpdateScheduled = false;
+  _clusterUpdateFrame: number | null = null;
   _clusters: ClusterBucket[] = [];
   _handleThemeChange?: () => void;
   _activeClusterPopup: Popup | null = null;
   hoveringMarker = false;
   onMarkerSelect?: (marker: ManagedMarker) => void;
+  _lastMarkerCollapseValue: "true" | "false" | null = null;
 
   styles = {
     dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
@@ -105,13 +107,13 @@ export class TrucklyMap {
     });
 
     this.map.on("zoom", () => {
-      const z = this.map.getZoom();
-      if (!this.hoveringMarker) {
-        document.querySelectorAll<HTMLElement>(".custom-marker").forEach((el) => {
-          el.dataset.collapsed = z < MAX_ZOOM ? "true" : "false";
-        });
-      }
-      this.updateClusters();
+      this._updateMarkerCollapseState();
+      this._scheduleUpdateClusters();
+    });
+
+    this.map.on("moveend", () => {
+      this._updateMarkerCollapseState(true);
+      this._scheduleUpdateClusters({ force: true });
     });
   }
 
@@ -129,12 +131,12 @@ export class TrucklyMap {
 
   _getDefaultMarkerTemplate({ useArrow = true } = {}) {
     const directionIcon = useArrow
-      ? `<svg data-role="marker-arrow" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>`
-      : `<div data-role="marker-arrow" class="w-3 h-3 rounded-full bg-white"></div>`;
+      ? `<svg data-role="marker-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>`
+      : `<div data-role="marker-arrow" class="truckly-default-marker__arrow-dot"></div>`;
     return `
-      <div class="flex items-center gap-1 px-2 py-1 bg-zinc-900/90 text-white rounded-md shadow custom-marker-body">
-        <span class="text-xs font-semibold" data-role="marker-plate">-</span>
-        <span class="text-xs opacity-70 inline-flex items-center justify-center">${directionIcon}</span>
+      <div class="truckly-default-marker">
+        <span class="truckly-default-marker__plate" data-role="marker-plate">-</span>
+        <span class="truckly-default-marker__arrow">${directionIcon}</span>
       </div>
     `;
   }
@@ -318,6 +320,22 @@ export class TrucklyMap {
     }
   }
 
+  _updateMarkerCollapseState(force = false) {
+    const zoom = typeof this.map.getZoom === "function" ? this.map.getZoom() : MAX_ZOOM;
+    const collapsedValue = zoom < MAX_ZOOM ? "true" : "false";
+    if (!force && this._lastMarkerCollapseValue === collapsedValue) return;
+    this._lastMarkerCollapseValue = collapsedValue;
+    this.markers.forEach((marker) => {
+      const element = marker.getElement ? marker.getElement() : marker._element;
+      if (!element) return;
+      if (!this.hoveringMarker) {
+        if (element.classList.contains("custom-marker")) {
+          element.dataset.collapsed = collapsedValue;
+        }
+      }
+    });
+  }
+
   hoverMarker(ev: MouseEvent) {
     const target = ev.currentTarget as HTMLElement | null;
     if (!target) return;
@@ -390,10 +408,16 @@ export class TrucklyMap {
     });
   }
 
-  _scheduleUpdateClusters() {
+  _scheduleUpdateClusters({ force = false }: { force?: boolean } = {}) {
+    if (force && this._clusterUpdateFrame !== null) {
+      cancelAnimationFrame(this._clusterUpdateFrame);
+      this._clusterUpdateFrame = null;
+      this._clusterUpdateScheduled = false;
+    }
     if (this._clusterUpdateScheduled) return;
     this._clusterUpdateScheduled = true;
-    requestAnimationFrame(() => {
+    this._clusterUpdateFrame = requestAnimationFrame(() => {
+      this._clusterUpdateFrame = null;
       this._clusterUpdateScheduled = false;
       this.updateClusters();
     });
@@ -523,17 +547,17 @@ export class TrucklyMap {
   }
 
   _buildClusterPopupContent(members: ManagedMarker[] = [], onClose?: () => void) {
-    const wrapper = document.createElement("div");
-    wrapper.className =
-      "flex flex-col gap-2 p-3 bg-zinc-900 text-white rounded-lg shadow-xl border border-zinc-700";
-    members.forEach((member) => {
+    const outer = document.createElement("div");
+    outer.className = "cluster-popup-outer";
+    const inner = document.createElement("div");
+    inner.className = "cluster-popup-inner";
+    members.forEach((member, index) => {
       const vehicle = member?.vehicle;
       const plateLabel = this._getVehicleDisplayLabel(vehicle);
       const row = document.createElement("button");
       row.type = "button";
-      row.className =
-        "flex items-center gap-2 px-3 py-2 rounded-md bg-zinc-800 hover:bg-zinc-700 transition text-sm text-left";
-      row.innerHTML = `<span class="inline-flex w-6 h-6 items-center justify-center rounded-full bg-blue-600 text-white text-xs">🚚</span><span>${plateLabel}</span>`;
+      row.className = "cluster-popup-entry";
+      row.innerHTML = `<span class=\"cluster-popup-entry__icon\">${index + 1}</span><span>${plateLabel}</span>`;
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
         ev.preventDefault();
@@ -546,12 +570,13 @@ export class TrucklyMap {
         }
         onClose?.();
       });
-      wrapper.appendChild(row);
+      inner.appendChild(row);
     });
+    outer.appendChild(inner);
     if (onClose) {
-      wrapper.addEventListener("mouseleave", () => onClose(), { passive: true });
+      outer.addEventListener("mouseleave", () => onClose(), { passive: true });
     }
-    return wrapper;
+    return outer;
   }
 
   _showClusterPopup(marker: ManagedMarker) {

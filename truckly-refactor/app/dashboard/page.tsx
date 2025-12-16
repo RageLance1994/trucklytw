@@ -19,17 +19,9 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
-        const token = document.cookie
-          .split("; ")
-          .find((row) => row.startsWith("accessToken="))
-          ?.split("=")[1];
-
-        const headers: Record<string, string> = {};
-        if (token) headers.Authorization = `Bearer ${decodeURIComponent(token)}`;
-
-        const res = await fetch("http://localhost:5050/api/vehicles", {
+        const res = await fetch("/api/vehicles", {
           cache: "no-store",
-          headers,
+          credentials: "include",
         });
 
         if (!res.ok) {
@@ -37,7 +29,13 @@ export default function DashboardPage() {
         }
 
         const data = await res.json();
-        setVehicles(data?.vehicles ?? []);
+        const enriched = (data?.vehicles ?? []).map((vehicle: Vehicle) => ({
+          ...vehicle,
+          lat: typeof vehicle.lat === "number" ? vehicle.lat : undefined,
+          lon: typeof vehicle.lon === "number" ? vehicle.lon : undefined,
+        }));
+
+        setVehicles(enriched);
       } catch (err: any) {
         setError(err?.message || "Unable to load vehicles");
       } finally {
@@ -56,7 +54,7 @@ export default function DashboardPage() {
     <div className="w-full h-full flex flex-col">
       {error ? (
         <div className="p-6 text-red-400 text-sm">
-          {error}. Check that the backend is running at http://localhost:5050 and your token is valid.
+          {error}. Make sure you are authenticated and the database is reachable.
         </div>
       ) : (
         <MapContainer vehicles={vehicles} />

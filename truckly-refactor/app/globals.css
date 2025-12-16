@@ -142,7 +142,41 @@ button:focus-visible {
 
 /* Map marker styles */
 .custom-marker {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: opacity 0.2s ease;
+}
+
+.truckly-default-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(10, 10, 15, 0.92);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(12px);
+}
+
+.truckly-default-marker__plate {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.truckly-default-marker__arrow svg {
+  width: 18px;
+  height: 18px;
+  color: #38bdf8;
+}
+
+.truckly-default-marker__arrow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.65);
 }
 
 .custom-marker[data-collapsed="true"] .custom-marker-body {
@@ -182,3 +216,101 @@ button:focus-visible {
     opacity: 1;
   }
 }
+
+.truckly-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.4);
+}
+
+.truckly-marker__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.truckly-marker__label {
+  white-space: nowrap;
+}
+
+.cluster-popup-outer {
+  background: transparent;
+  border-radius: 18px;
+  
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.maplibregl-popup-tip {
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+  border-left-color: transparent !important;
+  border-right-color: transparent !important;
+}
+
+.cluster-popup-inner {
+  background: #111;
+  border-radius: 14px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cluster-popup-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  text-align: left;
+}
+
+.cluster-popup-entry:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cluster-popup-entry__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+}
+
+.maplibregl-popup-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  min-width: min(380px, 75vw); 
+  max-width: min(380px, 75vw);
+  padding: 0 !important;
+}
+
+.maplibregl-popup-close-button{
+  display: none;
+}
+
