@@ -1,0 +1,6 @@
+{
+  "watch": ["views", "routes","utils", "index.js","datainspectors"],
+  "ext": "js,ejs,css,html",
+  "ignore": ["node_modules"],
+  "exec": "node index.js"
+}

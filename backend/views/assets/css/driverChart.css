@@ -1,0 +1,89 @@
+.driver-chart {
+    max-height: 328px;
+}
+
+.bar-container{
+    background-image:
+        radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+    background-size: 12px 12px;
+}
+
+.x-axis-label {
+    min-width: var(--px-per-hour, 100px);
+    width: var(--px-per-hour, 100px);
+}
+
+.activity-bar {
+    background-color: var(--tv-green);
+    padding: 12px;
+    min-width: 12px;
+    min-height: 42px;
+    border-radius: 4px;
+}
+
+
+.work-bar {
+    background-color: var(--tv-warning);
+    padding: 12px;
+    min-width: 320px;
+    min-height: 42px;
+    border-radius: 4px;
+    transform: translateX(15px);
+}
+
+
+.rest-bar {
+    background-color: var(--tv-blue);
+    padding: 12px;
+    min-width: 12px;
+    min-height: 42px;
+    border-radius: 4px;
+}
+
+.overtime-bar {
+    background-color: var(--tv-red);
+    padding: 12px;
+    min-width: 12px;
+    min-height: 42px;
+    border-radius: 4px;
+}
+
+.y-axis {
+    max-height: 100%;
+    margin-bottom: 24px 0px 0px 24px;
+    padding: 0px;
+}
+
+.y-axis-label {
+    padding: 0px 8px 0px 8px;
+    display: flex;
+    
+    max-height: 33% !important;
+    /* per centrare il testo verticalmente */
+    align-items: center;
+    font-size: .85em;
+    justify-content: center;
+    
+    /* occupa l’altezza prevista */
+}
+
+.x-axis-label{
+    min-width: 100px;
+    user-select: none;
+}
+
+
+.y-axis-label p {
+    writing-mode: vertical-rl;
+    /* testo in verticale */
+    text-orientation: mixed;
+    /* le lettere rimangono leggibili */
+    white-space: nowrap;
+    /* niente ritorni a capo strani */
+    margin: 0;
+    /* evita rigonfiamenti indesiderati */
+    transform: rotate(180deg);
+    /* ribalta la direzione -> bottom → top */
+
+}
+

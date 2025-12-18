@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Truckly | Login</title>
+    <link href="/assets/css/terminal.css" rel="stylesheet">
+
+    <link href="/assets/css/font-awesome.css" rel="stylesheet">
+
+</head>
+
+<% 
+    var r = typeof rParams != "undefined" ? rParams : {}; 
+
+
+%>
+
+<body style="padding:0px;">
+    <div class="wrapper-v j-center a-center nopadding">
+        <div class="wrapper-h nopadding j-start" style="transition:.3s;background: linear-gradient(125deg, #101211 0%, #101211 25%, #101211 60%, #ff5000 100%);">
+            <div class="wrapper-v j-center">
+                <form class="wrapper-v bg-dark bordered-grid shadowed-dark h-min-content smooth"
+                    style="max-width: 500px;" action="/login" method="POST" novalidate>
+                    <div class="wrapper-h nopadding h-min-content j-sb">
+                        <div class="wrapper-h j-start">
+                            <p class="big bordered-bottom thick muted">Accedi</p>
+                        </div>
+                        <div class="wrapper-h j-end nopadding">
+                            <img src="/assets/images/logo_white.png" class="form-logo">
+                        </div>
+                    </div>
+                    <div class="wrapper-v j-start a-start h-fit-content nopadding">
+                        <div class="wrapper-h nopadding j-start">
+                            <div class="wrapper-v rg-4p j-start a-start">
+                                <label class="muted">Email</label>
+                                <input type="text" class="form-control" name="username">
+                            </div>
+                        </div>
+                        <div class="wrapper-h nopadding j-start">
+                            <div class="wrapper-v h-fit-content rg-4p j-start a-start">
+                                <label class="muted">Password</label>
+                                <div class="form-control wrapper-h nopadding">
+                                    <input type="password" class="w-100" name="password">
+                                    <a class="btn input">
+                                        <i class="fa fa-eye"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <%-include('../wrappers/epmessage.ejs')%>
+                    </div>
+                    <div class="wrapper-h j-start h-min-content">
+                        <p>Non riesci ad accedere?<a class="hyperlink">Recupera password</a></p>
+                    </div>
+
+                    <div class="wrapper-v j-start a-start h-min-content nopadding">
+                        <div class="wrapper-h  j-start">
+                            <button type="submit" class="btn branded medium" style="background-color: transparent;">
+                                Accedi
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+            </div>
+            <div class="wrapper-v mobilehide"></div>
+        </div>
+    </div>
+    <script src="/assets/js/login.js"></script>
+</body>
+
+</html>

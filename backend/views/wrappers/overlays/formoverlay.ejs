@@ -1,0 +1,206 @@
+<div class="overlay blurred hidden" style="z-index: 8;" data-role="inforegister">
+    <div class="wrapper-v j-center a-center">
+        <div class="wrapper-v h-min-content bg-dark smooth shadowed-dark overlay-scrollable" style="max-width: 500px;">
+            <div class="wrapper-h j-sb nopadding h-min-content overlay-scrollable__header">
+                <div class="wrapper-h j-start">
+                    <h1 class="bordered-bottom thick" id="formtitle">Aggiungi veicolo</h1>
+                </div>
+                <div class="wrapper-h j-end" id="new_data_menu">
+                </div>
+            </div>
+            <div class="wrapper-v j-center a-center nopadding overlay-scrollable__body" style="overflow: hidden;">
+                <div class="wrapper-h j-center a-center nopadding" style="min-width: 200%; transition:.3s"
+                    id="new_item_form">
+
+                    <!-- Form veicolo -->
+                    <div data-tab="tab_newvehicle" class="feedtab wrapper-v j-start a-start">
+                        <div class="wrapper-v j-start a-start nopadding rg-8p">
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Nickname</label>
+                                    <input id="vehicleNicknameInput" type="text" value="" class="form-control">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Targa</label>
+                                    <input id="vehiclePlateInput" type="text" value="" class="form-control">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Marca</label>
+                                    <input id="vehicleBrandInput" type="text" value="" class="form-control">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Modello</label>
+                                    <input id="vehicleModelInput" type="text" value="" class="form-control">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Numero SIM</label>
+                                    <div class="wrapper-h cg-382 j-start a-center nopadding">
+                                        <select id="vehicleSimPrefixSelect" type="select" class="form-control" value="+39"
+                                            style="max-width: 28.3%;">
+                                            <option value="+39">+39</option>
+                                        </select>
+                                        <input id="vehicleSimNumberInput" type="text" value="" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">ICCID SIM</label>
+                                    <input id="vehicleSimIccidInput" type="text" value="" class="form-control">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Modello Dispositivo</label>
+                                    <select class="form-control" id="vehicleDeviceModelInput">
+                                        <option value="FMC130">FMC150</option>
+                                        <option value="FMB920">FMC920</option>
+                                        <option value="FMB120">FMC650</option>
+                                        <option value="FMB640">FMB641</option>
+                                        <option value="FMC130">FMC650</option>
+
+                                    </select>
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Codec</label>
+                                    <select id="vehicleCodecInput" class="form-control">
+                                        <option>8 Ext</option>
+                                        <option>8</option>
+                                        <option>12</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">IMEI</label>
+                                    <input id="vehicleImeiInput" type="text" value="" class="form-control">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <div class="wrapper-h j-start cg-382 nopadding">
+                                        <input type="checkbox" checked disabled readonly="true" style="cursor: not-allowed;">
+                                        <label class="muted">Capienza Serbatoio 1</label>
+                                    </div>
+                                    <div class="wrapper-h j-start  nopadding cg-382">
+                                        <input id="vehicleTank1CapacityInput" type="number" value="" class="form-control" style="max-width: 70%;" min="0" step="1" required>
+                                        <select id="vehicleTank1UnitSelect" class="form-control" style="max-width: 30%;">
+                                            <option value="litres">Litri</option>
+                                            <option value="gallons">Galloni</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p relative">
+                                    <div class="wrapper-h j-start cg-382 nopadding tankelement" data-role="second-tank-toggle">
+                                        <input id="vehicleSecondTankToggle" type="checkbox">
+                                        <label class="muted" for="vehicleSecondTankToggle">Capienza Serbatoio 2</label>
+                                    </div>
+                                    <div class="wrapper-h j-start  nopadding cg-382">
+                                        <input id="vehicleTank2CapacityInput" type="number" value="" class="form-control" style="max-width: 70%;" min="0" step="1" disabled>
+                                        <select id="vehicleTank2UnitSelect" class="form-control" style="max-width: 30%;" disabled>
+                                            <option value="litres">Litri</option>
+                                            <option value="gallons">Galloni</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start a-center nopadding">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Tags</label>
+                                    <input type="hidden" name="tags" id="vehicleTagsHidden">
+                                    <div id="vehicleTags" class="tag-container form-control" style="padding:8px 4px">
+                                        <input id="vehicleTagsInput" type="text" placeholder="Aggiungi un tag..."
+                                            autocomplete="off" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="wrapper-h j-start nopadding">
+                                <div class="wrapper-v nopadding devicepreview bordered-grid w-100" data-collapsed="true"
+                                    style="min-height: 283px; max-height: 283px;">
+                                    <div class="wrapper-v j-center a-center relative nopadding">
+                                        <div class="overlay blurred" data-role="overlaywaitdevice" style="z-index: 8;">
+                                            <div class="wrapper-v nopadding j-center a-center rg-4p">
+                                                <p>Attendo il dispositivo...</p>
+                                                <div class="lds-ring">
+                                                    <div></div>
+                                                    <div></div>
+                                                    <div></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="overlay smooth" style="overflow:hidden;">
+                                            <div class="w-100 h-100 minimap" id="minimap"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form autista -->
+                    <div data-tab="tab_newvdriver" class="feedtab wrapper-v j-start a-start">
+                        <div class="wrapper-v j-start a-start nopadding rg-8p h-min-content">
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Nome</label>
+                                    <input type="text" class="form-control">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Cognome</label>
+                                    <input type="text" class="form-control">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Telefono</label>
+                                    <input type="text" class="form-control">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p">
+                                    <label class="muted">Numero Scheda Autista</label>
+                                    <input type="text" class="form-control">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p" style="flex:1">
+                                    <label class="muted">Numero Documento</label>
+                                    <input type="text" class="form-control">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p" style="flex:1">
+                                    <label class="muted">Telefono</label>
+                                    <input type="tel" class="form-control" data-field="phone" inputmode="tel">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p" style="flex:1">
+                                    <label class="muted">Codice Fiscale Utente</label>
+                                    <input type="text" class="form-control" data-field="taxCode" maxlength="32">
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-start nopadding cg-1618">
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p" style="flex:1">
+                                    <label class="muted">Data di nascita autista</label>
+                                    <input type="date" class="form-control" data-field="dob">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p" style="flex:1">
+                                    <label class="muted">Data emissione patente</label>
+                                    <input type="datetime-local" class="form-control" data-field="licenseIssuedAt">
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding form-group rg-4p" style="flex:1">
+                                    <label class="muted">Data scadenza patente</label>
+                                    <input type="datetime-local" class="form-control" data-field="licenseExpiresAt">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+            <div class="wrapper-h j-center no_vpad a-center h-min-content cg-1618 overlay-scrollable__footer">
+                <a class="btn danger medium w-100" data-action="overlay_reg_close">Annulla</a>
+                <a class="btn success medium w-100">Concludi</a>
+            </div>
+        </div>
+    </div>
+</div>

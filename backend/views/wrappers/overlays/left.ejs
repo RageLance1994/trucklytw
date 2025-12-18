@@ -1,0 +1,68 @@
+<style>
+    #left_section {
+        transition: .15s;
+        border-right: 4px solid var(--nav-hover);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    #left_section.scrolled {
+        transform: translateX(-100%);
+    }
+
+    .vcl .navexpand[data-shrunk="true"] .navbar-item {
+        min-height: 32px !important;
+        
+    }
+
+    .vcl .navexpand[data-shrunk="false"] .navbar-item {
+        min-height: 32px !important;
+    }
+
+    .vcl .navexpand[data-shrunk="false"] .navbar-item {
+        max-width: 32px !important;
+        max-height: 32px !important;
+    }
+
+    .vcl .navexpand i.fa.fa-plus {
+        transition: .15s;
+    }
+
+    .vcl .navexpand[data-shrunk="false"] i.fa.fa-plus {
+        transform: rotate(-45deg);
+        opacity: 50%;
+    }
+
+    .navbar-item:has(img):hover {
+        background-color: var(--nav-hover);
+    }
+</style>
+
+<div class="overlay dead" style="z-index:26">
+    <div class="wrapper-h nopadding j-start">
+        <div class="wrapper-v rg-8p bg-dark  side-section nopadding scrolled alive overlay-scrollable overlay-scrollable__body" id="left_section">
+            <div class="wrapper-v j-start a-center">
+                <div class="wrapper-h h-fit-content nopadding j-sb a-center">
+                    <h1 class="bordered-bottom thick medium">Vista rapida</h1>
+                    <a class="wrapper-h j-center a-center w-fit-content" style="border-radius: 4px;" data-action="left-close"><i class="fa fa-close"></i></a>
+                </div>
+                <div class="wrapper-h j-start a-center no_hpad h-fit-content" id="left-sidetab-menu"></div>
+                <div class="wrapper-h j-center a-center noscroll nopadding" style="min-width: 200%; overflow-x: hidden; transition:.15s" id="lsm_scroller">
+                    <div class="feedtab wrapper-v j-start nopadding a-start" data-tab="tab_sidevehicles">
+                        <div class="wrapper-v relative j-center a-center">
+                            <div class="overlay scrollable-y">
+                                <div class="wrapper-v j-start a-start rg-8p nopadding" data-role="vehicle-list">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="feedtab wrapper-v j-start nopadding a-start" data-tab="tab_sidedrivers"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script type="text/template" id="vehicle-row-template">
+    <%- include('./vehicleRow.ejs') %>
+</script>
+<script type="module" src="/assets/js/overlays/left.js"></script>

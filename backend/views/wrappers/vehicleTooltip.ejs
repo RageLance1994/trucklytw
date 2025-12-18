@@ -1,0 +1,250 @@
+<%      var hasDriver=false; hasDriver=Boolean(device.data.io.tachoDriverIds);
+        const summary=fuelSummary || {}; 
+        const fuelLiters=Number.isFinite(summary.liters) ? summary.liters.toFixed(1) : null; 
+        const fuelPercent=Number.isFinite(summary.percent) ? (summary.percent * 100).toFixed(1) : null; 
+        const capacity=Number.isFinite(summary.capacity) ? summary.capacity.toFixed(1) : null; 
+        const tank1Capacity=Number.isFinite(summary.tank1Capacity) ? summary.tank1Capacity.toFixed(1) : null; 
+        const tank2Capacity=Number.isFinite(summary.tank2Capacity) ? summary.tank2Capacity.toFixed(1) : null; 
+        var statuses={ driving: {translate:'Alla guida',class:'success',icon:'fa fa-flag-checkered'}, working: {translate:'A lavoro',class:'warning', icon:'fa fa-wrench'}, resting: {translate:'A riposo', class:'', icon:'fa fa-bed'}, unlogged: {translate:'Sloggato', class:'', icon:'fa fa-sign-out' }, } 
+        var flags={ driver_login: {flagname:'Login'},driver_logout: {flagname:'Logout'}, drive_start: {flagname:'Inizio guida'}, rest_start: {flagname:'Inizio riposo'}, work_start: {flagname:'Inizio lavoro'}, drive_stop : {flagname:'Fine guida'}, rest_stop: {flagname:'Fine riposo'}, work_stop: {flagname:'Fine lavoro'}, } %>
+
+    <link href="/assets/css/terminal.css" rel="stylesheet">
+    <link href="/scripts/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+
+
+    <div id="test_tooltip_0525"
+        class="wrapper-v tooltip-container-custom shadowed-dark j-start a-start rg-16p h-min-content"
+        style="min-width:min(382px,75vw); max-width: min(382px,75vw);" data-tooltip-root="true">
+        <div class="wrapper-h j-start a-center no_hpad cg-1618 bordered-bottom thick w-min-content nowrap">
+            <h1 class="medium">
+                <%= vehicle.nickname %>
+            </h1>
+            <p class="small muted pill <%= status.class %>">
+                <%= status.status %>
+            </p>
+        </div>
+        <div class="wrapper-v no_hpad j-start a-start rg-8p bordered-bottom thick">
+            <div class="wrapper-h nopadding j-start a-center cg-382">
+                <i class="fa-regular fa-clock"></i>
+                <p class="">
+                    Ultimo aggiornamento: <span data-field="tooltip-updated-at">
+                        <%= formatDate(new Date(device.data.timestamp)) %>
+                    </span>
+                </p>
+            </div>
+
+            <div class="wrapper-h nopadding j-start a-center cg-382">
+                <i class="fa fa-crosshairs muted"></i>
+                <p class=""> Latitudine <span data-field="tooltip-lat">
+                        <%= device.data.gps.Latitude %>
+                    </span>
+                </p>
+                <div class="separator-h" style="min-height:5px; max-height: 100% !important;"></div>
+                <p class=""> Longitudine <span data-field="tooltip-lng">
+                        <%= device.data.gps.Longitude %>
+                    </span>
+                </p>
+            </div>
+
+            <div class="wrapper-h nopadding j-start a-center cg-382">
+                <i class="fa fa-location-arrow muted"></i>
+                <% if (device.data.gps.Location && device.data.gps.Location.Address) { %>
+                    <p class="">
+                        <%= device.data.gps.Location.Address %>
+                    </p>
+                    <div class="separator-h" style="min-height:5px; max-height:100% !important;"></div>
+                    <p class="">
+                        (<%= device.data.gps.Location.Zip %> - <%= device.data.gps.Location.Provence %>) <%=
+                                    device.data.gps.Location.City %>
+                    </p>
+                    <% } else { %>
+                        <p class="muted">Indirizzo non disponibile.</p>
+                        <% } %>
+            </div>
+            <div class="wrapper-h nopadding j-start a-center cg-382">
+                <i class="fa fa-tachometer muted"></i>
+                <p class="" data-field="tooltip-speed">
+                    <%= device.data.gps.Speed || 0 %> km/h
+                </p>
+            </div>
+        </div>
+
+        <div class="wrapper-v nopadding j-start a-start relative">
+            <div class="overlay smooth dead" style="z-index: 100;">
+                <div class="wrapper-v j-end a-center nopadding">
+                    <div class="wrapper-h j-center a-center h-fit-content cg-382 bg-dark" data-info="scroll_for_more">
+                        <i class="fa-solid fa-arrow-down wiggle-vertical"></i>
+                        <p>Scorri per vedere altre informazioni...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="wrapper-v j-start a-start rg-16p scrollable-section-tooltip">
+                <div class="wrapper-v j-center a-center no_hpad h-min-content rg-8p bordered-bottom thick"
+                    style="padding-top:0px !important">
+                    <div class="wrapper-h nopadding j-center a-center cg-1618">
+                        <div class="wrapper-v j-start a-start bordered-grid">
+                            <div class="wrapper-h j-start a-center nopadding">
+                                <p class="muted">Targa</p>
+                            </div>
+                            <div class="wrapper-h j-start a-center nopadding">
+                                <h1 class="medium fwb">
+                                    <%= vehicle.plate.v %>
+                                </h1>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wrapper-h nopadding j-center a-center cg-1618">
+                        <div class="wrapper-v j-start a-start bordered-grid">
+                            <div class="wrapper-h j-start a-center nopadding">
+                                <p class="muted">Serbatoio</p>
+                            </div>
+                            <div class="wrapper-h j-sb a-center nopadding">
+
+                                <h1 class="medium fwb">
+                                    <span data-field="tooltip-fuel-value">
+                                        <%= fuelLiters ? fuelLiters + ' L' : '-' %>
+                                    </span>
+                                    <span class="muted small" data-field="tooltip-fuel-capacity">
+                                        <% if (capacity) { %>
+                                            / <%= capacity %> L
+                                                <% } %>
+                                    </span>
+                                </h1>
+                                <% if (fuelPercent) { %>
+                                    <p class="muted small" data-field="tooltip-fuel-percent">
+                                        <%= fuelPercent %>%
+                                    </p>
+                                    <% } %>
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <% if(hasDriver) {%>
+
+                    <div class="wrapper-h nopadding j-center a-center cg-1618 h-fit-content">
+                        <div class="wrapper-v j-start a-start bordered-grid">
+                            <div class="wrapper-h j-start a-center nopadding">
+                                <p class="muted">Autista</p>
+                            </div>
+                            <div class="wrapper-h j-sb a-center nopadding">
+                                <h1 class="medium fwb" data-field="tooltip-driver">
+                                    <%= device.data.io.driver1Id || '-' %>
+                                </h1>
+                                <% var currentStatus=statuses[driverEvents.at(-1).to_state_name]; %>
+                                    <p class="pill <%= currentStatus.class %>" data-info="driver-status"
+                                        data-field="tooltip-driver-status">
+                                        <%= currentStatus.translate %>
+                                    </p>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class=" wrapper-h j-sb h-fit-content nopadding" id="driver_hours_counters">
+                        <div class="wrapper-h j-start nopadding">
+                            <h1 class="muted bordered-bottom thick">
+                                Storico guida
+                            </h1>
+                        </div>
+                        <div class="wrapper-h j-end nopadding">
+                            <div class="wrapper-h nopadding metric-selector" style="margin:0px !important;">
+                                <a class="cg-382 active"><i class="fa fa-bars"></i> Totali</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wrapper-v j-start a-start nopadding" style="min-height: calc(3*86px);">
+                        <div class="wrapper-v nopadding j-start a-start drivehours" data-drivertab="bars">
+                            <div class="wrapper-v rg-8p nopadding j-center">
+                                <div
+                                    class="wrapper-v j-start a-start no_hpad bordered-bottom thick counter-v-container">
+                                    <div class="wrapper-h j-start nopadding">
+                                        <p class="medium">Guida residua</p>
+                                    </div>
+                                    <div class="wrapper-h h-min-content nopadding j-sb">
+                                        <p class="small muted">Totale</p>
+                                        <p class="small muted">Residua</p>
+                                    </div>
+                                    <div class="wrapper-h j-center a-center nopadding counter-container"
+                                        data-counter-id="drive_remaining_drive"></div>
+                                </div>
+                                <div
+                                    class="wrapper-v j-start a-start no_hpad bordered-bottom thick counter-v-container">
+                                    <div class="wrapper-h j-start nopadding">
+                                        <p class="medium">Impegno Residuo</p>
+                                    </div>
+                                    <div class="wrapper-h h-min-content nopadding j-sb">
+                                        <p class="small muted">Totale</p>
+                                        <p class="small muted">Residua</p>
+                                    </div>
+                                    <div class="wrapper-h j-center a-center nopadding counter-container"
+                                        data-counter-id="drive_remaining_effort"></div>
+                                </div>
+                                <div class="wrapper-v j-start a-start no_hpad thick counter-v-container">
+                                    <div class="wrapper-h j-start nopadding">
+                                        <p class="medium">Riposo residuo</p>
+                                    </div>
+                                    <div class="wrapper-h h-min-content nopadding j-sb">
+                                        <p class="small muted">Totale</p>
+                                        <p class="small muted">Residua</p>
+                                    </div>
+                                    <div class="wrapper-h j-center a-center nopadding counter-container"
+                                        data-counter-id="drive_remaining_rest"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <script type="module" src="/assets/js/ttest.js"></script>
+
+                    </div>
+
+                    <%}%>
+            </div>
+        </div>
+
+        <div class="wrapper-h j-sb a-center h-min-content cg-382 nopadding" data-controls="vehicle-interactions">
+            <a data-interaction="routes" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-route"></i>
+            </a>
+            <a data-interaction="fuel" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-gas-pump"></i>
+            </a>
+            <a data-interaction="driver" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-user-tie"></i>
+            </a>
+            <a data-interaction="proximitysearch" class="wrapper-h fit-content smooth bordered-grid"
+                style="aspect-ratio: 1;">
+                <i class="fa-solid fa-satellite-dish"></i>
+            </a>
+            <a data-interaction="geofence" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-circle-dot"></i>
+            </a>
+            <a data-interaction="alert" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-bell"></i>
+            </a>
+            <a data-interaction="report" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-file"></i>
+            </a>
+            <a data-interaction="tachosync" class="wrapper-h fit-content smooth bordered-grid" style="aspect-ratio: 1;">
+                <i class="fa-solid fa-download"></i>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const tooltipScrollHint = document.querySelector('div[data-info="scroll_for_more"]');
+        const tooltipScrollable = document.querySelector('.scrollable-section-tooltip');
+        const updateScrollHint = () => {
+
+            if (!tooltipScrollHint || !tooltipScrollable) return;
+            const maxScroll = tooltipScrollable.scrollHeight - tooltipScrollable.clientHeight;
+            const ratio = maxScroll > 0 ? (tooltipScrollable.scrollTop / maxScroll) : 1;
+            tooltipScrollHint.classList.toggle('flop', ratio >= 0.5);
+        };
+        updateScrollHint();
+        if (tooltipScrollable) {
+            tooltipScrollable.addEventListener('scroll', updateScrollHint);
+            tooltipScrollable.addEventListener('wheel', () => requestAnimationFrame(updateScrollHint), { passive: true });
+            tooltipScrollable.addEventListener('touchmove', () => requestAnimationFrame(updateScrollHint), { passive: true });
+        }
+    </script>

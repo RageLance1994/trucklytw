@@ -1,0 +1,29 @@
+<link href="/assets/css/terminal.css" rel="stylesheet">
+    <link href="/scripts/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+<style>
+    .cluster-explained{
+        border:1px solid var(--grid-color);         
+        overflow-y: auto;
+        max-height: calc(42.3px * 5);
+    }
+    .cluster-explained .cluster-plate{
+        cursor: pointer;
+        user-select: none;
+        min-height: 42px;
+    }
+
+    .cluster-explained .cluster-plate:hover{
+        background-color: var(--nav-hover);
+    }
+
+
+</style>
+
+<div class="wrapper-v j-start a-start nopadding smooth fit-content cluster-explained shadowed-dark">
+    <% for(var i = 0; i < 15; i++) {%>
+    
+    <div class="cluster-plate wrapper-h rectangle cg-1618"> <i class="fa-solid fa-truck"></i> TARGA 1 </div>
+
+    <%}%>
+
+</div>

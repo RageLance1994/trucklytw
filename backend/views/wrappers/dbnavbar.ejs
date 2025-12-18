@@ -1,0 +1,310 @@
+<!-- <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet"> -->
+
+<style>
+    .rewindcoordinates {
+        transition: .3s;
+        transform-origin: left center;
+    }
+
+    .rewindcoordinates.unselected {
+        max-width: 0px !important;
+        pointer-events: none;
+    }
+
+    .rewind_scrubber_container.oos {
+        scale: 0%;
+        pointer-events: none;
+    }
+
+    .wrapper-v:has(#dbnavbar):has(.rewind_scrubber_container:not(.oos)) .ngbar {
+        border-bottom-left-radius: 0px;
+        border-bottom-right-radius: 0px;
+    }
+</style>
+
+<% const allowVehicleCreation = (typeof canManageVehicles === 'boolean') ? canManageVehicles : false; %>
+
+<div class="overlay dead" style="z-index: 25;">
+    <div class="wrapper-v j-start a-center">
+        <div class="wrapper-h h-min-content j-sb a-center alive" id="dbnavbar" style="padding-bottom:0px;">
+            <div class="wrapper-h j-start nopadding mobilehide">
+                <div class="wrapper-h smooth nopadding bg-grid w-min-content navexpand mobilehide" data-shrunk="true"
+                    style="max-height:50px">
+                    <img data-image="navbarimage" src="/assets/images/logo_white.png"
+                        style="max-height: 100%; padding:12px">
+                    <a class="navbar-item"><i class="fa fa-play"></i></a>
+                    <a class="navbar-item"><i class="fa fa-play"></i></a>
+                    <a class="navbar-item"><i class="fa fa-play"></i></a>
+                    <a class="navbar-item"><i class="fa fa-play"></i></a>
+                    <a class="navbar-item"><i class="fa fa-play"></i></a>
+                </div>
+            </div>
+            <div class="ngbar wrapper-h nopadding h-min-content navbar bg-grid j-sb thick mobile-w-100"
+                style="max-width: 768px; border-radius: 4px;">
+                <div class="wrapper-h nopadding j-start">
+                    <div class="wrapper-h j-sb nopadding a-center">
+                        <div class="wrapper-h j-start nopadding searchbar shrunk" data-role="navbar-search">
+                            <div class="wrapper-h j-start nopadding">
+                                <a class="navbar-item nohover noborder smooth-left sbtoggle"
+                                    style="border:none !important"><i class="fa fa-search"></i></a>
+                                <input type="text" class="w-100 h-100" placeholder="Cerca..." data-role="search-input">
+                            </div>
+                            <div class="wrapper-h j-end nopadding mobileshow">
+                                <a class="wrapper-h fit-content" style="padding:4px; margin-right:12px;"><i class="fa-solid fa-close"></i></a>
+                            </div>
+                        </div>
+                        <div class="lds-ring search-spinner" data-role="search-spinner">
+                            <div></div>
+                            <div></div>
+                            <div></div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="wrapper-h nopadding j-center nopadding">
+                    <a title="Veicoli" class="navbar-item relative">
+                        <div class="overlay nav-menu">
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="quickview">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-eye"></i>
+                                    <p>Vista rapida</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="vehiclesummary">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-check"></i>
+                                    <p>Riepilogo Veicoli</p>
+                                </div>
+                            </div>
+                            <% if (allowVehicleCreation) { %>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="newvehicle">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-plus"></i>
+                                    <p>Registra nuovo</p>
+                                </div>
+                            </div>
+                            <% } %>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="vehicletable">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-table"></i>
+                                    <p>Tabelle</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="fuelreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i>
+                                        <img src="/assets/images/icons/gaspump_white.svg">
+                                    </i>
+                                    <p>Consumi</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="pathreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-map"></i>
+                                    <p>Percorsi</p>
+                                </div>
+                            </div>
+                        </div>
+                        <i class="fa fa-truck"></i>
+                    </a>
+                    <a title="Autisti" class="navbar-item relative">
+                        <div class="overlay nav-menu ">
+                            <% if (allowVehicleCreation) { %>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="newdriver">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-plus"></i>
+                                    <p>Registra nuovo</p>
+                                </div>
+                            </div>
+                            <% } %>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="sleepreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-bed"></i>
+                                    <p>Riposo</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="anagraphicsreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-table"></i>
+                                    <p>Anagrafiche</p>
+                                </div>
+                            </div>
+                        </div>
+                        <i class="fa fa-id-card"></i>
+                    </a>
+                    <a title="Resoconti" class="navbar-item relative">
+                        <div class="overlay nav-menu ">
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="fleetreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i><img src="/assets/images/icons/fleet_white.svg"></i>
+                                    <p>Flotta</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="driverreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i><img src="/assets/images/icons/steeringwheel_white.svg"></i>
+                                    <p>Storici autisti</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="fuelcreport">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i>
+                                        <img src="/assets/images/icons/gaspump_white.svg">
+                                    </i>
+                                    <p>Consumi</p>
+                                </div>
+                            </div>
+                        </div>
+                        <i class="fa fa-file"></i>
+                    </a>
+                    <a title="Infrazioni" class="navbar-item"><i class="fa fa-gavel"></i></a>
+
+                </div>
+                <div class="wrapper-h nopadding j-end">
+                    <a class="navbar-item bordered-left relative" data-target="olnoti" data-action="toggle"
+                        data-property="collapsed">
+                        <script>
+                        </script>
+                        <i class="fa fa-bell"></i>
+                    </a>
+                    <a class="navbar-item smooth-right relative">
+                        <div class="overlay nav-menu mobile-left-flip ">
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-key
+                            "></i>
+                                    <p>Sicurezza</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-info" style="min-width: 15px;"></i>
+                                    <p>Informazioni</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa fa-table"></i>
+                                    <p>Fatture</p>
+                                </div>
+                            </div>
+                            <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="logout">
+                                <div class="wrapper-h nopadding j-start cg-1618">
+                                    <i class="fa  fa-sign-out"></i>
+                                    <p>Logout</p>
+                                </div>
+                            </div>
+                        </div>
+                        <i class="fa fa-user"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="wrapper-h j-end nopadding mobilehide">
+                <div class="wrapper-h smooth nopadding bg-grid w-min-content navexpand" data-shrunk="true"
+                    style="max-height:50px">
+                    <a class="navbar-item"><i class="fa fa-support"></i></a>
+                    <a class="navbar-item"><i class="fa fa-phone"></i></a>
+                    <a class="navbar-item"><i class="fa fa-robot"></i></a>
+                    <a class="navbar-item" data-action="switchteme" style="max-height: 50px; overflow-y: hidden;">
+                        <div class="wrapper-v j-start a-center nopadding"
+                            style="min-height: 100px; transform: translateY(25%);">
+                            <div class="wrapper-h j-center a-center nopadding">
+                                <i class="fa-solid fa-sun"></i>
+                            </div>
+                            <div class="wrapper-h j-center a-center nopadding">
+                                <i class="fa fa-moon-o"></i>
+                            </div>
+                        </div>
+                    </a>
+                    <a class="wrapper-v j-center"
+                        style="min-width: 50px; font-size: 1.382em; max-width: 50px; min-height: 50px; max-height: 50px"
+                        Title="Impostazioni"><i class="fa fa-cog"></i></a>
+                </div>
+            </div>
+
+        </div>
+        <div class="wrapper-h alive bg-grid j-center a-center h-fit-content smooth relative oos rewind_scrubber_container"
+            style="max-width: 61.8%;">
+            <div class="wrapper-h j-center cg-1618 w-fit-content no_wrap nopadding" id="rewind_scrubber_container">
+                <a title="Veicoli" class="navbar-item relative w-fit-content smooth"
+                    style="font-size: .85rem;min-width: fit-content !important; padding:4px; border:none;">
+                    <div class="overlay nav-menu w-fit-content">
+                        <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="route@today">
+                            <div class="wrapper-h nopadding j-start cg-1618">
+                                <i class="fa-solid fa-clock"></i>
+                                <p>Oggi</p>
+                            </div>
+                        </div>
+                        <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="route@trip">
+                            <div class="wrapper-h nopadding j-start cg-1618">
+                                <i class="fa-solid fa-route"></i>
+                                <p>Viaggio</p>
+                            </div>
+                        </div>
+                        <div class="menu-item wrapper-h j-sb a-center no_vpad h-fit-content" data-action="route@custom">
+                            <div class="wrapper-h nopadding j-start cg-1618">
+                                <i class="fa-solid fa-calendar"></i>
+                                <p>Intervallo personalizzato</p>
+                            </div>
+                        </div>
+                    </div>
+                    Tipologia intervallo
+                </a>
+            </div>
+            <div class="wrapper-h j-center a-center h-fit-content" id="rewindScrubber"></div>
+            <a data-close="rewind_scrubber" class="wrapper-h j-center a-center fit-content"
+                style="padding:4px; aspect-ratio: 1;">
+                <i class="fa fa-close"></i>
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    var shrinkTimeout = null;
+
+    function unshrink(ev) {
+        ev.currentTarget.dataset.shrunk = "false";
+        ev.currentTarget.addEventListener('mouseleave', shrink)
+    }
+    function shrink(ev) {
+        clearTimeout(shrinkTimeout)
+        var tgt = ev.currentTarget
+
+
+        tgt.dataset.shrunk = "true";
+
+        ev.currentTarget.removeEventListener('mouseleave', shrink)
+    }
+
+    document.querySelectorAll('.navexpand').forEach((ne) => {
+        ne.addEventListener('mouseover', unshrink)
+    })
+
+</script>
+
+
+<script>
+    document.querySelectorAll('.navbar-item.relative').forEach(item => {
+        item.addEventListener('mouseover', menuOpen)
+
+
+    })
+
+    function menuOpen(tgt) {
+        const menu = tgt.currentTarget.querySelector('.overlay.nav-menu');
+        if (!menu) return;
+        menu.classList.add('open');
+        tgt.currentTarget.addEventListener('mouseleave', menuClose);
+        tgt.currentTarget.removeEventListener('mouseover', menuOpen);
+    }
+
+    function menuClose(tgt) {
+        const menu = tgt.currentTarget.querySelector('.overlay.nav-menu');
+        menu.classList.remove('open');
+
+        tgt.currentTarget.removeEventListener('mouseleave', menuClose);
+        tgt.currentTarget.addEventListener('mouseover', menuOpen);
+    }
+
+</script>

@@ -1,0 +1,505 @@
+<link href="/assets/css/spinners.css" rel="stylesheet">
+<link href="/assets/css/driverChart.css" rel="stylesheet">
+<style>
+    #right_section {
+        transition: .15s;
+        border-left: 4px solid var(--nav-hover);
+
+        max-width: 100%;
+    }
+
+    #right_section.scrolled {
+        transform: translateX(100%);
+    }
+
+    .noUi-connect {
+        background-color: var(--main) !important;
+        border-radius: 16px !important;
+    }
+
+    .noUi-connects {
+        border-radius: 16px !important;
+
+    }
+
+    .noUi-base {
+        border-radius: 16px;
+    }
+
+    .noUi-touch-area {
+        background-color: var(--grid-color) !important;
+        border-radius: 50%;
+    }
+
+    .noUi-handle.noUi-handle-lower {
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    #play_vehicle_scrubber {
+        border-radius: 16px !important;
+    }
+
+
+    .maplibregl-popup,
+    .maplibregl-popup-content {
+        background-color: var(--main-background);
+        border: 1px solid var(--grid-color);
+    }
+
+    .maplibregl-marker.maplibregl-marker-anchor-center {
+        cursor: pointer;
+    }
+
+    .maplibregl-marker.maplibregl-marker-anchor-center:active {
+        cursor: pointer;
+        transform: translateY(-3px);
+    }
+
+    .maplibregl-popup-tip {
+        display: none !important;
+    }
+
+    .maplibregl-popup-content {
+        box-shadow: 0 0 10px 2px rgba(255, 80, 0, 0.35);
+        max-width: 382px !important;
+        padding: 0px;
+        min-width: 382px !important;
+        left: -30%;
+
+    }
+
+    .maplibregl-popup-close-button {
+        color: white;
+        padding: 4px;
+        min-width: 16px;
+        max-width: 16px;
+        min-height: 16px;
+        max-height: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 16px;
+        margin-right: 16px;
+        aspect-ratio: 1;
+        border: 1px solid var(--grid-color);
+        font-size: 16px;
+    }
+
+    .maplibregl-canvas {
+        border-radius: 4px !important;
+    }
+
+    /* uPlot layout fixes to keep legend neat on mobile/desktop */
+    #right_section .uplot {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    #right_section .uplot .u-legend {
+        order: 2;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+        align-items: center;
+        font-size: 12px;
+        line-height: 1.3;
+        width: 100%;
+        margin: 0;
+    }
+
+    #right_section .uplot .u-legend>table {
+        width: 100%;
+    }
+
+    #right_section .uplot .u-legend>table>tbody {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+    }
+
+    #right_section .uplot .u-legend>table>tbody>tr {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: 0;
+    }
+
+    #right_section .uplot .u-legend th,
+    #right_section .uplot .u-legend td {
+        padding: 0;
+        border: 0;
+        white-space: nowrap;
+        background: transparent;
+    }
+</style>
+
+<link href="/assets/css/table-expandable.css" rel="stylesheet">
+
+<!-- READY TO DEPLOY -->
+
+<div class="overlay dead" style="z-index:35">
+    <div class="wrapper-h nopadding j-end ">
+        <div class="wrapper-v bg-dark alive side-section scrolled overlay-scrollable" id="right_section">
+            <div class="wrapper-h nopadding j-sb a-center h-fit-content bordered-bottom thick">
+                <div class="wrapper-h j-start cg-1618 no_hpad h-min-content nopadding relative"
+                    style="min-height: 40px; border-width: 3px;">
+                    <input class="medium" value="..." type="text" placeholder="Cerca un veicolo..."
+                        data-role="vehicle-search-bar-bottom">
+                    <a class="btn-input"><i class="fa fa-search"></i></a>
+                    <div class="pill success small" data-role="vehicle-status-pill">In marcia
+                    </div>
+                </div>
+                <div class="wrapper-h j-end a-center w-fit-content">
+                    <a data-role="right-close" class="wrapper-h j-center a-center h-fit-content"><i
+                            class="fa fa-close"></i></a>
+                </div>
+            </div>
+            <div class="wrapper-h j-sb nopadding wrap h-fit-content">
+                <div class="wrapper-h j-start a-center fit-content" id="right_side_scroller_menu"></div>
+                <div class="wrapper-h j-end a-center h-fit-content m-a-center m-nopadding">
+                    <%-include('./widgetControls.ejs')%>
+                </div>
+            </div>
+
+            <div class="wrapper-v j-start a-center nopadding" style="overflow: hidden;">
+                <div class="wrapper-h j-center a-center nopadding" style="min-width: 200%; transition:transform .15s;"
+                    id="right_side_scroller">
+                    <!-- <div class="wrapper-v j-center a-center feedtab" data-tab="tab_rightstats">
+                        <div class="wrapper-v nopadding j-start a-start rg-8p">
+                            <div class="wrapper-h j-center a-center nopadding h-fit-content cg-1618">
+                                <div
+                                    class="wrapper-v rg-8p j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                    <div class="wrapper-h j-start a-center medium fwb muted"
+                                        style="padding-bottom:0px !important">Odometro</div>
+                                    <div class="wrapper-h j-start no_vpad a-center big fwb"
+                                        style="padding-bottom: 12px !important;">450.000 Km</div>
+                                </div>
+                                <div
+                                    class="wrapper-v j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                    <div
+                                        class="wrapper-v rg-8p j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                        <div class="wrapper-h j-start a-center medium fwb muted"
+                                            style="padding-bottom:0px !important">Ore motore</div>
+                                        <div class="wrapper-h j-start no_vpad a-center big fwb"
+                                            style="padding-bottom: 12px !important;">450.000 Km</div>
+                                    </div>
+                                </div>
+                                <div
+                                    class="wrapper-v j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                    <div
+                                        class="wrapper-v rg-8p j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                        <div class="wrapper-h j-start a-center medium fwb muted"
+                                            style="padding-bottom:0px !important">Rifornimenti Rilevati</div>
+                                        <div class="wrapper-h j-start no_vpad a-center big fwb"
+                                            style="padding-bottom: 12px !important;">450.000 Km</div>
+                                    </div>
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding h-fit-content">
+                                    <div
+                                        class="wrapper-v rg-8p j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                        <div class="wrapper-h j-start a-center medium fwb muted"
+                                            style="padding-bottom:0px !important">Consumo medio</div>
+                                        <div class="wrapper-h j-start no_vpad a-center big fwb"
+                                            style="padding-bottom: 12px !important;">450.000 Km</div>
+                                    </div>
+                                </div>
+                                <div
+                                    class="wrapper-v j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                    <div
+                                        class="wrapper-v rg-8p j-start a-start nopadding h-fit-content bordered-grid shadowed-dark">
+                                        <div class="wrapper-h j-start a-center medium fwb muted"
+                                            style="padding-bottom:0px !important">Rotte completate</div>
+                                        <div class="wrapper-h j-start no_vpad a-center big fwb"
+                                            style="padding-bottom: 12px !important;">450.000 Km</div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="separator-v"></div>
+                        </div>
+                    </div> -->
+                    <div class="wrapper-v j-center a-center feedtab" data-tab="tab_rightfuel">
+                        <div class="wrapper-v rg-8p j-start a-center nopadding">
+                            <div class="wrapper-h wrap j-center a-center nopadding cg-1618" style="max-height: 618px;">
+                                <div class="wrapper-v j-start a-start nopadding bordered-grid shadowed-dark"
+                                    style="flex:.382; overflow-y: visible;">
+                                    <div class="wrapper-h j-sb a-center h-fit-content bordered-bottom thick">
+                                        <h1 class="fwb">Riepilogo</h1>
+                                        <div class="wrapper-h j-end a-center nopadding" id="fuel_stats_scroller_menu">
+                                        </div>
+                                    </div>
+                                    <div class="wrapper-v nopadding j-center a-center noscroll">
+                                        <div class="wrapper-h j-center a-center nopadding" id="fuel_stats_scroller"
+                                            style="min-width: 200%; transition: transform .15s;">
+                                            <div class="wrapper-v j-center a-center sidetab nopadding"
+                                                data-tab="tab_fuelgenerics">
+                                                <div class="wrapper-v j-start nopadding relative"
+                                                    data-role="general-stats">
+                                                    <div class="overlay scrollable-y">
+                                                        <div class="wrapper-v j-start a-start nopadding">
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="avg-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    Medio</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="hourly-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    Orario</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="trip-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    Viaggio</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="engine-hours">
+                                                                <span class="stat-label">Ore
+                                                                    Motore</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="refuel-count">
+                                                                <span class="stat-label">Rifornimenti
+                                                                    Totali</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="total-consumption">
+                                                                <span class="stat-label">Consumi
+                                                                    Totali</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="moving-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    in
+                                                                    marcia</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="idle-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    da
+                                                                    fermo</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="wrapper-v j-center a-center sidetab nopadding"
+                                                data-tab="tab_fuelspecifics">
+                                                <div class="wrapper-v j-start a-start nopadding">
+                                                    <div class="wrapper-h j-start h-fit-content a-center no_hpad relative bordered-bottom thick"
+                                                        data-role="driver-stat-search">
+                                                        <input type="text" class="w-100"
+                                                            placeholder="Cerca un autista..."
+                                                            data-role="driver-search-bar-bottom"> <i
+                                                            class="fa fa-search" style="margin-right: 8px;"></i>
+                                                    </div>
+                                                    <div class="wrapper-v j-start statistics nopadding bordered-grid relative"
+                                                        data-role="driver-stats">
+                                                        <div class="overlay scrollable-y">
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="avg-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    Medio</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="hourly-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    Orario</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="trip-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    Viaggio</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="engine-hours">
+                                                                <span class="stat-label">Ore
+                                                                    Motore</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="refuel-count">
+                                                                <span class="stat-label">Rifornimenti
+                                                                    Totali</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="total-consumption">
+                                                                <span class="stat-label">Consumi
+                                                                    Totali</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="moving-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    in
+                                                                    marcia</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                            <div class="wrapper-h h-min-content j-sb a-center stat"
+                                                                data-stat-key="idle-consumption">
+                                                                <span class="stat-label">Consumo
+                                                                    da
+                                                                    fermo</span>
+                                                                <span class="stat-value"
+                                                                    data-role="stat-value">--</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="wrapper-v j-center a-center nopadding bordered-grid shadowed-dark relative"
+                                    style="flex:1">
+                                    <div class="overlay blurred" style="z-index: 12;" id="fuel_wait_overlay">
+                                        <div class="wrapper-v j-center a-center">
+                                            <div class="lds-ring">
+                                                <div></div>
+                                                <div></div>
+                                                <div></div>
+                                            </div>
+                                            <h1 class="big">Carico lo storico del carburante<span
+                                                    class="_points"></span>
+                                            </h1>
+                                        </div>
+                                    </div>
+                                    <style>
+                                        .uplot.u-hz>* {
+                                            max-height: 83.2%;
+                                        }
+                                    </style>
+                                    <div class="overlay noscroll" style="z-index: 11; height: 100%; width: 100%;">
+                                        <div class="wrapper-v j-center a-center noscroll" id="fuelChart"
+                                            style="max-height: calc(100% - 80px); min-height: 260px; width: 100%; overflow: hidden;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="wrapper-h cg-1618 j-center a-center nopadding">
+                                <%-include('./refuelRegisterForm.ejs')%>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wrapper-v j-center a-center feedtab" data-tab="tab_rightdrivers">
+                        <div class="wrapper-h j-start a-start nopadding h-fit-content">
+                            <div class="wrapper-h j-sb no_hpad h-fit-content">
+                                <div class="wrapper-h j-start w-fit-content bordered-bottom thick a-center nopadding cg-382" style="padding-bottom: 8px !important; min-height: 42px;">
+                                    <h1 class="medium" data-driver-info="name-sur-id">
+                                        -
+                                    </h1>
+                                    <p class="pill success">-</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Table init -->
+                        <div class="wrapper-v nopadding j-start a-start">
+                            <div class="wrapper-h j-center a-start nopadding cg-1618 wrap">
+                                <div class="wrapper-v j-start a-start h-fit-content bordered-grid shadowed-dark"
+                                    style="flex:.3">
+                                    <div class="wrapper-h h-fit-content j-sb bordered-bottom no_hpad">
+                                        <div class="wrapper-h j-start nopadding">ID</div>
+                                        <div class="wrapper-h j-end nopadding" data-driver-field="id-value">VALUE</div>
+                                    </div>
+                                    <div class="wrapper-h h-fit-content j-sb bordered-bottom no_hpad">
+                                        <div class="wrapper-h j-start nopadding">Numero Patente</div>
+                                        <div class="wrapper-h j-end nopadding" data-driver-field="license-value">VALUE</div>
+                                    </div>
+                                    <div class="wrapper-h h-fit-content j-sb bordered-bottom no_hpad">
+                                        <div class="wrapper-h j-start nopadding">Ultimo Stato</div>
+                                        <div class="wrapper-h j-end nopadding" data-driver-field="state-value">VALUE</div>
+                                    </div>
+                                    <div class="wrapper-h h-fit-content j-sb no_hpad">
+                                        <div class="wrapper-h j-start nopadding">ID</div>
+                                        <div class="wrapper-h j-end nopadding">VALUE</div>
+                                    </div>
+                                </div>
+                                <div class="wrapper-v j-start a-start nopadding" style="flex:1">
+                                    <div class="wrapper-v j-center nopadding bordered-grid driver-chart shadowed-dark">
+                                        <div class="wrapper-h h-fit-content j-sb nopadding">
+                                            <div class="wrapper-h h-fit-content j-start">
+                                                <h1 class="">
+                                                    Timeline Autista
+                                                </h1>
+                                            </div>
+                                        </div>
+                                        <div class="wrapper-h j-center a-center nopadding bordered-top">
+                                            <div class="wrapper-v j-start nopadding w-fit-content bordered-right">
+                                                <div class="wrapper-v j-start w-fit-content y-axis">
+                                                    <div
+                                                        class="y-axis-label wrapper-v j-center a-center bordered-bottom">
+                                                        <p>Guida</p>
+                                                    </div>
+                                                    <div
+                                                        class="y-axis-label wrapper-v j-center a-center bordered-bottom">
+                                                        <p>Lavoro</p>
+                                                    </div>
+                                                    <div
+                                                        class="y-axis-label wrapper-v j-center a-center">
+                                                        <p> Riposo</p>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                            <div class="wrapper-v j-sb a-center nopadding">
+                                                <div class="wrapper-v j-start a-start bar-container" style="overflow-x:auto; overflow-y:hidden; position:relative" id="timeline-container" >
+                                                    <div class="wrapper-v j-center a-start nopadding w-fit-content">
+                                                        <!-- <div class="activity-bar"></div> -->
+                                                    </div>
+                                                    <div class="wrapper-v j-center a-start nopadding">
+                                                        <!-- <div class="work-bar"></div> -->
+                                                    </div>
+                                                    <div class="wrapper-v j-center a-start nopadding">
+                                                        <!-- <div class="rest-bar"></div> -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="wrapper-h j-center a-center nopadding">
+
+                            </div>
+                        </div>
+                        <!-- Table end -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script type="module" src="/assets/js/overlays/right.js"></script>

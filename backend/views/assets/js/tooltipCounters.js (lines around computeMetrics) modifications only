@@ -1,0 +1,8 @@
+function trimSegmentsToRange(segments, from, to) {
+  if (!Array.isArray(segments)) return [];
+  return segments.map((seg) => {
+    const start = Math.max(seg.start, from);
+    const end = Math.min(seg.end, to);
+    return { ...seg, start, end };
+  }).filter(seg => seg.end > seg.start);
+}

@@ -1,0 +1,11 @@
+.te-header{
+    
+    max-height: 42px;
+    border-bottom: 4px solid var(--grid-color);
+    padding:0px;   
+
+}
+
+.te-th{
+    font-weight: bolder;
+}

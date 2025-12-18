@@ -1,0 +1,459 @@
+import { TrucklyMap } from "/assets/js/maps.js";
+import { WSClient } from "/assets/js/wsClient.js";
+import { initTooltipCounters } from "/assets/js/tooltipCounters.js";
+
+
+
+window._post = async (url, body = {}, timeout = 10000, raw = false) => {
+  console.table(body)
+  const controller = new AbortController();
+  const timer = timeout ? setTimeout(() => controller.abort(), timeout) : null;;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (timer) clearTimeout(timer);
+
+    // gestisci errori HTTP
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} - ${res.statusText}: ${text}`);
+    }
+
+    if (raw) return (res);
+
+    // prova a decodificare JSON, fallback a text
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return await res.json();
+    } else {
+      return await res.text();
+    }
+
+  } catch (err) {
+    clearTimeout(timer);
+
+    // differenzia tipi di errore
+    if (err.name === 'AbortError') {
+      console.error(`?????? _post timeout su ${url}`);
+      throw new Error(`Richiesta scaduta (${timeout / 1000}s)`);
+    }
+
+    console.error(`??? Errore in _post(${url}):`, err);
+    console.log(body)
+    throw new Error(`Errore nella richiesta: ${err.message}`);
+  }
+};
+
+
+
+
+var testshow = true;
+const toFuelNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const computeFuelSummary = (io = {}, vehicle = {}) => {
+  const litersCandidates = [
+    io.current_fuel,
+    io.currentFuel,
+    io.fuel_total,
+    io.fuel,
+    io.tank,
+    io.tankLiters
+  ];
+  let liters = null;
+  for (const candidate of litersCandidates) {
+    const val = toFuelNumber(candidate);
+    if (Number.isFinite(val)) {
+      liters = val;
+      break;
+    }
+  }
+
+  const tank1Capacity = toFuelNumber(io.tank1 ?? io.tank_1 ?? io.tankPrimary ?? io.primaryTankCapacity);
+  const tank2Capacity = toFuelNumber(io.tank2 ?? io.tank_2 ?? io.tankSecondary ?? io.secondaryTankCapacity);
+  const capacityFromIo = Number.isFinite(tank1Capacity) || Number.isFinite(tank2Capacity)
+    ? (Number(tank1Capacity || 0) + Number(tank2Capacity || 0))
+    : null;
+
+  const percentCandidates = [
+    io.current_fuel_percent,
+    io.currentFuelPercent,
+    io.fuel_percent,
+    io.tankPerc
+  ];
+  let percent = null;
+  for (const candidate of percentCandidates) {
+    const val = toFuelNumber(candidate);
+    if (Number.isFinite(val)) {
+      percent = val > 1 ? val / 100 : val;
+      break;
+    }
+  }
+
+  const capacity = Number.isFinite(capacityFromIo) ? capacityFromIo : null;
+  if (!Number.isFinite(percent) && Number.isFinite(liters) && Number.isFinite(capacity) && capacity > 0) {
+    percent = Math.max(0, Math.min(1, liters / capacity));
+  } else if (!Number.isFinite(liters) && Number.isFinite(percent) && Number.isFinite(capacity)) {
+    liters = percent * capacity;
+  }
+
+  return {
+    liters,
+    percent,
+    capacity,
+    tank1Capacity,
+    tank2Capacity,
+    unit: vehicle?.details?.tanks?.unit || 'litri'
+  };
+};
+const vehicles = window.vehicles || [];
+const imeis = vehicles.map(v => v.imei);
+const SIMULATED_DRIVER_ID = "I100000569493003";
+
+const map = new TrucklyMap({
+  target: "map",
+  theme: "dark",
+});
+
+window.__trucklyMap = map;
+window.__vrecBroadcasted = false;
+window.searchVehicles = (queryInfo) => map.searchVehicles(queryInfo);
+
+const HISTORY_MAX_EVENTS = 60;
+
+const formatHistoryTimestamp = (value) => {
+  if (!Number.isFinite(value)) return "--";
+  return new Date(value).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatHistoryDuration = (ms) => {
+  if (!Number.isFinite(ms) || ms <= 0) return "0m";
+  const totalMinutes = Math.round(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours}h`);
+  if (minutes || !parts.length) parts.push(`${minutes}m`);
+  return parts.join(" ");
+};
+
+const formatHistoryLocation = (location) => {
+  if (!location) return "Localit? non rilevata";
+  if (location.text) return location.text;
+  if (Number.isFinite(location.lat) && Number.isFinite(location.lng)) {
+    return `${Number(location.lat).toFixed(4)}, ${Number(location.lng).toFixed(4)}`;
+  }
+  return "Localit? non rilevata";
+};
+
+const populateDriverHistory = (root, driverId) => {
+  if (!root) return;
+  const list = root.querySelector("[data-role='driver-history-list']");
+  if (!list) return;
+  const emptyState = list.querySelector("[data-role='driver-history-empty']");
+  list.dataset.driverId = driverId ? String(driverId) : "";
+
+  const events = [];
+
+  list.innerHTML = "";
+
+  if (!events.length) {
+    if (emptyState) {
+      emptyState.textContent = driverId ? "Nessun riposo registrato di recente." : "Autista non disponibile.";
+      list.appendChild(emptyState);
+    }
+    return;
+  }
+
+  const doc = list.ownerDocument || document;
+  const createRow = (icon, text) => {
+    const row = doc.createElement("div");
+    row.className = "cg-382 wrapper-h j-start a-center nopadding";
+    const iconEl = doc.createElement("i");
+    iconEl.className = `fa ${icon} muted`;
+    iconEl.style.scale = "55%";
+    const textEl = doc.createElement("p");
+    textEl.className = "fwb text-start w-100";
+    textEl.textContent = text;
+    row.appendChild(iconEl);
+    row.appendChild(textEl);
+    return row;
+  };
+
+  const createSeparator = () => {
+    const sep = doc.createElement("p");
+    sep.className = "muted hotwire";
+    sep.textContent = "|";
+    return sep;
+  };
+
+  events.forEach((event, index) => {
+    const label = event.type === "rest" ? "riposo" : "pausa";
+    const startText = `${formatHistoryTimestamp(event.start)} ??? Inizio ${label} a ${formatHistoryLocation(event.startLocation || event.endLocation)}`;
+    const endText = `${formatHistoryTimestamp(event.end)} ??? Fine ${label} (${formatHistoryDuration(event.durationMs)}) a ${formatHistoryLocation(event.endLocation || event.startLocation)}`;
+
+    list.appendChild(createRow("fa-circle", startText));
+    list.appendChild(createSeparator());
+    list.appendChild(createRow("fa-circle", endText));
+    if (index < events.length - 1) {
+      list.appendChild(createSeparator());
+    }
+  });
+};
+
+const refreshDriverHistoryPanels = (driverId) => {
+  if (!driverId) return;
+  const roots = document.querySelectorAll(".driver-history");
+  roots.forEach((root) => {
+    const list = root.querySelector("[data-role='driver-history-list']");
+    if (!list) return;
+    if (list.dataset.driverId === String(driverId)) {
+      populateDriverHistory(root, driverId);
+    }
+  });
+};
+
+window.addEventListener("driverHistoryUpdated", (event) => {
+  const driverId = event?.detail?.driverId;
+  if (!driverId) return;
+  refreshDriverHistoryPanels(driverId);
+});
+
+
+
+const wsBaseUrl = (() => {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}`;
+})();
+
+window.wsClient = new WSClient(`${wsBaseUrl}/ws/stream`, imeis,
+  () => {
+    window.__vrecBroadcasted = true;
+    window.dispatchEvent(
+      new CustomEvent('vrec', { detail: { vehicles } })
+    )
+  }
+  ,
+  async (device) => {
+
+
+    const { imei, data } = device;
+    var vehicle = vehicles.find(element => element.imei == imei)
+    const { gps } = data;
+
+    if (!imei || !gps) { return }
+    window.dispatchEvent(new CustomEvent('deviceEvent', {
+      detail: {
+        device
+      }
+    }))
+
+    const { Latitude, Longitude } = gps;
+    if (Latitude == null || Longitude == null) return;
+
+    const tooltip = await buildToolTip(device, vehicle);
+    var vehicle_state = getVehicleState(device.data.gps.Speed, device.data.io.ignition).class
+    console.log(device);
+
+    var marker = map.addOrUpdateMarker({
+      id: imei,
+      lng: Longitude,
+      lat: Latitude,
+      tooltip,
+      vehicle,
+      device,
+      status: vehicle_state,
+      html: null,
+      hasPopup: true,
+    });
+
+    const popup = marker.getPopup && marker.getPopup();
+    if (popup && !popup.__tooltipCountersBound) {
+      popup.on("open", (event) => {
+        if (marker._tooltipCountersCleanup) {
+          marker._tooltipCountersCleanup();
+        }
+        const popupElement = event?.target?.getElement?.();
+        marker._tooltipCountersCleanup = initTooltipCounters(popupElement);
+        const driverId =
+          data?.io?.driver1Id ||
+          data?.io?.driver2Id ||
+          SIMULATED_DRIVER_ID;
+        if (popupElement) {
+          const historyRoot = popupElement.querySelector(".driver-history");
+          populateDriverHistory(historyRoot, driverId ? String(driverId) : null);
+        }
+      });
+      popup.on("close", () => {
+        if (marker._tooltipCountersCleanup) {
+          marker._tooltipCountersCleanup();
+          marker._tooltipCountersCleanup = null;
+        }
+      });
+      popup.__tooltipCountersBound = true;
+    }
+
+    if (popup && popup.isOpen && popup.isOpen()) {
+      if (marker._tooltipCountersCleanup) {
+        marker._tooltipCountersCleanup();
+      }
+      marker._tooltipCountersCleanup = initTooltipCounters(
+        popup.getElement && popup.getElement()
+      );
+      const element = popup.getElement && popup.getElement();
+      if (element) {
+        const driverId =
+          data?.io?.driver1Id ||
+          data?.io?.driver2Id ||
+          SIMULATED_DRIVER_ID;
+        const historyRoot = element.querySelector(".driver-history");
+        populateDriverHistory(historyRoot, driverId ? String(driverId) : null);
+      }
+    }
+
+    if (testshow) {
+      marker.togglePopup();
+      testshow = false;
+    }
+
+
+
+
+    var classes = ["success", "danger", "warning"]
+
+    classes.map((c) => {
+      marker._element.classList.remove(c)
+    })
+
+    marker._element.classList.add(vehicle_state)
+
+    // marker.togglePopup();
+  });
+
+async function buildToolTip(device, vehicle) {
+  const status = getVehicleState(device.data.gps.Speed, device.data.io.ignition);
+
+  const { io } = device.data;
+  const fuelSummary = computeFuelSummary(io, vehicle);
+  // const _html = `
+  // <div class="wrapper-v j-start a-start rg-8p" style="min-width:382px">
+  //   <div class="wrapper-h j-start a-center no_hpad cg-1618 bordered-bottom thick w-min-content nowrap">
+  //     <h1 class="medium">
+  //     ${vehicle.nickname}
+  //     </h1>
+  //     <p class="small muted pill ${status.class}">${status.status}</p>
+  //   </div>
+  //   <div class="wrapper-h nopadding j-start a-center">
+  //     <p class="muted">Ultimo aggiornamento: ${formatDate(new Date(device.data.timestamp))}
+  //     </p>
+  //   </div>
+  //   <div class="wrapper-v j-center a-center nopadding h-min-content rg-8p">
+  //     <div class="wrapper-h nopadding j-center a-center cg-1618">
+  //       <div class="wrapper-v j-start a-start bordered-grid">
+  //         <div class="wrapper-h j-start a-center nopadding"><p class="muted">Targa</p></div>
+  //         <div class="wrapper-h j-start a-center nopadding"><h1 class="medium fwb">${vehicle.plate.v}</h1></div>
+  //       </div>
+  //       <div class="wrapper-v j-start a-start bordered-grid">
+  //         <div class="wrapper-h j-start a-center nopadding"><p class="muted">Serbatoio</p></div>
+  //         <div class="wrapper-h j-start a-center nopadding"><h1 class="medium fwb">${fuelPerc ? fuelPerc + " litri" : '-'}</h1></div>
+  //       </div>
+  //     </div>
+  //     <div class="wrapper-h nopadding j-center a-center cg-1618">
+  //       <div class="wrapper-v j-start a-start bordered-grid">
+  //         <div class="wrapper-h j-start a-center nopadding"><p class="muted">Autista</p></div>
+  //         <div class="wrapper-h j-start a-center nopadding"><h1 class="medium fwb">${device.data.io.driver1Id ? device.data.io.driver1Id : '-'}</h1></div>
+  //       </div>
+  //       <div class="wrapper-v j-start a-start bordered-grid">
+  //         <div class="wrapper-h j-start a-center nopadding"><p class="muted">Tempo residuo</p></div>
+  //         <div class="wrapper-h j-start a-center nopadding"><h1 class="medium fwb">75%</h1></div>
+  //       </div>      
+  //     </div>
+  //   </div>
+  // </div>`
+
+
+  const payload = {
+    imei: vehicle.imei,
+    device,
+    vehicle,
+    status,
+    fuelSummary,
+  }
+
+  const url = "/dashboard/tooltip/mainmap";
+  var res = await window._post(url, payload, null, true);
+
+
+  var _html = res.text();
+
+
+
+
+  return (_html)
+}
+
+
+
+function getVehicleState(speed = 0, ignition = 0) {
+  // normalizza i valori
+
+
+  const v = Number(speed) || 0;
+  const ig = Number(ignition) || 0;
+
+
+  if (v > 5) {
+    return { class: "success", status: "In movimento" }; // veicolo in movimento
+  }
+
+  if (v <= 5 && ig === 0) {
+    return { class: "danger", status: "Fermo" }; // fermo con quadro spento
+  }
+
+  if (v <= 5 && ig === 1) {
+    return { class: "warning", status: "Fermo quadro acceso" }; // fermo con quadro acceso
+  }
+
+  return "sconosciuto"; // fallback di sicurezza
+}
+
+function formatDate(dateInput) {
+  const d = new Date(dateInput);
+
+  const pad = (n) => n.toString().padStart(2, "0");
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+
+  if (sameDay) {
+    return `oggi alle ${hh}:${mm}:${ss}`;
+  } else {
+    const yyyy = d.getFullYear();
+    const MM = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    return `${yyyy}-${MM}-${dd} alle ${hh}:${mm}:${ss}`;
+  }
+}
+
+

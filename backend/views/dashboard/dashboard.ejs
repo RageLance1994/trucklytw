@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <% 
+        const userPrivilege = (typeof rParams !== 'undefined' && rParams && rParams.user && typeof rParams.user.privilege !== 'undefined') ? rParams.user.privilege : null;
+        const userRole = (typeof rParams !== 'undefined' && rParams && rParams.user && typeof rParams.user.role !== 'undefined') ? rParams.user.role : null;
+        const effectivePrivilege = (typeof rParams !== 'undefined' && rParams && rParams.user && typeof rParams.user.effectivePrivilege !== 'undefined')
+            ? rParams.user.effectivePrivilege
+            : (Number.isInteger(userPrivilege) ? userPrivilege : (Number.isInteger(userRole) ? userRole : null));
+        const canManageVehicles = Number.isInteger(effectivePrivilege) ? effectivePrivilege <= 1 : false;
+    %>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="/assets/css/terminal.css" rel="stylesheet">
+    <link href="/assets/css/spinners.css" rel="stylesheet">
+
+    <link href="/assets/css/font-awesome.css" rel="stylesheet">
+    <link href="/scripts/leaflet/dist/leaflet.css" rel="stylesheet">
+    <link href="/assets/css/spinners.css" rel="stylesheet">
+
+    <script src="/scripts/nouislider/dist/nouislider.js"></script>
+    <link href="/scripts/nouislider/dist/nouislider.css" rel="stylesheet">
+    <script src="/scripts/maplibre-gl/dist/maplibre-gl.js"></script>
+    <script src="/scripts/apexcharts/dist/apexcharts.js"></script>
+    <link href="/scripts/apexcharts/dist/apexcharts.css" rel="stylesheet">
+    <link href="/scripts/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet">
+    <link href="/scripts/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+
+    <script src="/scripts/ejs/ejs.js"></script>
+    <script>
+        window.__TRUCKLY_USER = {
+            privilege: <%- JSON.stringify(userPrivilege) %>,
+            role: <%- JSON.stringify(userRole) %>,
+            effectivePrivilege: <%- JSON.stringify(effectivePrivilege) %>,
+            canManageVehicles: <%- JSON.stringify(!!canManageVehicles) %>
+        };
+    </script>
+
+    <title>Truckly | Dashboard</title>
+</head>
+
+
+<body style="padding:0px; overflow: hidden;"
+    data-privilege="<%= userPrivilege === null ? '' : userPrivilege %>"
+    data-role="<%= userRole === null ? '' : userRole %>"
+    data-can-manage-vehicles="<%= !!canManageVehicles %>">
+    
+    <div class="wrapper-v nopadding relative">
+        <div class="overlay dead" style="z-index: 99 !important;">
+            <div class="wrapper-v j-start a-end h-min-content notioverlay rg-16p ">                
+            </div>
+        </div>
+        <%-include('../wrappers/overlays/floater.ejs')%>
+
+        <%-include('../wrappers/overlays/formoverlay.ejs')%>
+        <%-include('../wrappers/overlays/right.ejs')%>
+        <%-include('../wrappers/overlays/left.ejs')%>
+        <%-include('../wrappers/overlays/bottom.ejs')%>
+                <%-include('../wrappers/dbnavbar.ejs', { canManageVehicles })%>
+                    <div class="wrapper-v j-center a-center" style="padding:8px">
+                        <div class="wrapper-v j-center a-center bordered-grid nopadding relative" style="overflow: hidden;">
+                            <div class="overlay blurred" id="main_map_overlay"> 
+                                <div class="wrapper-v j-center a-center rg-16p">
+                                    <div class="lds-ring">
+                                        <div></div>
+                                        <div></div>
+                                        <div></div>
+                                    </div>
+                                    <h1 class="big">Carico i tuoi veicoli</h1>
+                                </div>
+                            </div>
+                            <iframe class="wrapper-v j-center a-center noborder nopadding" src="/dashboard/map"
+                                id="mainmapframe"></iframe>
+                        </div>
+                    </div>
+    </div>
+    <script src="/assets/js/board.js" type="module"></script>
+    <script src="/assets/js/vehicleSummary.js" type="module"></script>
+</body>
+
+
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="/assets/css/terminal.css" rel="stylesheet">
+    <script src="/scripts/maplibre-gl/dist/maplibre-gl.js"></script>
+    <script src="/scripts/ejs/ejs.js"></script>
+    <link href="/scripts/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet">
+    <link href="/assets/css/font-awesome.css" rel="stylesheet">
+    <link href="/scripts/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+
+    <style>
+        .maplibregl-popup {
+            background-color: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+        .maplibregl-popup-tip {
+            display: none !important;
+        }
+
+        .maplibregl-popup-content {
+            background-color: var(--main-background);
+            border: 1px solid var(--grid-color);
+            width: min(382px, 75vw);
+            max-width: min(382px, 75vw) !important;
+            padding: 0px;
+            min-width: 280px;
+            left: 0;
+        }
+
+        .maplibregl-marker.maplibregl-marker-anchor-center {
+            cursor: pointer;
+        }
+
+        .maplibregl-marker.maplibregl-marker-anchor-center:active {
+            cursor: pointer;
+            transform: translateY(-3px);
+        }
+
+        .maplibregl-popup-close-button {
+            color: white;
+            padding: 4px;
+            min-width: 16px;
+            max-width: 16px;
+            min-height: 16px;
+            max-height: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 16px;
+            margin-right: 16px;
+            aspect-ratio: 1;
+            border: 1px solid var(--grid-color);
+            font-size: 16px;
+        }
+
+        .maplibregl-popup-close-button:focus-visible{
+            border: 1px solid var(--grid-color) !important;
+            outline: none !important;
+        }
+
+    </style>
+</head>
+
+<% var vehicles=typeof rParams !="undefined" && typeof rParams.vehicles !="undefined" ? rParams.vehicles : []; %>
+    <script>
+        var vehicles = <%-JSON.stringify(vehicles) %>
+        window.vehicles = vehicles;
+
+    </script>
+
+    <body style="padding:0px; overflow: hidden;">
+        <div class="wrapper-v j-center a-center nopadding smooth noscroll" id="map">
+        </div>
+
+        <script src="/assets/js/main.js" type="module"></script>
+    </body>
+
+</html>

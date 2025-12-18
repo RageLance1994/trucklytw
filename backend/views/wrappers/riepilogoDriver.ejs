@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link href="/assets/css/terminal.css" rel="stylesheet">
+    <link href="/assets/css/font-awesome.css" rel="stylesheet">
+    <style>
+        .wrap-container .pwc {
+            --pwc-progress: 50%;
+            --pwc-cursor-gap: 5%;
+        }
+
+        .wrap-container .pwc-bar {
+            width: clamp(0%, var(--pwc-progress), 100%);
+        }
+
+        .wrap-container .pwc-cursor {
+            left: clamp(var(--pwc-cursor-gap), var(--pwc-progress), calc(100% - var(--pwc-cursor-gap)));
+            transform: translateX(-50%);
+            align-items: center !important;
+        }
+
+        .wrap-container .pwc-tooltip {
+            transform: none;
+        }
+    </style>
+
+</head>
+
+
+<body style="margin:0px; padding:0px;">
+    <div class="wrapper-v bordered-grid bg-dark shadowed-dark wrap-container">
+        <div class="wrapper-v j-start a-start nopadding rg-4p">
+            <div class="wrapper-h j-sb a-center nopadding h-min-content bordered-bottom thick">
+                <div class="wrapper-h h-min-content j-start a-center cg-382">
+                    <h1 class="medium">Riepilogo Guida</h1>
+                    <div class="separator-h bg-brand"></div>
+                    <h1 id="driver_sumup_name" class="medium">Trimone a vento</h1>
+                </div>
+                <div class="wrapper-h h-min-content j-end a-center">
+                    <a class="wrapper-h w-min-content j-center a-center"> <i class="fa fa-close"></i></a>
+                </div>
+            </div>
+            <div class="wrapper-h j-center a-center no_hpad cg-1618 wrap">
+                <div class="wrapper-v rg-8p nopadding j-start a-start" style="flex:.618">
+                    <div class="wrapper-v nopadding j-start a-start bordered-grid shadowed-dark bg-dark h-auto"
+                        style="flex:.328">
+                        <div class="wrapper-h j-start h-min-content a-center bordered-bottom thick bg-grid"
+                            style="min-height: 64px">
+                            <h1 class="big pill success">Alla guida</h1>
+                        </div>
+                        <div class="wrapper-v j-center a-center relative">
+                            <div class="overlay scrollable-y">
+                                <div class="wrapper-v j-start a-center h-auto">
+                                    <div class="wrapper-h j-sb nopadding">
+                                        <div class="wrapper-h j-start">
+                                            <p class="medium">Veicolo</p>
+                                        </div>
+                                        <div class="wrapper-h j-end">
+                                            <p class="w-100 medium" style="text-align: end;">-</p>
+                                        </div>
+                                    </div>
+                                    <div class="wrapper-h j-sb nopadding ">
+                                        <div class="wrapper-h j-start">
+                                            <p class="medium">Targa</p>
+                                        </div>
+                                        <div class="wrapper-h j-end">
+                                            <p class="w-100 medium" style="text-align: end;">-</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="wrapper-h j-sb nopadding ">
+                                        <div class="wrapper-h j-start">
+                                            <p class="medium">Ultimo ping</p>
+                                        </div>
+                                        <div class="wrapper-h j-end">
+                                            <p class="w-100 medium" style="text-align: end;">15 secondi fa</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="wrapper-h j-sb nopadding ">
+                                        <div class="wrapper-h j-start">
+                                            <p class="medium w-100 text-start">Prossimo riposo consigliato</p>
+                                        </div>
+                                        <div class="wrapper-h j-end">
+                                            <p class="w-100 medium" style="text-align: end;">pausa di 45 minuti</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wrapper-v nopadding j-start a-start bordered-grid shadowed-dark bg-dark" style="flex:1">
+                        <div class="wrapper-h j-start h-min-content bg-grid">
+                            <h1 class="medium">Giornata lavorativa</h1>
+                        </div>
+                        <div class="wrapper-v j-center a-center relative" style="min-height: auto;">
+                            <div class="overlay scrollable-y">
+                                <div class="wrapper-v h-min-content j-start a-start nopadding rg-8p">
+                                    <div class="wrapper-v j-start a-center">
+                                        <div class="wrapper-h j-sb nopadding">
+                                            <div class="wrapper-h j-start">
+                                                <p class="medium">Inizio</p>
+                                            </div>
+                                            <div class="wrapper-h j-end">
+                                                <p class="w-100 medium" style="text-align: end;">Oggi alle 17:26</p>
+                                            </div>
+                                        </div>
+                                        <div class="wrapper-h j-sb nopadding ">
+                                            <div class="wrapper-h j-start">
+                                                <p class="medium w-100 text-start">Tempo trascorso</p>
+                                            </div>
+                                            <div class="wrapper-h j-end">
+                                                <p class="w-100 medium" style="text-align: end;">30 minuti</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="wrapper-h j-sb nopadding ">
+                                            <div class="wrapper-h j-start">
+                                                <p class="medium">Ultimo ping</p>
+                                            </div>
+                                            <div class="wrapper-h j-end">
+                                                <p class="w-100 medium" style="text-align: end;">15 secondi fa</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="wrapper-h j-sb nopadding ">
+                                            <div class="wrapper-h j-start">
+                                                <p class="medium w-100 text-start">Equipaggio</p>
+                                            </div>
+                                            <div class="wrapper-h j-end">
+                                                <p class="w-100 medium" style="text-align: end;">No</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="wrapper-v h-min-content j-start a-start nopadding">
+                                    <div class="wrapper-h j-sb">
+                                        <div
+                                            class="wrapper-h j-start a-center bordered-top bordered-bottom h-min-content">
+                                            <h1 class="medium">Opzioni turno</h1>
+                                        </div>
+                                    </div>
+                                    <div class="wrapper-v j-start a-start bordered-bottom"
+                                        style="min-height:max-content">
+                                        <div class="wrapper-h j-start a-center h-min-content">
+                                            <h1 class="medium pill danger">Riposo Regolare</h1>
+                                        </div>
+                                        <div class="wrapper-h nopadding j-sb h-min-content"
+                                            style="padding-left: 4px !important">
+                                            <div class="wrapper-h j-start a-center">
+                                                <p class="medium w-100 text-start">Durata consentita</p>
+                                            </div>
+                                            <div class="wrapper-h j-end a-center">
+                                                <p class="medium">13 ore</p>
+                                            </div>
+                                        </div>
+                                        <div class="wrapper-h nopadding j-sb h-min-content"
+                                            style="padding-left: 4px !important">
+                                            <div class="wrapper-h j-start a-center">
+                                                <p class="medium">Fine</p>
+                                            </div>
+                                            <div class="wrapper-h j-end a-center">
+                                                <p class="medium">13 ore</p>
+                                            </div>
+                                        </div>
+                                        <div class="wrapper-h nopadding j-sb h-min-content"
+                                            style="padding-left: 4px !important">
+                                            <div class="wrapper-h j-start a-center">
+                                                <p class="medium">Residuo</p>
+                                            </div>
+                                            <div class="wrapper-h j-end a-center">
+                                                <p class="medium">12 ore e 50 minuti</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="wrapper-v j-start a-start" style="min-height:max-content">
+                                        <div class="wrapper-h j-start a-center h-min-content">
+                                            <h1 class="medium pill danger">Riposo Regolare</h1>
+                                        </div>
+                                        <div class="wrapper-h nopadding j-sb h-min-content"
+                                            style="padding-left: 4px !important">
+                                            <div class="wrapper-h j-start a-center">
+                                                <p class="medium w-100 text-start">Durata consentita</p>
+                                            </div>
+                                            <div class="wrapper-h j-end a-center">
+                                                <p class="medium">13 ore</p>
+                                            </div>
+                                        </div>
+                                        <div class="wrapper-h nopadding j-sb h-min-content"
+                                            style="padding-left: 4px !important">
+                                            <div class="wrapper-h j-start a-center">
+                                                <p class="medium">Fine</p>
+                                            </div>
+                                            <div class="wrapper-h j-end a-center">
+                                                <p class="medium">13 ore</p>
+                                            </div>
+                                        </div>
+                                        <div class="wrapper-h nopadding j-sb h-min-content"
+                                            style="padding-left: 4px !important">
+                                            <div class="wrapper-h j-start a-center">
+                                                <p class="medium">Residuo</p>
+                                            </div>
+                                            <div class="wrapper-h j-end a-center">
+                                                <p class="medium w-100 text-end">12 ore e 50 minuti</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="wrapper-v rg-8p nopadding j-start a-start" style="flex:1">
+
+                    <div class="wrapper-v nopadding j-start a-start bordered-grid shadowed-dark bg-dark h-auto" style="flex: 1">
+                        <div class="wrapper-h j-start h-min-content a-center bordered-bottom thick bg-grid"
+                            style="min-height: 64px">
+                            <h1 class="big fwb bordered-bottom thick ">Riepilogo guida</h1>
+                        </div>
+                        <div class="wrapper-v j-center a-center relative">
+                            <div class="overlay scrollable-y">
+                        <div class="wrapper-v j-start a-center rg-8p h-auto">
+                            <div class="wrapper-h h-auto j-sb">
+                                <p class="medium">Guida di sessione</p>
+                            </div>
+                            <div class="wrapper-h  j-center a-center pwc-container" style="margin-top: 24px;">
+                                <div class="pwc">
+                                    <div class="pwc-bar"></div>
+                                    <div class="pwc-cursor wrapper-v j-center a-start nopadding w-min-content">
+                                        <p class="pwc-tooltip">50%</p>
+                                        <div class="pwc-square-container">
+                                            <div class="square"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="wrapper-v j-start a-center rg-8p h-auto">
+                            <div class="wrapper-h h-auto j-sb">
+                                <div class="wrapper-h j-start nopadding no_vpad no_wrap" style="max-width: 25%;">
+                                    <p class="medium">Guida Giornaliera</p>                                    
+                                </div>
+                                <div class="wrapper-h j-end nopadding no_wrap cg-1618">
+                                    <p class="fwb">Totale: 00:14</p>
+                                    <div class="separator-h bg-brand"></div>
+                                    <p>Estensioni utilizzate: 0/2</p>
+                                    <div class="separator-h bg-brand"></div>
+                                    <p class="pill success cg-382"><i class="fa fa-refresh"></i>Senza estensione</p>
+                                </div>
+                            </div>
+                            <div class="wrapper-h h-auto j-center a-center pwc-container" style="margin-top: 24px;">
+                                <div class="pwc">
+                                    <div class="pwc-bar"></div>
+                                    <div class="pwc-cursor wrapper-v j-center a-start nopadding w-min-content">
+                                        <p class="pwc-tooltip">50%</p>
+                                        <div class="pwc-square-container">
+                                            <div class="square"></div>
+                                        </div>
+                                    </div>
+
+                                    <script>
+                                        document.querySelectorAll('.pwc').forEach((pwc) => {
+                                            const cursor = pwc.querySelector('.pwc-cursor');
+                                            const tooltip = cursor.querySelector('.pwc-tooltip');
+                                            let progress = 0;
+
+                                            const updateProgress = () => {
+                                                progress = progress + 5 < 100 ? progress + 5 : 0;
+                                                const containerWidth = pwc.clientWidth || 1;
+                                                const halfCursor = cursor.offsetWidth / 2;
+                                                const gap = ((halfCursor / containerWidth) * 100).toFixed(2);
+                                                const formatted = `${progress.toFixed(2)}%`;
+                                                tooltip.textContent = formatted;
+                                                pwc.style.setProperty('--pwc-progress', formatted);
+                                                pwc.style.setProperty('--pwc-cursor-gap', `${gap}%`);
+                                            };
+
+                                            updateProgress();
+                                            setInterval(updateProgress, 1000);
+                                        });
+                                    </script>
+                                </div>
+                            </div>
+                        </div>                                
+                            </div>
+                        </div>
+                    </div>
+                    <div class="wrapper-v nopadding j-start a-start bordered-grid shadowed-dark bg-dark h-min-content">
+                        <div class="wrapper-h j-start h-min-content bg-grid">
+                            <h1 class="medium">Giornata lavorativa</h1>
+                        </div>
+                        <div class="wrapper-v h-min-content j-start a-start nopadding rg-8p">
+                            <div class="wrapper-v j-start a-center">
+                                <div class="wrapper-h j-sb nopadding">
+                                    <div class="wrapper-h j-start">
+                                        <p class="medium">Inizio</p>
+                                    </div>
+                                    <div class="wrapper-h j-end">
+                                        <p class="w-100 medium" style="text-align: end;">Oggi alle 17:26</p>
+                                    </div>
+                                </div>
+                                <div class="wrapper-h j-sb nopadding ">
+                                    <div class="wrapper-h j-start">
+                                        <p class="medium w-100 text-start">Tempo trascorso</p>
+                                    </div>
+                                    <div class="wrapper-h j-end">
+                                        <p class="w-100 medium" style="text-align: end;">30 minuti</p>
+                                    </div>
+                                </div>
+
+                                <div class="wrapper-h j-sb nopadding ">
+                                    <div class="wrapper-h j-start">
+                                        <p class="medium">Ultimo ping</p>
+                                    </div>
+                                    <div class="wrapper-h j-end">
+                                        <p class="w-100 medium" style="text-align: end;">15 secondi fa</p>
+                                    </div>
+                                </div>
+
+                                <div class="wrapper-h j-sb nopadding ">
+                                    <div class="wrapper-h j-start">
+                                        <p class="medium w-100 text-start">Equipaggio</p>
+                                    </div>
+                                    <div class="wrapper-h j-end">
+                                        <p class="w-100 medium" style="text-align: end;">No</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+                <div class="wrapper-v rg-8p nopadding j-start a-start" style="flex:1"></div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        function resizeFont() {
+            const vw = window.innerWidth;
+            // 1em = 16px di base su browser default
+            // qui scaliamo tra 0.75em (12px) e 1em (16px) in base al viewport
+            const emSize = Math.max(0.75, (vw / screen.width));
+            document.documentElement.style.fontSize = emSize + "em";
+        }
+        window.addEventListener("resize", resizeFont);
+
+    </script>
+
+</body>
+
+</html>

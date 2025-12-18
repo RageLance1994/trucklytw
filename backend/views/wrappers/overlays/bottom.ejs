@@ -1,0 +1,50 @@
+<style>
+    #bottom_section {
+        transition: .15s;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    #bottom_section.scrolled {
+        transform: translateY(100%);
+    }
+</style>
+<link href="/assets/css/smart-table.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js"></script>
+
+<div class="overlay dead" style="z-index:3">
+    <div class="wrapper-h nopadding j-center a-end">
+        <div class="wrapper-v bg-dark vert-section scrolled bordered-grid alive nopadding overlay-scrollable"
+            id="bottom_section">
+            <div class="wrapper-v j-start a-start">
+                <div class="wrapper-h j-sb a-center h-fit-content" style="padding-bottom: 0px;">
+                    <div class="wrapper-h j-start a-center no_hpad">
+                        <h1 class="medium bordered-bottom thick">Database</h1>
+                    </div>
+                    <div class="wrapper-h j-end a-center no_vpad">
+                        <a class="fit-content wrapper-h j-center a-center bordered-grid smooth"
+                            style="margin-right:12px;" data-close="bottom"><i class="fa fa-close"></i></a>
+                    </div>
+                </div>
+                <div class="wrapper-h h-fit-content no_vpad j-start" id="vehicle_slider_menu"></div>
+                <div class="wrapper-v j-center a-center" style="overflow: hidden;">
+                    <div class="wrapper-h j-center nopadding a-center" style="min-width: 400%; transition:.3s; "
+                        id="database_section_slider">
+                        <div class="feedtab wrapper-v nopadding j-start a-start" data-tab="tab_drivers">
+                            <div class="wrapper-v j-start a-start nopadding" id="driver_table">
+
+                            </div>
+                        </div>
+                        <div class="feedtab wrapper-v nopadding j-start a-start" data-tab="tab_vehicles">
+                            <div class="wrapper-v j-start a-start nopadding" id="vehicle_table">
+
+                            </div>
+                        </div>
+                        <div class="feedtab wrapper-v nopadding j-start a-start" data-tab="tab_tachosync"></div>
+                        <div class="feedtab wrapper-v nopadding j-start a-start" data-tab="tab_reports"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="/assets/js/overlays/bottom.js" type="module"></script>

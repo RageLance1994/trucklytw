@@ -1,0 +1,148 @@
+<link href="/assets/css/terminal.css" rel="stylesheet">
+<link href="/assets/css/spinners.css" rel="stylesheet">
+<link href="/scripts/@fortawesome/fontawesome-free/css/all.min.css" rel="stylesheet">
+
+<div class="floater h-fit-content hidden">
+    <div class="wrapper-v rg-8p j-start a-start">
+        <div class="wrapper-h j-sb a-center nopadding  bordered-bottom thick">
+            <div class="wrapper-h cg-1618 j-start a-center header no_hpad">
+                <div class="muted  wrapper-h nopadding j-center a-center w-fit-content"><i
+                        class="medium fa-solid fa-grip-horizontal"></i></div>
+                <h1>Riavvolgi</h1>
+            </div>
+            <div class="wrapper-h j-end nopadding w-fit-content">
+                <a class="wrapper-h j-center a-center fit-content" style="padding:4px !important" data-close="floater">
+                    <i class="fa fa-close"></i>
+                </a>
+            </div>
+        </div>
+
+        <div class="wrapper-h j-start a-center nopadding" id="rewind_type_menu"></div>
+        <div class="wrapper-v j-center a-center nopadding noscroll">
+            <div class="wrapper-h j-center a-start nopadding" style="min-width: 200%; transition:  .15s; "
+                id="rewind_interval_switch_scroller">
+                <div class="wrapper-v j-start a-start feedtab nopadding" data-tab="tab_fromto">
+                    <div class="wrapper-v j-start a-start nopadding">
+                        <div class="wrapper-h j-center a-center nopadding cg-1618">
+                            <div class="wrapper-v j-start a-start nopadding">
+                                <label class="muted" class="muted">Da</label>
+                                <input type="datetime-local" class="form-control" data-role="rewind-from">
+                            </div>
+                            <div class="wrapper-v j-start a-start nopadding">
+                                <label class="muted">A</label>
+                                <input type="datetime-local" class="form-control" data-role="rewind-to">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="wrapper-v j-start a-start feedtab no_hpad" data-tab="tab_routes">
+
+                    <div class="wrapper-v j-start a-start nopadding bordered-grid routelist">
+                        <div class="wrapper-h j-center a-center nopadding bordered-bottom thick _header">
+                            <div class="wrapper-h j-start th">
+                                <p class="fwb">Intervallo</p>
+                            </div>
+                            <div class="wrapper-h j-start th">
+                                <p class="fwb">Partenza</p>
+                            </div>
+                            <div class="wrapper-h j-start th">
+                                <p class="fwb">Destinazione</p>
+                            </div>
+                        </div>
+                        <div class="wrapper-v j-start relative a-start nopadding _body">
+                            <% for(var i=0; i < 100; i++) {%>
+
+                                <div class="wrapper-h j-start nopadding _row">
+                                    <div class="wrapper-h j-sb tr cg-382">
+                                        <p>13/07/1994 13:30</p>
+                                        <i class="fa fa-arrow-right"></i>
+                                        <p>13/07/1994 13:45</p>
+                                    </div>
+                                    <div class="wrapper-h j-start tr">
+                                        <p class="fwb">Partenza</p>
+                                    </div>
+                                    <div class="wrapper-h j-start tr">
+                                        <p class="fwb">Destinazione</p>
+                                    </div>
+                                </div>
+                                <%}%>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        <div class="wrapper-h j-start a-center no_hpad fit-content relative ">
+            <div class="wrapper-h fit-content nopadding j-start relative">
+                <div class="overlay bg-faded-dark hidden" style="border-radius: 4px; border:1px solid var(--tv-green)" data-info="data_loading">
+                    <div class="lds-ellipsis" style="scale:.75">
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                </div>
+
+                <a class="btn success " data-action="rewind-apply">
+                    <i class="fa-solid fa-check"></i>
+                    Carica
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { createMenu } from "/assets/js/menus.js";
+    import { Table } from "/assets/js/tables.js"
+
+    var menuFeatures = [
+        { name: 'Intervallo', tab: 'tab_fromto', visible: true },
+        { name: 'Viaggi', tab: 'tab_routes', visible: true },
+
+    ]
+
+
+    createMenu(
+        document.querySelector('#rewind_type_menu'),
+        menuFeatures,
+        1,
+        'rewind_interval_switch_scroller',
+        '%',
+        (idx) => {
+            console.log(idx);
+            [...document.querySelector('#rewind_interval_switch_scroller').querySelectorAll('.feedtab')].map((x, i) => {
+
+                if (i != idx) {
+
+                    x.classList.add('feedtabshrunk')
+                }
+                else {
+                    x.classList.remove('feedtabshrunk')
+                }
+                console.log(x, idx)
+            })
+
+            try {
+                const type = idx === 0 ? 'route@custom' : 'route@trip';
+                if (window.rewindManager) {
+                    window.rewindManager.intervalType = type;
+                }
+            } catch (err) {
+                console.warn('[floater] unable to update rewind interval type', err);
+            }
+        }
+
+    );
+
+    var rows = [...document.querySelectorAll('._row')]
+    rows.forEach((x) => {
+        x.addEventListener('click', (ev) => {
+            rows.filter(element => element != ev.currentTarget).forEach(x => x.classList.remove('active'));
+            ev.currentTarget.classList.add('active')
+        })
+    })
+
+
+</script>
+
+<script src="/assets/js/floaters.js"></script>

@@ -1,0 +1,17 @@
+<% 
+
+    var r = typeof rParams != "undefined" ? rParams : {}; 
+    console.log(r)
+
+
+%>
+<% if(typeof r.error != "undefined") {%>
+<div class="wrapper-h">
+    <p class="text-danger medium fwb"><%= r.error %></p>
+</div>                            
+<%} %>
+<% if(typeof r.success != "undefined") {%>
+<div class="wrapper-h">
+    <p class="text-success medium fwb"><%= r.success %></p>
+</div>                            
+<%} %>
