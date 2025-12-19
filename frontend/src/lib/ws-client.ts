@@ -55,8 +55,7 @@ export class WSClient {
     this.ws.onmessage = (msg) => {
       try {
         const payload = JSON.parse(msg.data);
-        console.log(payload); 
-        
+
         if (payload?.type === "pong") return;
 
         if (payload?.devices) {
@@ -96,10 +95,11 @@ export class WSClient {
   // SUBSCRIPTIONS
   // ========================
 
-  private subscribe() {    
+  private subscribe() {
     if (!this.isConnected) return;
 
-    
+    console.log("[WS] subscribe", this.imeis);
+
     this.send({
       action: "subscribe",
       deviceIds: this.imeis,
