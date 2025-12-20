@@ -1,8 +1,11 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const path = require('path');
+const fs = require('fs');
 const { auth } = require('../utils/users');
 const { Vehicles, getModel, avlSchema } = require('../Models/Schemes');
 const { decryptString, decryptJSON } = require('../utils/encryption');
+const { SeepTrucker } = require('../utils/seep');
 
 const router = express.Router();
 
@@ -116,3 +119,62 @@ router.get('/vehicles', auth, async (req, res) => {
 });
 
 module.exports = router;
+
+// === SeepTrucker test endpoint ===
+// POST /api/seep/test
+// Body: { driverId, startDate, endDate, timezone, regulation, penalty, onlyInfringementsGraphs, ignoreCountrySelectedInfringements }
+// Optionally attach a multipart file under field "file" to upload a DDD before analysis.
+router.post('/seep/test', async (req, res) => {
+  try {
+    const {
+      driverId,
+      startDate,
+      endDate,
+      timezone = 'UTC',
+      regulation = 0,
+      penalty = 0,
+      onlyInfringementsGraphs = false,
+      ignoreCountrySelectedInfringements = false,
+    } = req.body || {};
+
+    if (!driverId || !startDate || !endDate) {
+      return res.status(400).json({ error: 'driverId, startDate, endDate are required' });
+    }
+
+    // Authenticate each call; wrapper caches token info internally
+    await SeepTrucker.auth();
+
+    // If a DDD file is provided, upload it first
+    if (req.files && req.files.file) {
+      const uploaded = req.files.file;
+      const tmpPath = path.join(__dirname, '..', 'uploads', uploaded.name);
+      await uploaded.mv(tmpPath);
+      try {
+        await SeepTrucker.uploadFile(tmpPath);
+      } finally {
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+      }
+    }
+
+    // Driver activity analysis to retrieve SVG graphs
+    const analysis = await SeepTrucker.driverActivity({
+      driverId,
+      startDate,
+      endDate,
+      regulation,
+      penalty,
+      onlyInfringementsGraphs,
+      ignoreCountrySelectedInfringements,
+      timezone,
+    });
+
+    const graphs = SeepTrucker.extractDriverGraphs(analysis);
+
+    return res.status(200).json({ analysis, graphs });
+  } catch (err) {
+    console.error('[api] /seep/test error:', err.message);
+    return res.status(500).json({ error: err.message || 'INTERNAL_ERROR' });
+  }
+});
