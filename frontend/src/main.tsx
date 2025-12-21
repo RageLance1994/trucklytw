@@ -13,6 +13,7 @@ import { MapContainer } from "./MapContainer";
 import { Button } from "./components/ui/button";
 import { Navbar } from "./components/navbar";
 import { DriverSidebar } from "./components/driver-sidebar";
+import { DriverBottomBar } from "./components/driver-bottom-bar";
 import {
   API_BASE_URL,
   LOGIN_PATH,
@@ -153,6 +154,7 @@ function DashboardPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [isDriverSidebarOpen, setIsDriverSidebarOpen] = React.useState(false);
+  const [isBottomBarOpen, setIsBottomBarOpen] = React.useState(false);
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -193,6 +195,7 @@ function DashboardPage() {
       const detail = (e as CustomEvent)?.detail || {};
       setSelectedDriverImei(detail?.imei || null);
       setIsDriverSidebarOpen(true);
+      setIsBottomBarOpen(true);
     };
     window.addEventListener("truckly:driver-open", handler);
     return () => window.removeEventListener("truckly:driver-open", handler);
@@ -213,6 +216,11 @@ function DashboardPage() {
           <DriverSidebar
             isOpen={isDriverSidebarOpen}
             onClose={() => setIsDriverSidebarOpen(false)}
+            selectedDriverImei={selectedDriverImei}
+          />
+          <DriverBottomBar
+            isOpen={isBottomBarOpen}
+            onClose={() => setIsBottomBarOpen(false)}
             selectedDriverImei={selectedDriverImei}
           />
         </div>

@@ -242,3 +242,24 @@
   pointer-events: none;
   opacity: 0;
 }
+
+@keyframes truckly-bottom-bar-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.truckly-bottom-bar {
+  transform: translateY(0);
+}
+
+.hidden-bottom {
+  transform: translateY(100%);
+  pointer-events: none;
+  opacity: 0;
+}
