@@ -52,6 +52,7 @@ export function DriverBottomBar({
   const [hoveredDay, setHoveredDay] = React.useState<DayGraph | null>(null);
   const [hoverPos, setHoverPos] = React.useState({ x: 0, y: 0 });
   const [hoverBounds, setHoverBounds] = React.useState({ width: 0, height: 0 });
+  const [expandedActivityDays, setExpandedActivityDays] = React.useState<Record<string, boolean>>({});
 
   const runTest = async () => {
     setError(null);
@@ -101,6 +102,7 @@ export function DriverBottomBar({
       });
 
       setDays(flatDays);
+      setExpandedActivityDays({});
       if (!flatDays.length) {
         setError("Nessun grafico SVG restituito (verifica driverId e date).");
       }
@@ -215,9 +217,12 @@ export function DriverBottomBar({
                     Math.max(16, hoverBounds.height - tooltipHeight - 16),
                   );
 
+                  const dayKey = day.date || "day-0";
+                  const isExpanded = !!expandedActivityDays[dayKey];
+
                   return (
                     <div
-                      key={day.date || "day-0"}
+                      key={dayKey}
                       className="rounded-xl border border-white/10 bg-[#0c0f16] p-3 space-y-3"
                     >
                       <div
@@ -268,22 +273,36 @@ export function DriverBottomBar({
 
                       {day.activities && day.activities.length > 0 && (
                         <div className="border-t border-white/10 pt-3 space-y-2 text-sm">
-                          <div className="text-xs uppercase tracking-[0.08em] text-white/60">
-                            Elenco attivita
-                          </div>
-                          <div className="space-y-1">
-                            {day.activities.map((activity, idx) => (
-                              <div
-                                key={`${activity.startDateTime || idx}`}
-                                className="flex items-center justify-between text-white/80"
-                              >
-                                <span>{activity.activityType || "Attivita"}</span>
-                                <span className="text-white/60">
-                                  {toDurationLabel(activity.duration)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedActivityDays((prev) => ({
+                                ...prev,
+                                [dayKey]: !prev[dayKey],
+                              }))
+                            }
+                            className="flex w-full items-center justify-between text-xs uppercase tracking-[0.08em] text-white/70 hover:text-white transition"
+                          >
+                            <span>Elenco attivita</span>
+                            <span className="text-[10px] tracking-[0.2em]">
+                              {isExpanded ? "CHIUDI" : "APRI"}
+                            </span>
+                          </button>
+                          {isExpanded && (
+                            <div className="space-y-1">
+                              {day.activities.map((activity, idx) => (
+                                <div
+                                  key={`${activity.startDateTime || idx}`}
+                                  className="flex items-center justify-between text-white/80"
+                                >
+                                  <span>{activity.activityType || "Attivita"}</span>
+                                  <span className="text-white/60">
+                                    {toDurationLabel(activity.duration)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
