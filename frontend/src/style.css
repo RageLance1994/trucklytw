@@ -263,3 +263,12 @@
   pointer-events: none;
   opacity: 0;
 }
+
+.chart-surface svg,
+.chart-surface svg * {
+  pointer-events: none;
+}
+
+.chart-surface text {
+  fill: #f8fafc;
+}

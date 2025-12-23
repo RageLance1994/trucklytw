@@ -494,25 +494,38 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   }, []);
 
   useEffect(() => {
-    const handleDriverAction = (event: MouseEvent) => {
+    const handleTooltipAction = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      const button = target.closest("[data-action='driver']") as HTMLElement | null;
-      if (!button) return;
+      const driverButton = target.closest("[data-action='driver']") as HTMLElement | null;
+      const fuelButton = target.closest("[data-action='fuel']") as HTMLElement | null;
 
-      const tooltip = button.closest(".truckly-tooltip") as HTMLElement | null;
+      if (!driverButton && !fuelButton) return;
+
+      const tooltip = (driverButton || fuelButton)?.closest(".truckly-tooltip") as HTMLElement | null;
       const imei = tooltip?.getAttribute("data-imei") || null;
 
-      window.dispatchEvent(
-        new CustomEvent("truckly:driver-open", {
-          detail: { imei },
-        }),
-      );
+      if (driverButton) {
+        window.dispatchEvent(
+          new CustomEvent("truckly:driver-open", {
+            detail: { imei },
+          }),
+        );
+        return;
+      }
+
+      if (fuelButton) {
+        window.dispatchEvent(
+          new CustomEvent("truckly:bottom-bar-toggle", {
+            detail: { mode: "fuel", imei },
+          }),
+        );
+      }
     };
 
-    document.addEventListener("click", handleDriverAction, true);
+    document.addEventListener("click", handleTooltipAction, true);
     return () => {
-      document.removeEventListener("click", handleDriverAction, true);
+      document.removeEventListener("click", handleTooltipAction, true);
     };
   }, []);
 

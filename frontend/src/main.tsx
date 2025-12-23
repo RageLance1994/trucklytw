@@ -154,8 +154,17 @@ function DashboardPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [isDriverSidebarOpen, setIsDriverSidebarOpen] = React.useState(false);
-  const [isBottomBarOpen, setIsBottomBarOpen] = React.useState(false);
+  const [bottomBarState, setBottomBarState] = React.useState<{
+    open: boolean;
+    mode: "driver" | "fuel";
+  }>({ open: false, mode: "driver" });
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
+  const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
+  const selectedFuelImeiRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    selectedFuelImeiRef.current = selectedFuelImei;
+  }, [selectedFuelImei]);
 
   React.useEffect(() => {
     const fetchVehicles = async () => {
@@ -194,12 +203,41 @@ function DashboardPage() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail || {};
       setSelectedDriverImei(detail?.imei || null);
-      setIsDriverSidebarOpen(true);
-      setIsBottomBarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+      setIsDriverSidebarOpen((prev) => !prev);
     };
     window.addEventListener("truckly:driver-open", handler);
     return () => window.removeEventListener("truckly:driver-open", handler);
   }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      const mode = detail?.mode === "fuel" ? "fuel" : "driver";
+      const imei = detail?.imei || null;
+
+      if (mode === "fuel") {
+        setSelectedFuelImei(imei);
+      }
+
+      setBottomBarState((prev) => ({
+        open:
+          prev.mode === mode &&
+          (mode !== "fuel" || (imei && imei === selectedFuelImeiRef.current))
+            ? !prev.open
+            : true,
+        mode,
+      }));
+    };
+    window.addEventListener("truckly:bottom-bar-toggle", handler);
+    return () => window.removeEventListener("truckly:bottom-bar-toggle", handler);
+  }, []);
+
+  React.useEffect(() => {
+    if (bottomBarState.open) {
+      setIsDriverSidebarOpen(false);
+    }
+  }, [bottomBarState.open]);
 
   return (
     <div className="w-full h-screen flex flex-col bg-[#09090b] text-[#f4f4f5]">
@@ -219,9 +257,11 @@ function DashboardPage() {
             selectedDriverImei={selectedDriverImei}
           />
           <DriverBottomBar
-            isOpen={isBottomBarOpen}
-            onClose={() => setIsBottomBarOpen(false)}
+            isOpen={bottomBarState.open}
+            mode={bottomBarState.mode}
+            onClose={() => setBottomBarState((prev) => ({ ...prev, open: false }))}
             selectedDriverImei={selectedDriverImei}
+            selectedVehicleImei={selectedFuelImei}
           />
         </div>
       )}

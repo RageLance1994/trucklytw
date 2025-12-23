@@ -2,12 +2,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
-const { auth } = require('../utils/users');
-const { Vehicles, getModel, avlSchema } = require('../Models/Schemes');
+const { auth, imeiOwnership } = require('../utils/users');
+const { Vehicles, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
 const { decryptString, decryptJSON } = require('../utils/encryption');
 const { SeepTrucker } = require('../utils/seep');
 
 const router = express.Router();
+const HISTORY_BUCKET_MS = 60_000;
 
 // Helper used by /api/vehicles to decrypt Enc fields
 function decorateVehicle(raw) {
@@ -119,6 +120,193 @@ router.get('/vehicles', auth, async (req, res) => {
 });
 
 module.exports = router;
+
+const toFiniteNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const toMillis = (value) => {
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
+const mapFuelEventRecord = (input) => {
+  if (!input) return null;
+  const source = input.toObject ? input.toObject({ getters: true, virtuals: false }) : input;
+  const eventId = source.eventId ? String(source.eventId) : null;
+  if (!eventId) return null;
+
+  const startMs = toFiniteNumber(source.startMs)
+    ?? toMillis(source.start)
+    ?? toMillis(source.eventStart);
+  const endMs = toFiniteNumber(source.endMs)
+    ?? toMillis(source.end)
+    ?? toMillis(source.eventEnd)
+    ?? startMs;
+
+  const liters = toFiniteNumber(source.liters ?? source.delta);
+  const delta = toFiniteNumber(source.delta);
+  const durationMs = toFiniteNumber(
+    source.durationMs ?? (Number.isFinite(startMs) && Number.isFinite(endMs) ? endMs - startMs : null)
+  );
+  const startFuel = toFiniteNumber(source.startFuel);
+  const endFuel = toFiniteNumber(source.endFuel);
+  const confidence = toFiniteNumber(source.confidence);
+  const lat = toFiniteNumber(source.lat);
+  const lng = toFiniteNumber(source.lng);
+
+  return {
+    eventId,
+    imei: source.imei ? String(source.imei) : null,
+    type: source.type || 'rifornimento',
+    normalizedType: source.normalizedType || 'refuel',
+    start: startMs,
+    end: endMs,
+    startMs,
+    endMs,
+    durationMs,
+    liters,
+    delta,
+    startFuel,
+    endFuel,
+    driverId: source.driverId ? String(source.driverId) : null,
+    confidence,
+    lat,
+    lng,
+    createdAt: toMillis(source.createdAt),
+    updatedAt: toMillis(source.updatedAt)
+  };
+};
+
+const fetchFuelEventsForRange = async (imei, fromMs, toMs) => {
+  if (!imei || !Number.isFinite(fromMs) || !Number.isFinite(toMs)) return [];
+  try {
+    const Model = getRefuelingModel(imei);
+    if (!Model) return [];
+
+    const docs = await Model.find({
+      imei: `${imei}`,
+      $or: [
+        {
+          startMs: { $exists: true, $lte: toMs },
+          endMs: { $exists: true, $gte: fromMs }
+        },
+        {
+          startMs: { $exists: false },
+          endMs: { $exists: false },
+          start: { $lte: new Date(toMs) },
+          end: { $gte: new Date(fromMs) }
+        },
+        {
+          eventStart: { $lte: new Date(toMs) },
+          eventEnd: { $gte: new Date(fromMs) }
+        }
+      ]
+    })
+      .sort({ startMs: 1, start: 1 })
+      .lean()
+      .exec();
+
+    return Array.isArray(docs) ? docs.map(mapFuelEventRecord).filter(Boolean) : [];
+  } catch (err) {
+    console.error('[api.fuel.history] unable to fetch fuel events', err);
+    return [];
+  }
+};
+
+const fetchDetectedFuelEvents = async (imei, fromMs, toMs) => {
+  if (!imei || !Number.isFinite(fromMs) || !Number.isFinite(toMs)) return [];
+  try {
+    const Model = getModel(`${imei}_fuelevents`, fuelEventSchema);
+    if (!Model) return [];
+    const dayMs = 86_400_000;
+    const docs = await Model.find({ startMs: { $gte: fromMs, $lte: toMs + dayMs } })
+      .sort({ startMs: 1 })
+      .lean()
+      .exec();
+    return Array.isArray(docs) ? docs.map(mapFuelEventRecord).filter(Boolean) : [];
+  } catch (err) {
+    console.error('[api.fuel.history] unable to fetch detected events', err);
+    return [];
+  }
+};
+
+router.post('/fuel/history', auth, imeiOwnership, async (req, res) => {
+  const { from, to, imei } = req.body;
+
+  const normaliseDate = (value) => {
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isFinite(date.getTime()) ? date : null;
+  };
+
+  const fromDate = normaliseDate(from);
+  const toDate = normaliseDate(to);
+
+  if (!fromDate || !toDate || toDate < fromDate) {
+    return res.status(400).json({ message: 'Intervallo non valido.' });
+  }
+
+  const fromMs = fromDate.getTime();
+  const toMs = toDate.getTime();
+  const model = getModel(`${imei}_monitoring`, avlSchema);
+
+  const historyStages = [
+    {
+      $match: {
+        timestamp: {
+          $gt: fromDate,
+          $lte: toDate,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $toLong: {
+            $subtract: [
+              { $toLong: '$timestamp' },
+              { $mod: [{ $toLong: '$timestamp' }, HISTORY_BUCKET_MS] },
+            ],
+          },
+        },
+        doc: { $first: '$$ROOT' },
+      },
+    },
+  ];
+
+  try {
+    const [raw, refuelEvents, detectedEvents] = await Promise.all([
+      model.aggregate([
+        ...historyStages,
+        { $replaceRoot: { newRoot: '$doc' } },
+        { $sort: { timestamp: 1 } },
+      ]),
+      fetchFuelEventsForRange(imei, fromMs, toMs),
+      fetchDetectedFuelEvents(imei, fromMs, toMs)
+    ]);
+    const merged = new Map();
+    [...refuelEvents, ...detectedEvents].forEach((evt) => {
+      if (!evt) return;
+      const key = evt.eventId || `${evt.start}-${evt.end}-${evt.type}`;
+      merged.set(key, evt);
+    });
+    return res.status(200).json({ raw, fuelEvents: Array.from(merged.values()) });
+  } catch (err) {
+    console.error('[api.fuel.history] aggregation failed', err);
+    return res.status(500).json({ message: 'Impossibile recuperare la cronologia.' });
+  }
+});
 
 // === SeepTrucker test endpoint ===
 // POST /api/seep/test

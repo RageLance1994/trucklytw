@@ -1,9 +1,14 @@
 import React from "react";
+import { API_BASE_URL } from "../config";
+
+type BottomBarMode = "driver" | "fuel";
 
 type DriverBottomBarProps = {
   isOpen: boolean;
   onClose?: () => void;
   selectedDriverImei?: string | null;
+  selectedVehicleImei?: string | null;
+  mode: BottomBarMode;
 };
 
 type DayGraph = {
@@ -12,6 +17,27 @@ type DayGraph = {
   metrics?: Record<string, any>;
   activities?: Array<Record<string, any>>;
   infringements?: Array<Record<string, any>>;
+};
+
+type FuelEvent = {
+  eventId?: string;
+  start?: number;
+  end?: number;
+  liters?: number | null;
+  delta?: number | null;
+  normalizedType?: string;
+  type?: string;
+  startFuel?: number | null;
+  endFuel?: number | null;
+  isRefuel?: boolean;
+  isWithdrawal?: boolean;
+};
+
+type FuelSample = {
+  ts: number;
+  liters: number | null;
+  tank1: number | null;
+  tank2: number | null;
 };
 
 const formatDateLabel = (value?: string) => {
@@ -27,22 +53,312 @@ const formatDateLabel = (value?: string) => {
 };
 
 const toDurationLabel = (value: any) => {
-  if (value == null) return "00h00";
-  if (typeof value === "string") return value;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "00h00";
-  const minutes = num > 1000 ? Math.round(num / 60) : Math.round(num);
+  if (value == null) return "0 ore e 0 minuti";
+  let minutes: number | null = null;
+
+  if (typeof value === "number") {
+    minutes = value > 1000 ? Math.round(value / 60) : Math.round(value);
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    const hmMatch = trimmed.match(/^(\d+)\s*h\s*(\d+)?/i);
+    const colonMatch = trimmed.match(/^(\d+)\s*:\s*(\d+)\s*$/);
+
+    if (hmMatch) {
+      const hours = Number(hmMatch[1] || 0);
+      const mins = Number(hmMatch[2] || 0);
+      minutes = hours * 60 + mins;
+    } else if (colonMatch) {
+      const hours = Number(colonMatch[1] || 0);
+      const mins = Number(colonMatch[2] || 0);
+      minutes = hours * 60 + mins;
+    } else if (/^\d+$/.test(trimmed)) {
+      minutes = Number(trimmed);
+    } else {
+      return value;
+    }
+  } else {
+    return "0 ore e 0 minuti";
+  }
+
+  if (!Number.isFinite(minutes)) return "0 ore e 0 minuti";
+
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(hours)}h${pad(mins)}`;
+  const hourLabel = hours === 1 ? "ora" : "ore";
+  const minLabel = mins === 1 ? "minuto" : "minuti";
+  return `${hours} ${hourLabel} e ${mins} ${minLabel}`;
+};
+
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+const toLocalInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const toIso = (value: string) => {
+  if (!value) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+};
+
+const toFiniteNumber = (value: unknown) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const toTimestamp = (value: unknown) => {
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
+const formatShortDateTime = (value?: number) => {
+  if (!Number.isFinite(value)) return "N/D";
+  return new Date(value as number).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatLiters = (value?: number | null) => {
+  if (!Number.isFinite(value)) return "--";
+  const abs = Math.abs(value as number);
+  const precision = abs >= 100 ? 0 : 1;
+  return `${(value as number).toFixed(precision)} L`;
+};
+
+
+const normalizeFuelEvents = (events: any[] = []): FuelEvent[] => {
+  return events
+    .map((evt, idx) => {
+      const start = toTimestamp(evt?.start ?? evt?.startMs ?? evt?.startTs);
+      const end = toTimestamp(evt?.end ?? evt?.endMs ?? evt?.endTs ?? start);
+      if (!Number.isFinite(start)) return null;
+      const normalizedTypeRaw = String(evt?.normalizedType ?? evt?.type ?? "")
+        .toLowerCase()
+        .trim();
+      const normalizedType =
+        normalizedTypeRaw === "rifornimento" ? "refuel" : normalizedTypeRaw;
+      const isRefuel = normalizedType === "refuel";
+      const isWithdrawal =
+        normalizedType === "withdrawal" ||
+        normalizedType === "fuel_withdrawal" ||
+        normalizedType === "prelievo" ||
+        normalizedType === "fuel-theft" ||
+        normalizedType === "theft";
+
+      return {
+        eventId: evt?.eventId || evt?._id || `evt-${idx}`,
+        start: start as number,
+        end: Number.isFinite(end) ? (end as number) : (start as number),
+        liters: toFiniteNumber(evt?.liters ?? evt?.delta),
+        delta: toFiniteNumber(evt?.delta),
+        startFuel: toFiniteNumber(evt?.startFuel),
+        endFuel: toFiniteNumber(evt?.endFuel),
+        normalizedType,
+        type: evt?.type,
+        isRefuel,
+        isWithdrawal,
+      } as FuelEvent;
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a?.start || 0) - (b?.start || 0)) as FuelEvent[];
+};
+
+let echartsLoader: Promise<any> | null = null;
+
+const loadECharts = () => {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  const win = window as any;
+  if (win.echarts) return Promise.resolve(win.echarts);
+  if (echartsLoader) return echartsLoader;
+  echartsLoader = new Promise((resolve, reject) => {
+    const existing = document.querySelector("script[data-echarts]");
+    if (existing) {
+      existing.addEventListener("load", () => resolve((window as any).echarts));
+      existing.addEventListener("error", reject);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
+    script.async = true;
+    script.defer = true;
+    script.dataset.echarts = "true";
+    script.onload = () => resolve((window as any).echarts);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return echartsLoader;
+};
+
+const extractSamples = (history: any): FuelSample[] => {
+  const source = Array.isArray(history?.raw)
+    ? history.raw
+    : Array.isArray(history?.data)
+      ? history.data
+      : Array.isArray(history)
+        ? history
+        : [];
+
+  const samples = source
+    .map((entry: any) => {
+      const io = entry?.io || entry;
+      const ts = toTimestamp(entry?.timestamp ?? entry?.ts ?? io?.timestamp ?? io?.ts);
+      if (!Number.isFinite(ts)) return null;
+
+      const litersCandidates = [
+        io.current_fuel,
+        io.currentFuel,
+        io.fuel_total,
+        io.fuel,
+        io.tank,
+        io.tankLiters,
+        io.value,
+        io.liters,
+      ];
+      let liters: number | null = null;
+      for (const cand of litersCandidates) {
+        const n = toFiniteNumber(cand);
+        if (Number.isFinite(n)) {
+          liters = n;
+          break;
+        }
+      }
+
+      const tank1 = toFiniteNumber(
+        io.tank1 ?? io.tank_1 ?? io.tankPrimary ?? io.primaryTankCapacity,
+      );
+      const tank2 = toFiniteNumber(
+        io.tank2 ?? io.tank_2 ?? io.tankSecondary ?? io.secondaryTankCapacity,
+      );
+
+      if (!Number.isFinite(liters) && !Number.isFinite(tank1) && !Number.isFinite(tank2)) {
+        return null;
+      }
+
+      return {
+        ts: ts as number,
+        liters: Number.isFinite(liters) ? liters : null,
+        tank1: Number.isFinite(tank1) ? tank1 : null,
+        tank2: Number.isFinite(tank2) ? tank2 : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a: FuelSample, b: FuelSample) => a.ts - b.ts) as FuelSample[];
+
+  return samples;
+};
+
+const smoothSeriesArray = (series: Array<[number, number]>, windowSize = 5) => {
+  if (!Array.isArray(series) || series.length <= 2) return series;
+  const w = Math.max(1, Math.floor(windowSize));
+  const half = Math.floor(w / 2);
+  return series.map((point, idx) => {
+    const start = Math.max(0, idx - half);
+    const end = Math.min(series.length - 1, idx + half);
+    let sum = 0;
+    let count = 0;
+    for (let i = start; i <= end; i += 1) {
+      const v = series[i][1];
+      if (Number.isFinite(v)) {
+        sum += v;
+        count += 1;
+      }
+    }
+    const avg = count ? sum / count : point[1];
+    return [point[0], avg] as [number, number];
+  });
+};
+
+const buildFuelSeries = (samples: FuelSample[]) => {
+  const fuel = samples
+    .map((s) => [s.ts, toFiniteNumber(s.liters)] as [number, number | null])
+    .filter(([, v]) => Number.isFinite(v))
+    .map(([ts, v]) => [ts, v as number] as [number, number]);
+  const smoothedFuel = smoothSeriesArray(fuel, Math.max(3, Math.round(fuel.length / 200)));
+  return { fuel: smoothedFuel };
 };
 
 export function DriverBottomBar({
   isOpen,
   onClose,
   selectedDriverImei,
+  selectedVehicleImei,
+  mode,
 }: DriverBottomBarProps) {
+  const title = mode === "fuel" ? "Fuel dashboard" : "Driver activity + tables";
+  const subtitle =
+    mode === "fuel"
+      ? `Intervallo carburante. Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
+      : `Tabella driver e report attivita. Selezione attuale: ${
+          selectedDriverImei || "nessuna"
+        }`;
+
+  return (
+    <aside
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        isOpen ? "translate-y-0" : "hidden-bottom"
+      }`}
+      aria-hidden={!isOpen}
+    >
+      <div className="flex items-start justify-between px-6 py-4 border-b border-white/10">
+        <div className="space-y-1.5">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">
+            Bottom bar
+          </p>
+          <h2 className="text-lg font-semibold leading-tight text-white">{title}</h2>
+          <p className="text-sm text-white/70">{subtitle}</p>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-xs h-8 rounded-full border border-white/20 px-3 text-white/75 hover:text-white hover:border-white/50 transition"
+          >
+            Chiudi
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0e0f14]">
+        {mode === "fuel" ? (
+          <FuelDashboard
+            isOpen={isOpen}
+            selectedVehicleImei={selectedVehicleImei}
+          />
+        ) : (
+          <DriverDashboard selectedDriverImei={selectedDriverImei} />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function DriverDashboard({
+  selectedDriverImei,
+}: {
+  selectedDriverImei?: string | null;
+}) {
   const [driverId, setDriverId] = React.useState("196301e2-2010-4f42-a405-5e6ce839c101");
   const [startDate, setStartDate] = React.useState("2025-10-25T00:00");
   const [endDate, setEndDate] = React.useState("2025-10-26T23:59");
@@ -58,12 +374,6 @@ export function DriverBottomBar({
     setError(null);
     setLoading(true);
     try {
-      const toIso = (value: string) => {
-        if (!value) return value;
-        const parsed = new Date(value);
-        return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
-      };
-
       const body = {
         driverId,
         startDate: toIso(startDate),
@@ -114,229 +424,533 @@ export function DriverBottomBar({
   };
 
   return (
-    <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-        isOpen ? "translate-y-0" : "hidden-bottom"
-      }`}
-      aria-hidden={!isOpen}
-    >
-      <div className="flex items-start justify-between px-6 py-4 border-b border-white/10">
-        <div className="space-y-1.5">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Bottom bar</p>
-          <h2 className="text-lg font-semibold leading-tight text-white">
-            Driver activity + tables
-          </h2>
-          <p className="text-sm text-white/70">
-            Tabella driver e report attivita. Selezione attuale:{" "}
-            {selectedDriverImei || "nessuna"}
-          </p>
+    <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+              Driver activity chart
+            </p>
+            <p className="text-sm text-white/60">
+              Report attivita e dettagli giornalieri. Selezione: {selectedDriverImei || "--"}
+            </p>
+          </div>
         </div>
-        {onClose && (
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+              Driver ID
+            </label>
+            <input
+              value={driverId}
+              onChange={(e) => setDriverId(e.target.value)}
+              placeholder="UUID del driver (es. da /api/drivers)"
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+              Start
+            </label>
+            <input
+              type="datetime-local"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+              End
+            </label>
+            <input
+              type="datetime-local"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
           <button
-            onClick={onClose}
-            className="text-xs h-8 rounded-full border border-white/20 px-3 text-white/75 hover:text-white hover:border-white/50 transition"
+            onClick={runTest}
+            disabled={loading}
+            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm font-medium hover:bg-white/15 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Chiudi
+            {loading ? "Caricamento..." : "Genera grafico di test"}
           </button>
-        )}
-      </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0e0f14]">
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-                  Driver activity chart
-                </p>
-                <p className="text-sm text-white/60">
-                  Report attivita e dettagli giornalieri.
-                </p>
-              </div>
-            </div>
+        {days.length > 0 && (
+          <div className="space-y-4">
+            {days.map((day) => {
+              const isHovered = hoveredDay?.date === day.date;
+              const tooltipWidth = 240;
+              const tooltipHeight = 220;
+              const left = Math.min(
+                Math.max(hoverPos.x + 16, 16),
+                Math.max(16, hoverBounds.width - tooltipWidth - 16),
+              );
+              const top = Math.min(
+                Math.max(hoverPos.y + 16, 16),
+                Math.max(16, hoverBounds.height - tooltipHeight - 16),
+              );
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-                  Driver ID
-                </label>
-                <input
-                  value={driverId}
-                  onChange={(e) => setDriverId(e.target.value)}
-                  placeholder="UUID del driver (es. da /api/drivers)"
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-                  Start
-                </label>
-                <input
-                  type="datetime-local"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-                  End
-                </label>
-                <input
-                  type="datetime-local"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-            </div>
+              const dayKey = day.date || "day-0";
+              const isExpanded = !!expandedActivityDays[dayKey];
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={runTest}
-                disabled={loading}
-                className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm font-medium hover:bg-white/15 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? "Caricamento..." : "Genera grafico di test"}
-              </button>
-              {error && <p className="text-sm text-red-400">{error}</p>}
-            </div>
-
-            {days.length > 0 && (
-              <div className="space-y-4">
-                {days.map((day) => {
-                  const isHovered = hoveredDay?.date === day.date;
-                  const tooltipWidth = 240;
-                  const tooltipHeight = 220;
-                  const left = Math.min(
-                    Math.max(hoverPos.x + 16, 16),
-                    Math.max(16, hoverBounds.width - tooltipWidth - 16),
-                  );
-                  const top = Math.min(
-                    Math.max(hoverPos.y + 16, 16),
-                    Math.max(16, hoverBounds.height - tooltipHeight - 16),
-                  );
-
-                  const dayKey = day.date || "day-0";
-                  const isExpanded = !!expandedActivityDays[dayKey];
-
-                  return (
+              return (
+                <div
+                  key={dayKey}
+                  className="rounded-xl border border-white/10 bg-[#0c0f16] p-3 space-y-3"
+                >
+                  <div
+                    className="relative rounded-lg border border-white/10 bg-[#0b0d14] p-3 hover:border-white/30 transition overflow-visible"
+                    onMouseEnter={() => setHoveredDay(day)}
+                    onMouseLeave={() => setHoveredDay(null)}
+                    onMouseMove={(e) => {
+                      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                      setHoverBounds({ width: rect.width, height: rect.height });
+                      setHoverPos({
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top,
+                      });
+                    }}
+                  >
+                    <div className="text-xs text-white/60">{formatDateLabel(day.date)}</div>
                     <div
-                      key={dayKey}
-                      className="rounded-xl border border-white/10 bg-[#0c0f16] p-3 space-y-3"
-                    >
+                      className="chart-surface mt-2 w-full overflow-hidden"
+                      dangerouslySetInnerHTML={{ __html: day.graph || "" }}
+                    />
+                    {isHovered && (
+                      <div className="absolute inset-2 border-2 border-black/80 rounded-lg pointer-events-none" />
+                    )}
+                    {isHovered && (
                       <div
-                        className="relative rounded-lg border border-white/10 bg-[#0b0d14] p-3 hover:border-white/30 transition"
-                        onMouseEnter={() => setHoveredDay(day)}
-                        onMouseLeave={() => setHoveredDay(null)}
-                        onMouseMove={(e) => {
-                          const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                          setHoverBounds({ width: rect.width, height: rect.height });
-                          setHoverPos({
-                            x: e.clientX - rect.left,
-                            y: e.clientY - rect.top,
-                          });
-                        }}
+                        className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0e0f14] text-[#f8fafc] shadow-xl pointer-events-none"
+                        style={{ left, top }}
                       >
-                        <div className="text-xs text-white/60">{formatDateLabel(day.date)}</div>
-                        <div
-                          className="mt-2 w-full overflow-hidden"
-                          dangerouslySetInnerHTML={{ __html: day.graph || "" }}
-                        />
-                        {isHovered && (
-                          <div className="absolute inset-2 border-2 border-black/80 rounded-lg pointer-events-none" />
-                        )}
-                        {isHovered && (
-                          <div
-                            className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0e0f14] text-[#f8fafc] shadow-xl pointer-events-none"
-                            style={{ left, top }}
-                          >
-                            <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2 text-sm">
-                              <span className="font-semibold text-white/70">Attivita</span>
-                              <span className="font-semibold text-white/70 text-right">Tempo</span>
-                              <span>Guida</span>
-                              <span className="text-right">{toDurationLabel(day.metrics?.totalDriving)}</span>
-                              <span>Altri lavori</span>
-                              <span className="text-right">{toDurationLabel(day.metrics?.totalWork)}</span>
-                              <span>Disponibilita</span>
-                              <span className="text-right">{toDurationLabel(day.metrics?.totalAvailable)}</span>
-                              <span>Riposo</span>
-                              <span className="text-right">{toDurationLabel(day.metrics?.totalBreak)}</span>
-                              <span>Sconosciuto</span>
-                              <span className="text-right">{toDurationLabel(day.metrics?.totalUnknown)}</span>
-                              <span>Ampiezza</span>
-                              <span className="text-right">{toDurationLabel(day.metrics?.totalAmplitude)}</span>
-                            </div>
-                          </div>
-                        )}
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2 text-sm">
+                          <span className="font-semibold text-white/70">Attivita</span>
+                          <span className="font-semibold text-white/70 text-right">Tempo</span>
+                          <span>Guida</span>
+                          <span className="text-right">{toDurationLabel(day.metrics?.totalDriving)}</span>
+                          <span>Altri lavori</span>
+                          <span className="text-right">{toDurationLabel(day.metrics?.totalWork)}</span>
+                          <span>Disponibilita</span>
+                          <span className="text-right">{toDurationLabel(day.metrics?.totalAvailable)}</span>
+                          <span>Riposo</span>
+                          <span className="text-right">{toDurationLabel(day.metrics?.totalBreak)}</span>
+                          <span>Sconosciuto</span>
+                          <span className="text-right">{toDurationLabel(day.metrics?.totalUnknown)}</span>
+                          <span>Ampiezza</span>
+                          <span className="text-right">{toDurationLabel(day.metrics?.totalAmplitude)}</span>
+                        </div>
                       </div>
+                    )}
+                  </div>
 
-                      {day.activities && day.activities.length > 0 && (
-                        <div className="border-t border-white/10 pt-3 space-y-2 text-sm">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedActivityDays((prev) => ({
-                                ...prev,
-                                [dayKey]: !prev[dayKey],
-                              }))
-                            }
-                            className="flex w-full items-center justify-between text-xs uppercase tracking-[0.08em] text-white/70 hover:text-white transition"
-                          >
-                            <span>Elenco attivita</span>
-                            <span className="text-[10px] tracking-[0.2em]">
-                              {isExpanded ? "CHIUDI" : "APRI"}
-                            </span>
-                          </button>
-                          {isExpanded && (
-                            <div className="space-y-1">
-                              {day.activities.map((activity, idx) => (
-                                <div
-                                  key={`${activity.startDateTime || idx}`}
-                                  className="flex items-center justify-between text-white/80"
-                                >
-                                  <span>{activity.activityType || "Attivita"}</span>
-                                  <span className="text-white/60">
-                                    {toDurationLabel(activity.duration)}
-                                  </span>
-                                </div>
-                              ))}
+                  {day.activities && day.activities.length > 0 && (
+                    <div className="border-t border-white/10 pt-3 space-y-2 text-sm">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedActivityDays((prev) => ({
+                            ...prev,
+                            [dayKey]: !prev[dayKey],
+                          }))
+                        }
+                        className="flex w-full items-center justify-between text-xs uppercase tracking-[0.08em] text-white/70 hover:text-white transition"
+                      >
+                        <span>Elenco attivita</span>
+                        <span className="text-[10px] tracking-[0.2em]">
+                          {isExpanded ? "CHIUDI" : "APRI"}
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="space-y-1">
+                          {day.activities.map((activity, idx) => (
+                            <div
+                              key={`${activity.startDateTime || idx}`}
+                              className="flex items-center justify-between text-white/80"
+                            >
+                              <span>{activity.activityType || "Attivita"}</span>
+                              <span className="text-white/60">
+                                {toDurationLabel(activity.duration)}
+                              </span>
                             </div>
-                          )}
+                          ))}
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })}
           </div>
+        )}
+      </div>
 
-          <div className="flex flex-col gap-4 min-w-0">
-            <TableCard
-              title="Tables baseline"
-              subtitle="Sezione base per report tabellari."
-              rows={[
-                ["Driver status", "Da definire"],
-                ["Ultimo evento", "Da definire"],
-                ["Allarmi attivi", "Da definire"],
-              ]}
-            />
-            <TableCard
-              title="Table-like info"
-              subtitle="Metriche e riepiloghi rapidi."
-              rows={[
-                ["Km oggi", "--"],
-                ["Guida", "--"],
-                ["Riposo", "--"],
-                ["Disponibilita", "--"],
-              ]}
-            />
+      <div className="flex flex-col gap-4 min-w-0">
+        <TableCard
+          title="Tables baseline"
+          subtitle="Sezione base per report tabellari."
+          rows={[
+            ["Driver status", "Da definire"],
+            ["Ultimo evento", "Da definire"],
+            ["Allarmi attivi", "Da definire"],
+          ]}
+        />
+        <TableCard
+          title="Table-like info"
+          subtitle="Metriche e riepiloghi rapidi."
+          rows={[
+            ["Km oggi", "--"],
+            ["Guida", "--"],
+            ["Riposo", "--"],
+            ["Disponibilita", "--"],
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FuelDashboard({
+  isOpen,
+  selectedVehicleImei,
+}: {
+  isOpen: boolean;
+  selectedVehicleImei?: string | null;
+}) {
+  const now = React.useMemo(() => new Date(), []);
+  const [startDate, setStartDate] = React.useState(
+    toLocalInputValue(new Date(now.getTime() - 24 * 60 * 60 * 1000)),
+  );
+  const [endDate, setEndDate] = React.useState(toLocalInputValue(now));
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [historyRaw, setHistoryRaw] = React.useState<any[]>([]);
+  const [events, setEvents] = React.useState<FuelEvent[]>([]);
+
+  const fetchFuelHistory = React.useCallback(async () => {
+    if (!selectedVehicleImei) {
+      setError("Seleziona un veicolo per vedere il carburante.");
+      setHistoryRaw([]);
+      setEvents([]);
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      setError("Intervallo non valido.");
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/fuel/history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          imei: selectedVehicleImei,
+          from: toIso(startDate),
+          to: toIso(endDate),
+        }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const raw = Array.isArray(data?.raw) ? data.raw : [];
+      const fuelEvents = Array.isArray(data?.fuelEvents)
+        ? data.fuelEvents
+        : Array.isArray(data?.events)
+          ? data.events
+          : [];
+
+      setHistoryRaw(raw);
+      setEvents(normalizeFuelEvents(fuelEvents));
+    } catch (err: any) {
+      setError(err?.message || "Errore nel recupero carburante");
+      setHistoryRaw([]);
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedVehicleImei, startDate, endDate]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    void fetchFuelHistory();
+  }, [isOpen, fetchFuelHistory]);
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+              Fuel line chart
+            </p>
+            <p className="text-sm text-white/60">
+              Livello carburante con refuel evidenziati in verde.
+            </p>
+          </div>
+          <div className="flex items-end gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
+              <input
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
+              <input
+                type="datetime-local"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <button
+              onClick={fetchFuelHistory}
+              disabled={loading}
+              className="self-end h-9 rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+            >
+              {loading ? "Carico" : "Aggiorna"}
+            </button>
           </div>
         </div>
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {!error && (
+          <div className="rounded-xl border border-white/10 bg-[#0c0f16] p-4 overflow-hidden">
+            <FuelEChart historyRaw={historyRaw} events={events} />
+          </div>
+        )}
       </div>
-    </aside>
+
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
+        <div className="space-y-1">
+          <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+            Refuel / withdrawal events
+          </p>
+          <p className="text-sm text-white/60">
+            {events.length} eventi nel periodo selezionato.
+          </p>
+        </div>
+
+        <div className="mt-4 space-y-2 overflow-y-auto">
+          {events.length === 0 ? (
+            <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
+              Nessun evento disponibile per questo intervallo.
+            </div>
+          ) : (
+            events.map((evt) => {
+              const label = evt.isWithdrawal ? "Prelievo" : "Rifornimento";
+              const tone = evt.isWithdrawal ? "border-red-500/40 bg-red-500/10" : "border-emerald-500/40 bg-emerald-500/10";
+              const liters = evt.liters ?? evt.delta;
+
+              return (
+                <div
+                  key={evt.eventId || `${evt.start}`}
+                  className={`rounded-lg border px-3 py-2 text-sm text-white/85 ${tone}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">{label}</span>
+                    <span className="text-xs text-white/60">{formatShortDateTime(evt.start)}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-xs text-white/70">
+                    <span>{formatLiters(liters)}</span>
+                    <span>Fine: {formatShortDateTime(evt.end)}</span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
   );
+}
+
+function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEvent[] }) {
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+  const chartRef = React.useRef<any>(null);
+
+  const renderChart = React.useCallback(async () => {
+    const host = hostRef.current;
+    if (!host) return;
+    const echarts = await loadECharts();
+    if (!echarts) return;
+
+    if (!chartRef.current) {
+      chartRef.current = echarts.init(host, null, {
+        renderer: "canvas",
+        useDirtyRect: true,
+        locale: "it",
+      });
+    }
+
+    const samples = extractSamples({ raw: historyRaw });
+    if (!samples.length) {
+      chartRef.current.setOption({ series: [{ type: "line", data: [] }] }, true);
+      return;
+    }
+
+    const { fuel } = buildFuelSeries(samples);
+    const spans = events
+      .filter((evt) => evt.isRefuel || evt.isWithdrawal)
+      .map((evt) => {
+        const start = evt.start;
+        const end = Number.isFinite(evt.end) ? evt.end : evt.start;
+        const color = evt.isWithdrawal ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.25)";
+        const labelText = evt.isWithdrawal ? "Prelievo" : "Rifornimento";
+        return [
+          {
+            xAxis: start,
+            itemStyle: { color, opacity: 0.25 },
+            label: {
+              show: true,
+              formatter: labelText,
+              color: "#ffffff",
+              fontSize: 11,
+              fontWeight: 600,
+              backgroundColor: evt.isWithdrawal ? "rgba(239,68,68,0.85)" : "rgba(16,185,129,0.85)",
+              padding: [2, 6],
+              borderRadius: 6,
+            },
+          },
+          { xAxis: end },
+        ];
+      });
+
+    chartRef.current.setOption(
+      {
+        backgroundColor: "transparent",
+        animation: true,
+        grid: { left: 64, right: 40, top: 52, bottom: 48, containLabel: true },
+        tooltip: {
+          trigger: "axis",
+          confine: true,
+          axisPointer: { type: "cross" },
+          formatter: (params: any[]) => {
+            if (!Array.isArray(params) || !params.length) return "";
+            const ts = params[0]?.value?.[0];
+            const date = ts ? new Date(ts).toLocaleString("it-IT") : "";
+            const lines = params
+              .filter((p) => p && p.seriesName)
+              .map((p) => {
+                const val = Array.isArray(p.value) ? p.value[1] : p.value;
+                return `${p.marker} ${p.seriesName}: ${formatLiters(val)}`;
+              });
+            return [date, ...lines].join("<br/>");
+          },
+          backgroundColor: "rgba(10,12,18,0.92)",
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.08)",
+          textStyle: { color: "#f8fafc" },
+        },
+        xAxis: {
+          type: "time",
+          axisLine: { lineStyle: { color: "#666" } },
+          axisLabel: { color: "#9ca3af" },
+          axisTick: { show: false },
+          splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
+        },
+        yAxis: {
+          type: "value",
+          name: "Carburante (L)",
+          min: "dataMin",
+          max: "dataMax",
+          nameLocation: "end",
+          nameGap: 18,
+          nameTextStyle: { color: "#fbbf24", fontSize: 12, padding: [0, 0, 8, 0] },
+          axisLine: { lineStyle: { color: "#fbbf24" } },
+          axisLabel: {
+            color: "#fbbf24",
+            formatter: (value: number) => Math.round(value),
+          },
+          splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
+        },
+        dataZoom: [
+          { type: "inside", xAxisIndex: 0 },
+          {
+            type: "slider",
+            xAxisIndex: 0,
+            height: 16,
+            bottom: 10,
+            backgroundColor: "rgba(255,255,255,0.06)",
+            fillerColor: "rgba(251,191,36,0.15)",
+            borderColor: "rgba(255,255,255,0.1)",
+            handleIcon:
+              "M8.7,11.8v-7.6h2.6v7.6zM13,11.8v-7.6h2.6v7.6z",
+            handleSize: "120%",
+            handleStyle: { color: "#fbbf24" },
+            textStyle: { color: "#cbd5f5" },
+          },
+        ],
+        series: [
+          {
+            name: "Livello carburante",
+            type: "line",
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 2.4, color: "#fbbf24" },
+            itemStyle: { color: "#fbbf24" },
+            data: fuel,
+            markArea: spans.length ? { data: spans } : undefined,
+          },
+        ],
+      },
+      true,
+    );
+  }, [historyRaw, events]);
+
+  React.useEffect(() => {
+    renderChart();
+  }, [renderChart]);
+
+  React.useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !window.ResizeObserver) return;
+    const observer = new ResizeObserver(() => {
+      chartRef.current?.resize?.();
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      chartRef.current?.dispose?.();
+      chartRef.current = null;
+    };
+  }, []);
+
+  if (!historyRaw.length) {
+    return (
+      <div className="flex h-[360px] items-center justify-center text-sm text-white/60">
+        Nessun campione carburante disponibile.
+      </div>
+    );
+  }
+
+  return <div ref={hostRef} className="h-[360px] w-full min-w-0 overflow-hidden" />;
 }
 
 function TableCard({
