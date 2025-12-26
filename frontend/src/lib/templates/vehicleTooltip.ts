@@ -135,7 +135,7 @@ const SECTION_STYLES = `
   }
   .truckly-actions {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0,1fr));
+    grid-template-columns: repeat(5, minmax(0,1fr));
     gap: 8px;
   }
   .truckly-action-btn {
@@ -169,6 +169,7 @@ const icons = {
   fuel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2h6v20H6z"/><path d="M18 7v13a2 2 0 0 1-2 2h-4"/><path d="M20 7l-4-4"/></svg>`,
   driver: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3"/><path d="M6 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>`,
   alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0Z"/></svg>`,
+  geofence: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>`,
 };
 
 export function renderVehicleTooltip({
@@ -221,6 +222,7 @@ export function renderVehicleTooltip({
     { label: "Carburante", icon: icons.fuel, action: "fuel" },
     { label: "Autista", icon: icons.driver, action: "driver" },
     { label: "Alert", icon: icons.alert, action: "alert" },
+    { label: "GeoFence", icon: icons.geofence, action: "geofence" },
   ];
 
   const driverBlock = hasDriver

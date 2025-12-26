@@ -160,6 +160,14 @@ function DashboardPage() {
   }>({ open: false, mode: "driver" });
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
+  const [selectedRouteImei, setSelectedRouteImei] = React.useState<string | null>(null);
+  const [sidebarMode, setSidebarMode] = React.useState<"driver" | "routes" | "geofence">("driver");
+  const [geofenceDraft, setGeofenceDraft] = React.useState<{
+    geofenceId: string;
+    imei: string;
+    center: { lng: number; lat: number };
+    radiusMeters: number;
+  } | null>(null);
   const selectedFuelImeiRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -204,6 +212,7 @@ function DashboardPage() {
       const detail = (e as CustomEvent)?.detail || {};
       setSelectedDriverImei(detail?.imei || null);
       setBottomBarState((prev) => ({ ...prev, open: false }));
+      setSidebarMode("driver");
       setIsDriverSidebarOpen((prev) => !prev);
     };
     window.addEventListener("truckly:driver-open", handler);
@@ -223,7 +232,9 @@ function DashboardPage() {
       setBottomBarState((prev) => ({
         open:
           prev.mode === mode &&
-          (mode !== "fuel" || (imei && imei === selectedFuelImeiRef.current))
+          (mode === "fuel"
+            ? imei && imei === selectedFuelImeiRef.current
+            : true)
             ? !prev.open
             : true,
         mode,
@@ -231,6 +242,36 @@ function DashboardPage() {
     };
     window.addEventListener("truckly:bottom-bar-toggle", handler);
     return () => window.removeEventListener("truckly:bottom-bar-toggle", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      setSelectedRouteImei(detail?.imei || null);
+      setSidebarMode("routes");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:routes-open", handler);
+    return () => window.removeEventListener("truckly:routes-open", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      if (!detail?.geofenceId || !detail?.imei || !detail?.center) return;
+      setGeofenceDraft({
+        geofenceId: detail.geofenceId,
+        imei: detail.imei,
+        center: detail.center,
+        radiusMeters: detail.radiusMeters ?? 0,
+      });
+      setSidebarMode("geofence");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:geofence-created", handler);
+    return () => window.removeEventListener("truckly:geofence-created", handler);
   }, []);
 
   React.useEffect(() => {
@@ -255,6 +296,9 @@ function DashboardPage() {
             isOpen={isDriverSidebarOpen}
             onClose={() => setIsDriverSidebarOpen(false)}
             selectedDriverImei={selectedDriverImei}
+            selectedRouteImei={selectedRouteImei}
+            mode={sidebarMode}
+            geofenceDraft={geofenceDraft}
           />
           <DriverBottomBar
             isOpen={bottomBarState.open}

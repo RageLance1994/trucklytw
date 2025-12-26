@@ -636,6 +636,15 @@ function FuelDashboard({
   const [historyRaw, setHistoryRaw] = React.useState<any[]>([]);
   const [events, setEvents] = React.useState<FuelEvent[]>([]);
 
+  React.useEffect(() => {
+    setHistoryRaw([]);
+    setEvents([]);
+    setError(null);
+    if (isOpen && selectedVehicleImei) {
+      void fetchFuelHistory();
+    }
+  }, [selectedVehicleImei]);
+
   const fetchFuelHistory = React.useCallback(async () => {
     if (!selectedVehicleImei) {
       setError("Seleziona un veicolo per vedere il carburante.");
@@ -739,7 +748,17 @@ function FuelDashboard({
 
         {!error && (
           <div className="rounded-xl border border-white/10 bg-[#0c0f16] p-4 overflow-hidden">
-            <FuelEChart historyRaw={historyRaw} events={events} />
+            {loading ? (
+              <div className="flex h-[360px] items-center justify-center text-sm text-white/60">
+                Caricamento carburante...
+              </div>
+            ) : (
+              <FuelEChart
+                key={selectedVehicleImei || "no-vehicle"}
+                historyRaw={historyRaw}
+                events={events}
+              />
+            )}
           </div>
         )}
       </div>
@@ -755,7 +774,11 @@ function FuelDashboard({
         </div>
 
         <div className="mt-4 space-y-2 overflow-y-auto">
-          {events.length === 0 ? (
+          {loading ? (
+            <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
+              Caricamento eventi carburante...
+            </div>
+          ) : events.length === 0 ? (
             <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
               Nessun evento disponibile per questo intervallo.
             </div>
@@ -807,7 +830,7 @@ function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEve
     }
 
     const samples = extractSamples({ raw: historyRaw });
-    if (!samples.length) {
+    if (samples.length < 10) {
       chartRef.current.setOption({ series: [{ type: "line", data: [] }] }, true);
       return;
     }
@@ -942,10 +965,11 @@ function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEve
     };
   }, []);
 
-  if (!historyRaw.length) {
+  const samples = extractSamples({ raw: historyRaw });
+  if (samples.length < 10) {
     return (
       <div className="flex h-[360px] items-center justify-center text-sm text-white/60">
-        Nessun campione carburante disponibile.
+        Dati non disponibili, verifica o installa la sonda carburante.
       </div>
     );
   }

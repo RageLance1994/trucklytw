@@ -155,6 +155,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   const wsRef = useRef<WSClient | null>(null);
   const vehiclesRef = useRef<Vehicle[]>([]);
   const fuelCalibrationRef = useRef<Map<string, number>>(new Map());
+  const avlCacheRef = useRef<Map<string, any>>(new Map());
 
   const renderStaticMarkers = (map: TrucklyMap, list: Vehicle[]) => {
     map.clearMarkers();
@@ -289,6 +290,185 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         }
       };
 
+      (window as any).trucklySetMapStyle = (mode: "base" | "light" | "dark" | "satellite") => {
+        mapInstanceRef.current?.setBaseStyle(mode);
+        try {
+          window.localStorage.setItem("truckly:map-style", mode);
+        } catch {}
+      };
+
+      (window as any).trucklyDrawRoute = (imei: string, history: any[]) => {
+        mapInstanceRef.current?.drawRoute(imei, history);
+      };
+      (window as any).trucklyClearRoute = (imei?: string) => {
+        mapInstanceRef.current?.clearRoute(imei);
+      };
+      (window as any).trucklySetRouteProgress = (imei: string, position: number) => {
+        mapInstanceRef.current?.setRouteProgress(imei, position);
+      };
+      (window as any).trucklyUpdateRouteMarker = (
+        imei: string,
+        point: any,
+        heading?: number,
+        statusClass?: string,
+      ) => {
+        const gps = point?.gps || {};
+        const io = point?.io || {};
+        const timestamp = point?.timestamp;
+        const vehicle = vehiclesRef.current.find((v) => v.imei === imei);
+        const calibratedCapacity = fuelCalibrationRef.current.get(imei) ?? null;
+        const fuelSummary = computeFuelSummary(io, vehicle, calibratedCapacity);
+        const statusInfo = deriveMovementStatus({ gps, io });
+        const tooltipHtml = renderVehicleTooltip({
+          vehicle,
+          device: {
+            data: {
+              gps: { ...gps, Angle: heading },
+              io,
+              timestamp,
+            },
+            gps: { ...gps, Angle: heading },
+            io,
+            timestamp,
+          },
+          status: statusInfo,
+          fuelSummary,
+          formatDate: formatTooltipDate,
+        });
+        mapInstanceRef.current?.addOrUpdateMarker({
+          id: imei,
+          lng: gps?.Longitude ?? gps?.longitude ?? gps?.lon,
+          lat: gps?.Latitude ?? gps?.latitude ?? gps?.lat,
+          vehicle,
+          device: { gps, io, timestamp },
+          status: statusInfo.class,
+          html: null,
+          tooltip: tooltipHtml,
+          hasPopup: true,
+        });
+        mapInstanceRef.current?.updateRouteMarker(imei, point, heading, statusClass);
+      };
+      (window as any).trucklyHideOtherMarkers = (imei: string) => {
+        mapInstanceRef.current?.hideOtherMarkers(imei);
+      };
+      (window as any).trucklyShowAllMarkers = () => {
+        mapInstanceRef.current?.showAllMarkers();
+      };
+      (window as any).trucklyApplyAvlCache = (targetImei?: string) => {
+        const entries = targetImei
+          ? [[targetImei, avlCacheRef.current.get(targetImei)]]
+          : Array.from(avlCacheRef.current.entries());
+        entries.forEach(([imei, payload]) => {
+          if (!payload || !mapInstanceRef.current) return;
+          const data = payload?.data || payload;
+          const gps =
+            data?.gps ||
+            data?.data?.gps ||
+            data?.data ||
+            data;
+          const lat = toNumber(
+            gps?.lat ??
+              gps?.latitude ??
+              gps?.Latitude ??
+              gps?.position?.lat ??
+              gps?.position?.Latitude,
+          );
+          const lon = toNumber(
+            gps?.lon ??
+              gps?.lng ??
+              gps?.longitude ??
+              gps?.Longitude ??
+              gps?.position?.lon ??
+              gps?.position?.lng ??
+              gps?.position?.Longitude,
+          );
+
+          if (!isValidCoordinate(lat, lon)) return;
+
+          const vehicle = vehiclesRef.current.find((v) => v.imei === imei);
+          const io = data?.io || data?.data?.io || {};
+          const statusInfo = deriveMovementStatus(data);
+          const calibratedCapacity =
+            fuelCalibrationRef.current.get(imei) ?? null;
+          const computedFuel = computeFuelSummary(
+            io,
+            vehicle,
+            calibratedCapacity,
+          );
+          const rawFuel = data?.fuelSummary || {};
+          const fuelSummary = {
+            liters:
+              toNumber(rawFuel.liters) ??
+              computedFuel.liters ??
+              null,
+            percent:
+              toNumber(rawFuel.percent) ??
+              computedFuel.percent ??
+              null,
+            capacity:
+              toNumber(rawFuel.capacity) ??
+              computedFuel.capacity ??
+              null,
+          };
+          const markerStatus =
+            statusInfo.class === "success"
+              ? "driving"
+              : statusInfo.class === "warning"
+              ? "working"
+              : statusInfo.class === "danger"
+              ? "resting"
+              : "";
+
+          const markerHtml = renderVehicleMarker({
+            vehicle,
+            status: markerStatus,
+          });
+          const tooltipHtml = renderVehicleTooltip({
+            vehicle,
+            device: { data },
+            status: statusInfo,
+            fuelSummary,
+            driverEvents: data?.driverEvents,
+            formatDate: formatTooltipDate,
+          });
+
+          mapInstanceRef.current?.addOrUpdateMarker({
+            id: imei,
+            lng: lon!,
+            lat: lat!,
+            vehicle,
+            device: data,
+            status: statusInfo.class,
+            angle: gps?.angle ?? gps?.Angle,
+            html: markerHtml,
+            tooltip: tooltipHtml,
+            hasPopup: true,
+          });
+        });
+      };
+      (window as any).trucklyStartGeofence = (imei: string) => {
+        mapInstanceRef.current?.startGeofence(imei);
+      };
+      (window as any).trucklyUpdateGeofence = (
+        geofenceId: string,
+        center: { lng: number; lat: number },
+        radiusMeters: number,
+      ) => {
+        mapInstanceRef.current?.updateGeofence(geofenceId, center, radiusMeters);
+      };
+
+      try {
+        const saved = window.localStorage.getItem("truckly:map-style") as
+          | "base"
+          | "light"
+          | "dark"
+          | "satellite"
+          | null;
+        if (saved === "base" || saved === "light" || saved === "dark" || saved === "satellite") {
+          mapInstanceRef.current?.setBaseStyle(saved);
+        }
+      } catch {}
+
       if (vehiclesRef.current.length) {
         renderStaticMarkers(instance, vehiclesRef.current);
       }
@@ -383,9 +563,11 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         (payload) => {
           
           const imei = payload?.imei || payload?.deviceId || payload?.id;
-          
-          
+
+
           if (!imei) return;
+          avlCacheRef.current.set(imei, payload);
+          if ((window as any).rewinding) return;
           
 
           const data = payload?.data || payload;
@@ -499,10 +681,12 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       if (!target) return;
       const driverButton = target.closest("[data-action='driver']") as HTMLElement | null;
       const fuelButton = target.closest("[data-action='fuel']") as HTMLElement | null;
+      const routesButton = target.closest("[data-action='routes']") as HTMLElement | null;
+      const geofenceButton = target.closest("[data-action='geofence']") as HTMLElement | null;
 
-      if (!driverButton && !fuelButton) return;
+      if (!driverButton && !fuelButton && !routesButton && !geofenceButton) return;
 
-      const tooltip = (driverButton || fuelButton)?.closest(".truckly-tooltip") as HTMLElement | null;
+      const tooltip = (driverButton || fuelButton || routesButton || geofenceButton)?.closest(".truckly-tooltip") as HTMLElement | null;
       const imei = tooltip?.getAttribute("data-imei") || null;
 
       if (driverButton) {
@@ -520,12 +704,65 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             detail: { mode: "fuel", imei },
           }),
         );
+        return;
+      }
+
+      if (routesButton) {
+        window.dispatchEvent(
+          new CustomEvent("truckly:routes-open", {
+            detail: { imei },
+          }),
+        );
+        return;
+      }
+
+      if (geofenceButton) {
+        (window as any).trucklyStartGeofence?.(imei);
       }
     };
 
     document.addEventListener("click", handleTooltipAction, true);
     return () => {
       document.removeEventListener("click", handleTooltipAction, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleRoutesOpen = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const imei = detail?.imei || null;
+      if (!imei) return;
+      (window as any).rewinding = true;
+      mapInstanceRef.current?.hideOtherMarkers(imei);
+    };
+
+    window.addEventListener("truckly:routes-open", handleRoutesOpen as EventListener);
+    return () => {
+      window.removeEventListener("truckly:routes-open", handleRoutesOpen as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMapStyle = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const mode =
+        detail?.mode === "base" ||
+        detail?.mode === "light" ||
+        detail?.mode === "dark" ||
+        detail?.mode === "satellite"
+          ? detail.mode
+          : null;
+      if (mode) {
+        mapInstanceRef.current?.setBaseStyle(mode);
+        try {
+          window.localStorage.setItem("truckly:map-style", mode);
+        } catch {}
+      }
+    };
+
+    window.addEventListener("truckly:map-style", handleMapStyle as EventListener);
+    return () => {
+      window.removeEventListener("truckly:map-style", handleMapStyle as EventListener);
     };
   }, []);
 

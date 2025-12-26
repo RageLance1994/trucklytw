@@ -55,6 +55,7 @@ export type TrucklyMapOptions = {
 };
 
 const MAX_ZOOM = 15;
+const MAX_MAP_ZOOM = 19;
 const CLUSTER_MIN_ZOOM = 12;
 const CLUSTER_BASE_KM = 0.4;
 const REGEX_ESCAPE = /[.*+?^${}()|[\]\\]/g;
@@ -63,6 +64,8 @@ const escapeRegex = (value = "") => value.replace(REGEX_ESCAPE, "\\$&");
 export class TrucklyMap {
   map: MlMap;
   markers: Map<string, ManagedMarker> = new Map();
+  _routeLayers: Map<string, { sourceId: string; layerId: string; casingId: string }> =
+    new Map();
   _clusterUpdateScheduled = false;
   _clusterUpdateFrame: number | null = null;
   _clusters: ClusterBucket[] = [];
@@ -71,10 +74,46 @@ export class TrucklyMap {
   hoveringMarker = false;
   onMarkerSelect?: (marker: ManagedMarker) => void;
   _lastMarkerCollapseValue: "true" | "false" | null = null;
+  _hiddenMarkers: Set<string> = new Set();
+  _geofenceLayers: Map<
+    string,
+    { sourceId: string; fillId: string; outlineId: string; outlineHaloId: string }
+  > = new Map();
+  _geofenceState: {
+    active: boolean;
+    imei: string | null;
+    center: { lng: number; lat: number } | null;
+    onClick?: (ev: any) => void;
+    onMove?: (ev: any) => void;
+    raySourceId?: string;
+    rayLayerId?: string;
+    previewSourceId?: string;
+    previewFillId?: string;
+    previewOutlineId?: string;
+  } = {
+    active: false,
+    imei: null,
+    center: null,
+  };
 
   styles = {
+    base: "/maps/style.json",
     dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    satellite: {
+      version: 8,
+      sources: {
+        satellite: {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          attribution: "Source: Esri, Maxar, Earthstar Geographics",
+        },
+      },
+      layers: [{ id: "satellite", type: "raster", source: "satellite" }],
+    },
   };
 
   constructor(opts: TrucklyMapOptions) {
@@ -98,6 +137,7 @@ export class TrucklyMap {
       style: styleUrl || themeStyle,
       center,
       zoom,
+      maxZoom: MAX_MAP_ZOOM,
       attributionControl: false,
     });
 
@@ -113,9 +153,526 @@ export class TrucklyMap {
   }
 
   destroy() {
+    this.stopGeofence();
+    this.clearRoute();
     this.markers.forEach((m) => m.remove());
     this.markers.clear();
     this.map?.remove();
+  }
+
+  setBaseStyle(mode: "base" | "light" | "dark" | "satellite") {
+    const style = mode === "satellite" ? this.styles.satellite : this.styles[mode];
+    this.map.setStyle(style as any);
+  }
+
+  _buildCirclePolygon(center: { lng: number; lat: number }, radiusMeters: number, steps = 64) {
+    const coords = [];
+    const latFactor = 1 / 111320;
+    const lonFactor = 1 / (111320 * Math.cos((center.lat * Math.PI) / 180));
+    for (let i = 0; i <= steps; i += 1) {
+      const angle = (i / steps) * Math.PI * 2;
+      const dx = Math.cos(angle) * radiusMeters * lonFactor;
+      const dy = Math.sin(angle) * radiusMeters * latFactor;
+      coords.push([center.lng + dx, center.lat + dy]);
+    }
+    return {
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [coords] },
+      properties: {},
+    };
+  }
+
+  startGeofence(imei: string) {
+    if (!imei) return;
+    this.stopGeofence();
+    this._geofenceState = {
+      active: true,
+      imei,
+      center: null,
+    };
+    const map = this.map;
+    map.getCanvas().style.cursor = "crosshair";
+
+    const handleClick = (ev: any) => {
+      const lngLat = ev?.lngLat;
+      if (!lngLat) return;
+      if (!this._geofenceState.center) {
+        this._geofenceState.center = { lng: lngLat.lng, lat: lngLat.lat };
+        const raySourceId = `geofence-ray-${imei}`;
+        const rayLayerId = `geofence-ray-layer-${imei}`;
+        const previewSourceId = `geofence-preview-${imei}`;
+        const previewFillId = `geofence-preview-fill-${imei}`;
+        const previewOutlineId = `geofence-preview-outline-${imei}`;
+        this._geofenceState.raySourceId = raySourceId;
+        this._geofenceState.rayLayerId = rayLayerId;
+        this._geofenceState.previewSourceId = previewSourceId;
+        this._geofenceState.previewFillId = previewFillId;
+        this._geofenceState.previewOutlineId = previewOutlineId;
+
+        try {
+          map.addSource(raySourceId, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  [lngLat.lng, lngLat.lat],
+                  [lngLat.lng, lngLat.lat],
+                ],
+              },
+              properties: {},
+            },
+          });
+          map.addLayer({
+            id: `${rayLayerId}-halo`,
+            type: "line",
+            source: raySourceId,
+            paint: {
+              "line-color": "#000000",
+              "line-width": 4,
+              "line-dasharray": [2, 2],
+              "line-opacity": 0.5,
+            },
+          });
+          map.addLayer({
+            id: rayLayerId,
+            type: "line",
+            source: raySourceId,
+            paint: {
+              "line-color": "#0b1d2a",
+              "line-width": 2,
+              "line-dasharray": [2, 2],
+              "line-opacity": 0.9,
+            },
+          });
+        } catch {}
+
+        try {
+          map.addSource(previewSourceId, {
+            type: "geojson",
+            data: this._buildCirclePolygon(
+              { lng: lngLat.lng, lat: lngLat.lat },
+              50,
+            ),
+          });
+          map.addLayer({
+            id: previewFillId,
+            type: "fill",
+            source: previewSourceId,
+            paint: {
+              "fill-color": "#0b1d2a",
+              "fill-opacity": 0.16,
+            },
+          });
+          map.addLayer({
+            id: `${previewOutlineId}-halo`,
+            type: "line",
+            source: previewSourceId,
+            paint: {
+              "line-color": "#000000",
+              "line-width": 4,
+              "line-opacity": 0.5,
+            },
+          });
+          map.addLayer({
+            id: previewOutlineId,
+            type: "line",
+            source: previewSourceId,
+            paint: {
+              "line-color": "#0b1d2a",
+              "line-width": 2,
+              "line-dasharray": [4, 4],
+              "line-opacity": 0.95,
+            },
+          });
+        } catch {}
+
+        return;
+      }
+
+      const center = this._geofenceState.center;
+      const radiusMeters = this.distanceKm(
+        [center.lat, center.lng],
+        [lngLat.lat, lngLat.lng],
+      ) * 1000;
+      const feature = this._buildCirclePolygon(center, Math.max(50, radiusMeters));
+      const id = `geofence-${imei}-${Date.now()}`;
+      const sourceId = `${id}-src`;
+      const layerId = `${id}-layer`;
+
+      try {
+        map.addSource(sourceId, {
+          type: "geojson",
+          data: feature,
+        });
+        map.addLayer({
+          id: layerId,
+          type: "fill",
+          source: sourceId,
+          paint: {
+            "fill-color": "#0b1d2a",
+            "fill-opacity": 0.18,
+          },
+        });
+        map.addLayer({
+          id: `${layerId}-outline-halo`,
+          type: "line",
+          source: sourceId,
+          paint: {
+            "line-color": "#000000",
+            "line-width": 4,
+            "line-opacity": 0.55,
+          },
+        });
+        map.addLayer({
+          id: `${layerId}-outline`,
+          type: "line",
+          source: sourceId,
+          paint: {
+            "line-color": "#0b1d2a",
+            "line-width": 2,
+          },
+        });
+        this._geofenceLayers.set(id, {
+          sourceId,
+          fillId: layerId,
+          outlineId: `${layerId}-outline`,
+          outlineHaloId: `${layerId}-outline-halo`,
+        });
+      } catch {}
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent("truckly:geofence-created", {
+            detail: {
+              imei,
+              center,
+              radiusMeters,
+              feature,
+              geofenceId: id,
+            },
+          }),
+        );
+      } catch {}
+
+      this.stopGeofence();
+    };
+
+    const handleMove = (ev: any) => {
+      if (!this._geofenceState.center) return;
+      const lngLat = ev?.lngLat;
+      if (!lngLat) return;
+      const center = this._geofenceState.center;
+      const radiusMeters = this.distanceKm(
+        [center.lat, center.lng],
+        [lngLat.lat, lngLat.lng],
+      ) * 1000;
+      const raySourceId = this._geofenceState.raySourceId;
+      const previewSourceId = this._geofenceState.previewSourceId;
+      if (raySourceId) {
+        const raySource = map.getSource(raySourceId) as any;
+        raySource?.setData?.({
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [center.lng, center.lat],
+              [lngLat.lng, lngLat.lat],
+            ],
+          },
+          properties: {},
+        });
+      }
+      if (previewSourceId) {
+        const previewSource = map.getSource(previewSourceId) as any;
+        previewSource?.setData?.(
+          this._buildCirclePolygon(center, Math.max(50, radiusMeters)),
+        );
+      }
+    };
+
+    this._geofenceState.onClick = handleClick;
+    this._geofenceState.onMove = handleMove;
+    map.on("click", handleClick);
+    map.on("mousemove", handleMove);
+  }
+
+  stopGeofence() {
+    if (!this._geofenceState.active) return;
+    const map = this.map;
+    if (this._geofenceState.onClick) {
+      try {
+        map.off("click", this._geofenceState.onClick);
+      } catch {}
+    }
+    if (this._geofenceState.onMove) {
+      try {
+        map.off("mousemove", this._geofenceState.onMove);
+      } catch {}
+    }
+      try {
+        const rayLayerId = this._geofenceState.rayLayerId;
+        const raySourceId = this._geofenceState.raySourceId;
+        if (rayLayerId && map.getLayer(`${rayLayerId}-halo`)) {
+          map.removeLayer(`${rayLayerId}-halo`);
+        }
+        if (rayLayerId && map.getLayer(rayLayerId)) map.removeLayer(rayLayerId);
+        if (raySourceId && map.getSource(raySourceId)) map.removeSource(raySourceId);
+      } catch {}
+      try {
+        const previewFillId = this._geofenceState.previewFillId;
+        const previewOutlineId = this._geofenceState.previewOutlineId;
+        const previewSourceId = this._geofenceState.previewSourceId;
+        if (previewFillId && map.getLayer(previewFillId)) map.removeLayer(previewFillId);
+        if (previewOutlineId && map.getLayer(`${previewOutlineId}-halo`)) {
+          map.removeLayer(`${previewOutlineId}-halo`);
+        }
+        if (previewOutlineId && map.getLayer(previewOutlineId)) map.removeLayer(previewOutlineId);
+        if (previewSourceId && map.getSource(previewSourceId)) map.removeSource(previewSourceId);
+      } catch {}
+    map.getCanvas().style.cursor = "";
+    this._geofenceState = { active: false, imei: null, center: null };
+  }
+
+  updateGeofence(geofenceId: string, center: { lng: number; lat: number }, radiusMeters: number) {
+    if (!geofenceId) return;
+    const entry = this._geofenceLayers.get(geofenceId);
+    if (!entry) return;
+    const map = this.map;
+    const source = map.getSource(entry.sourceId) as any;
+    if (!source?.setData) return;
+    const feature = this._buildCirclePolygon(center, Math.max(50, radiusMeters));
+    source.setData(feature);
+  }
+
+  _withStyleReady(cb: () => void) {
+    const map = this.map;
+    if (map.isStyleLoaded && map.isStyleLoaded()) {
+      cb();
+      return;
+    }
+    map.once?.("load", cb);
+  }
+
+  clearRoute(imei?: string) {
+    const map = this.map;
+    const removeOne = (routeImei: string) => {
+      const ids = this._routeLayers.get(routeImei);
+      if (!ids) return;
+      try {
+        if (map.getLayer(ids.layerId)) map.removeLayer(ids.layerId);
+      } catch {}
+      try {
+        if (map.getLayer(ids.casingId)) map.removeLayer(ids.casingId);
+      } catch {}
+      try {
+        if (map.getSource(ids.sourceId)) map.removeSource(ids.sourceId);
+      } catch {}
+      this._routeLayers.delete(routeImei);
+    };
+
+    if (imei) {
+      removeOne(imei);
+      return;
+    }
+    Array.from(this._routeLayers.keys()).forEach(removeOne);
+  }
+
+  drawRoute(imei: string, history: Array<{ gps?: any; io?: any }>) {
+    if (!imei || !Array.isArray(history) || !history.length) return;
+    const map = this.map;
+
+    this._withStyleReady(() => {
+      this.clearRoute(imei);
+
+      const features = [];
+      for (let i = 0; i < history.length - 1; i += 1) {
+        const a = history[i];
+        const b = history[i + 1];
+        const aGps = a?.gps || {};
+        const bGps = b?.gps || {};
+        const aLon = Number(aGps.Longitude ?? aGps.longitude ?? aGps.lon);
+        const aLat = Number(aGps.Latitude ?? aGps.latitude ?? aGps.lat);
+        const bLon = Number(bGps.Longitude ?? bGps.longitude ?? bGps.lon);
+        const bLat = Number(bGps.Latitude ?? bGps.latitude ?? bGps.lat);
+        if (
+          !Number.isFinite(aLon) ||
+          !Number.isFinite(aLat) ||
+          !Number.isFinite(bLon) ||
+          !Number.isFinite(bLat)
+        ) {
+          continue;
+        }
+
+        const speed = Number(aGps.Speed ?? a?.io?.speed ?? 0);
+        const ignition = Number(a?.io?.ignition ?? a?.io?.ignitionStatus ?? 0);
+        let color = "#00ff00";
+        if (speed <= 5 && ignition === 1) color = "#ffd000";
+        if (speed <= 5 && ignition === 0) color = "#ff0000";
+
+        features.push({
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [aLon, aLat],
+              [bLon, bLat],
+            ],
+          },
+          properties: { color, index: i },
+        });
+      }
+
+      if (!features.length) return;
+
+      const sourceId = `route-${imei}`;
+      const layerId = `route-line-${imei}`;
+      const casingId = `route-casing-${imei}`;
+      this._routeLayers.set(imei, { sourceId, layerId, casingId });
+
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features },
+      });
+
+      try {
+        map.addLayer({
+          id: casingId,
+          type: "line",
+          source: sourceId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              3,
+              10,
+              6,
+              14,
+              9,
+              18,
+              14,
+            ],
+            "line-color": "#000000",
+            "line-opacity": 0.25,
+          },
+        });
+      } catch {}
+
+      try {
+        map.addLayer({
+          id: layerId,
+          type: "line",
+          source: sourceId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              2,
+              10,
+              4,
+              14,
+              6,
+              18,
+              10,
+            ],
+            "line-color": ["case", ["has", "color"], ["get", "color"], "#00ff00"],
+            "line-opacity": 0.95,
+          },
+        });
+      } catch {}
+
+      const points = history
+        .map((point) => {
+          const gps = point?.gps || {};
+          const lon = Number(gps.Longitude ?? gps.longitude ?? gps.lon);
+          const lat = Number(gps.Latitude ?? gps.latitude ?? gps.lat);
+          return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+        })
+        .filter(Boolean) as [number, number][];
+
+      if (points.length > 1 && typeof map.fitBounds === "function") {
+        const lons = points.map((p) => p[0]);
+        const lats = points.map((p) => p[1]);
+        const sw = [Math.min(...lons), Math.min(...lats)];
+        const ne = [Math.max(...lons), Math.max(...lats)];
+        if (
+          Number.isFinite(sw[0]) &&
+          Number.isFinite(sw[1]) &&
+          Number.isFinite(ne[0]) &&
+          Number.isFinite(ne[1])
+        ) {
+          map.fitBounds([sw, ne], { padding: 60, maxZoom: 14 });
+        }
+      }
+    });
+  }
+
+  setRouteProgress(imei: string, position: number) {
+    const ids = this._routeLayers.get(imei);
+    if (!ids) return;
+    const map = this.map;
+    const idx = Math.max(0, Math.floor(position));
+    const filterExpr: any = ["<", ["get", "index"], idx + 1];
+    try {
+      if (map.getLayer(ids.layerId)) {
+        map.setFilter(ids.layerId, filterExpr);
+      }
+      if (map.getLayer(ids.casingId)) {
+        map.setFilter(ids.casingId, filterExpr);
+      }
+    } catch {}
+  }
+
+  updateRouteMarker(
+    imei: string,
+    point: { gps?: any },
+    heading = 0,
+    statusClass = "",
+  ) {
+    const marker = this.markers.get(imei);
+    const gps = point?.gps || {};
+    const lon = Number(gps?.Longitude ?? gps?.longitude ?? gps?.lon);
+    const lat = Number(gps?.Latitude ?? gps?.latitude ?? gps?.lat);
+    if (!marker || !Number.isFinite(lon) || !Number.isFinite(lat)) return;
+
+    marker.setLngLat([lon, lat]);
+    const el = marker.getElement ? marker.getElement() : marker._element;
+    if (el) {
+      el.querySelectorAll<HTMLElement>("[data-role='marker-arrow']").forEach((node) => {
+        node.style.transform = `rotate(${heading}deg)`;
+      });
+      ["success", "danger", "warning"].forEach((cls) => el.classList.remove(cls));
+      if (statusClass) el.classList.add(statusClass);
+    }
+  }
+
+  hideOtherMarkers(activeImei: string) {
+    this._hiddenMarkers.clear();
+    this.markers.forEach((marker, id) => {
+      if (id === activeImei) return;
+      const el = marker.getElement ? marker.getElement() : marker._element;
+      if (!el) return;
+      if (el.style.display !== "none") {
+        el.style.display = "none";
+        this._hiddenMarkers.add(id);
+      }
+    });
+  }
+
+  showAllMarkers() {
+    this._hiddenMarkers.forEach((id) => {
+      const marker = this.markers.get(id);
+      const el = marker?.getElement ? marker.getElement() : marker?._element;
+      if (el) el.style.display = "";
+    });
+    this._hiddenMarkers.clear();
   }
 
   _resolveTheme(preferred?: "light" | "dark") {
@@ -366,6 +923,7 @@ export class TrucklyMap {
   }
 
   resetClusterState({ animate = true } = {}) {
+    if (typeof window !== "undefined" && (window as any).rewinding) return;
     const zoom = this.map?.getZoom?.();
     this.markers.forEach((marker) => {
       const el = (marker as ManagedMarker)?._element;
@@ -404,6 +962,7 @@ export class TrucklyMap {
   }
 
   _scheduleUpdateClusters({ force = false }: { force?: boolean } = {}) {
+    if (typeof window !== "undefined" && (window as any).rewinding) return;
     if (force && this._clusterUpdateFrame !== null) {
       cancelAnimationFrame(this._clusterUpdateFrame);
       this._clusterUpdateFrame = null;
@@ -419,6 +978,7 @@ export class TrucklyMap {
   }
 
   updateClusters() {
+    if (typeof window !== "undefined" && (window as any).rewinding) return;
     if (!this.map || typeof this.map.getZoom !== "function") return;
     if (this.markers.size <= 1) {
       this.resetClusterState({ animate: true });
