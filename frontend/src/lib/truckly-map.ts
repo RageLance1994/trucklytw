@@ -185,6 +185,8 @@ export class TrucklyMap {
   startGeofence(imei: string) {
     if (!imei) return;
     this.stopGeofence();
+    this.closeOtherPopups(null);
+    this._setMarkersDimmed(true);
     this._geofenceState = {
       active: true,
       imei,
@@ -433,6 +435,7 @@ export class TrucklyMap {
       } catch {}
     map.getCanvas().style.cursor = "";
     this._geofenceState = { active: false, imei: null, center: null };
+    this._setMarkersDimmed(false);
   }
 
   updateGeofence(geofenceId: string, center: { lng: number; lat: number }, radiusMeters: number) {
@@ -778,6 +781,7 @@ export class TrucklyMap {
           }
           try {
             popup.on("open", () => {
+              this.closeOtherPopups(marker!);
               this.focusMarker(marker!, { openPopup: false });
             });
           } catch {}
@@ -841,6 +845,7 @@ export class TrucklyMap {
             try {
               (popup as any).off && (popup as any).off("open");
               (popup as any).on && (popup as any).on("open", () => {
+                this.closeOtherPopups(marker!);
                 this.focusMarker(marker!, { openPopup: false });
               });
             } catch {}
@@ -1162,11 +1167,33 @@ export class TrucklyMap {
     this.map.fitBounds(bounds, { padding: 50, maxZoom: 15 });
   }
 
+  closeOtherPopups(activeMarker?: ManagedMarker | null) {
+    this.markers.forEach((marker) => {
+      if (activeMarker && marker === activeMarker) return;
+      const popup = typeof (marker as any).getPopup === "function" ? (marker as any).getPopup() : null;
+      if (!popup) return;
+      try {
+        if (typeof (popup as any).isOpen === "function") {
+          if ((popup as any).isOpen()) popup.remove();
+        } else {
+          popup.remove();
+        }
+      } catch {}
+    });
+    if (this._activeClusterPopup) {
+      try {
+        this._activeClusterPopup.remove();
+      } catch {}
+      this._activeClusterPopup = null;
+    }
+  }
+
   focusMarker(marker: ManagedMarker, { openPopup = true, offset = false } = {}) {
     if (!marker || typeof marker.getLngLat !== "function") return false;
     const lngLat = marker.getLngLat();
     if (!lngLat) return false;
 
+    this.closeOtherPopups(marker);
     this.resetClusterState({ animate: true });
     const currentZoom = this.map?.getZoom?.();
     this.map.flyTo({
@@ -1189,6 +1216,21 @@ export class TrucklyMap {
       }
     }
     return true;
+  }
+
+  _setMarkersDimmed(dimmed: boolean) {
+    const opacity = dimmed ? "0.5" : "1";
+    this.markers.forEach((marker) => {
+      const el = marker.getElement ? marker.getElement() : marker._element;
+      if (!el) return;
+      el.style.opacity = opacity;
+      el.style.pointerEvents = dimmed ? "none" : "";
+      if (dimmed) {
+        el.classList.add("truckly-marker-dimmed");
+      } else {
+        el.classList.remove("truckly-marker-dimmed");
+      }
+    });
   }
 
   findMarkers(query: string | RegExp) {

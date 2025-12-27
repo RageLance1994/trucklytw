@@ -13,6 +13,7 @@ import { MapContainer } from "./MapContainer";
 import { Button } from "./components/ui/button";
 import { Navbar } from "./components/navbar";
 import { DriverSidebar } from "./components/driver-sidebar";
+import { QuickSidebar } from "./components/quick-sidebar";
 import { DriverBottomBar } from "./components/driver-bottom-bar";
 import {
   API_BASE_URL,
@@ -29,6 +30,13 @@ type Vehicle = {
   lon?: number | null;
   status?: string;
   angle?: number;
+  details?: {
+    tanks?: {
+      primary?: { capacity?: number | null };
+      secondary?: { capacity?: number | null };
+      unit?: string;
+    };
+  };
 };
 
 function LoginPage() {
@@ -154,11 +162,13 @@ function DashboardPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [isDriverSidebarOpen, setIsDriverSidebarOpen] = React.useState(false);
+  const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(true);
   const [bottomBarState, setBottomBarState] = React.useState<{
     open: boolean;
     mode: "driver" | "fuel";
   }>({ open: false, mode: "driver" });
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
+  const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
   const [selectedRouteImei, setSelectedRouteImei] = React.useState<string | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<"driver" | "routes" | "geofence">("driver");
@@ -169,6 +179,10 @@ function DashboardPage() {
     radiusMeters: number;
   } | null>(null);
   const selectedFuelImeiRef = React.useRef<string | null>(null);
+  const selectedFuelVehicle = React.useMemo(
+    () => vehicles.find((vehicle) => vehicle.imei === selectedFuelImei) ?? null,
+    [vehicles, selectedFuelImei],
+  );
 
   React.useEffect(() => {
     selectedFuelImeiRef.current = selectedFuelImei;
@@ -210,10 +224,17 @@ function DashboardPage() {
   React.useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail || {};
-      setSelectedDriverImei(detail?.imei || null);
+      const imei = detail?.imei || null;
+      const device =
+        detail?.device ||
+        ((window as any).trucklyGetAvl?.(imei)?.data ||
+          (window as any).trucklyGetAvl?.(imei) ||
+          null);
+      setSelectedDriverImei(imei);
+      setSelectedDriverDevice(device);
       setBottomBarState((prev) => ({ ...prev, open: false }));
       setSidebarMode("driver");
-      setIsDriverSidebarOpen((prev) => !prev);
+      setIsDriverSidebarOpen(true);
     };
     window.addEventListener("truckly:driver-open", handler);
     return () => window.removeEventListener("truckly:driver-open", handler);
@@ -243,6 +264,27 @@ function DashboardPage() {
     window.addEventListener("truckly:bottom-bar-toggle", handler);
     return () => window.removeEventListener("truckly:bottom-bar-toggle", handler);
   }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      const imei = detail?.vehicle?.imei || null;
+      const device = detail?.device || null;
+      if (!imei) return;
+
+      if (isDriverSidebarOpen && sidebarMode === "driver") {
+        setSelectedDriverImei(imei);
+        setSelectedDriverDevice(device);
+      }
+
+      if (bottomBarState.open && bottomBarState.mode === "fuel") {
+        setSelectedFuelImei(imei);
+      }
+    };
+
+    window.addEventListener("vchange", handler);
+    return () => window.removeEventListener("vchange", handler);
+  }, [bottomBarState.open, bottomBarState.mode, isDriverSidebarOpen, sidebarMode]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -292,11 +334,17 @@ function DashboardPage() {
       ) : (
         <div className="relative h-full w-full">
           <MapContainer vehicles={vehicles} />
+          <QuickSidebar
+            isOpen={isQuickSidebarOpen}
+            onClose={() => setIsQuickSidebarOpen(false)}
+            vehicles={vehicles}
+          />
           <DriverSidebar
             isOpen={isDriverSidebarOpen}
             onClose={() => setIsDriverSidebarOpen(false)}
             selectedDriverImei={selectedDriverImei}
             selectedRouteImei={selectedRouteImei}
+            selectedDriverDevice={selectedDriverDevice}
             mode={sidebarMode}
             geofenceDraft={geofenceDraft}
           />
@@ -306,7 +354,17 @@ function DashboardPage() {
             onClose={() => setBottomBarState((prev) => ({ ...prev, open: false }))}
             selectedDriverImei={selectedDriverImei}
             selectedVehicleImei={selectedFuelImei}
+            selectedVehicle={selectedFuelVehicle}
           />
+          {!isQuickSidebarOpen && (
+            <button
+              type="button"
+              onClick={() => setIsQuickSidebarOpen(true)}
+              className="fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#10121a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur hover:text-white hover:border-white/40 transition"
+            >
+              Vista rapida
+            </button>
+          )}
         </div>
       )}
     </div>

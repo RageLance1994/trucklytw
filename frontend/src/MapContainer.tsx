@@ -227,7 +227,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         onMarkerSelect: (marker) => {
           window.dispatchEvent(
             new CustomEvent("vchange", {
-              detail: { vehicle: marker.vehicle },
+              detail: { vehicle: marker.vehicle, device: marker.device },
             }),
           );
         },
@@ -445,6 +445,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             hasPopup: true,
           });
         });
+      };
+      (window as any).trucklyGetAvl = (imei: string) => {
+        if (!imei) return null;
+        return avlCacheRef.current.get(imei) ?? null;
       };
       (window as any).trucklyStartGeofence = (imei: string) => {
         mapInstanceRef.current?.startGeofence(imei);
@@ -690,9 +694,11 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       const imei = tooltip?.getAttribute("data-imei") || null;
 
       if (driverButton) {
+        const avlPayload = imei ? avlCacheRef.current.get(imei) : null;
+        const device = avlPayload?.data || avlPayload || null;
         window.dispatchEvent(
           new CustomEvent("truckly:driver-open", {
-            detail: { imei },
+            detail: { imei, device },
           }),
         );
         return;

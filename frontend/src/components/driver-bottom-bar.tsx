@@ -8,6 +8,7 @@ type DriverBottomBarProps = {
   onClose?: () => void;
   selectedDriverImei?: string | null;
   selectedVehicleImei?: string | null;
+  selectedVehicle?: FuelVehicle | null;
   mode: BottomBarMode;
 };
 
@@ -38,6 +39,16 @@ type FuelSample = {
   liters: number | null;
   tank1: number | null;
   tank2: number | null;
+};
+
+type FuelVehicle = {
+  details?: {
+    tanks?: {
+      primary?: { capacity?: number | null };
+      secondary?: { capacity?: number | null };
+      unit?: string;
+    };
+  };
 };
 
 const formatDateLabel = (value?: string) => {
@@ -146,6 +157,13 @@ const formatLiters = (value?: number | null) => {
   const abs = Math.abs(value as number);
   const precision = abs >= 100 ? 0 : 1;
   return `${(value as number).toFixed(precision)} L`;
+};
+
+const getTankCapacity = (vehicle?: FuelVehicle | null) => {
+  const primary = Number(vehicle?.details?.tanks?.primary?.capacity) || 0;
+  const secondary = Number(vehicle?.details?.tanks?.secondary?.capacity) || 0;
+  const total = primary + secondary;
+  return total > 0 ? total : null;
 };
 
 
@@ -305,6 +323,7 @@ export function DriverBottomBar({
   onClose,
   selectedDriverImei,
   selectedVehicleImei,
+  selectedVehicle,
   mode,
 }: DriverBottomBarProps) {
   const title = mode === "fuel" ? "Fuel dashboard" : "Driver activity + tables";
@@ -345,6 +364,7 @@ export function DriverBottomBar({
           <FuelDashboard
             isOpen={isOpen}
             selectedVehicleImei={selectedVehicleImei}
+            selectedVehicle={selectedVehicle}
           />
         ) : (
           <DriverDashboard selectedDriverImei={selectedDriverImei} />
@@ -622,9 +642,11 @@ function DriverDashboard({
 function FuelDashboard({
   isOpen,
   selectedVehicleImei,
+  selectedVehicle,
 }: {
   isOpen: boolean;
   selectedVehicleImei?: string | null;
+  selectedVehicle?: FuelVehicle | null;
 }) {
   const now = React.useMemo(() => new Date(), []);
   const [startDate, setStartDate] = React.useState(
@@ -757,6 +779,7 @@ function FuelDashboard({
                 key={selectedVehicleImei || "no-vehicle"}
                 historyRaw={historyRaw}
                 events={events}
+                tankCapacity={getTankCapacity(selectedVehicle)}
               />
             )}
           </div>
@@ -811,7 +834,15 @@ function FuelDashboard({
   );
 }
 
-function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEvent[] }) {
+function FuelEChart({
+  historyRaw,
+  events,
+  tankCapacity,
+}: {
+  historyRaw: any[];
+  events: FuelEvent[];
+  tankCapacity?: number | null;
+}) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<any>(null);
 
@@ -836,6 +867,10 @@ function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEve
     }
 
     const { fuel } = buildFuelSeries(samples);
+    const maxCapacity =
+      Number.isFinite(tankCapacity) && (tankCapacity as number) > 0
+        ? (tankCapacity as number)
+        : null;
     const spans = events
       .filter((evt) => evt.isRefuel || evt.isWithdrawal)
       .map((evt) => {
@@ -898,8 +933,8 @@ function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEve
         yAxis: {
           type: "value",
           name: "Carburante (L)",
-          min: "dataMin",
-          max: "dataMax",
+          min: maxCapacity ? 0 : "dataMin",
+          max: maxCapacity ?? "dataMax",
           nameLocation: "end",
           nameGap: 18,
           nameTextStyle: { color: "#fbbf24", fontSize: 12, padding: [0, 0, 8, 0] },
@@ -942,7 +977,7 @@ function FuelEChart({ historyRaw, events }: { historyRaw: any[]; events: FuelEve
       },
       true,
     );
-  }, [historyRaw, events]);
+  }, [historyRaw, events, tankCapacity]);
 
   React.useEffect(() => {
     renderChart();

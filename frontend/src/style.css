@@ -149,6 +149,10 @@
   white-space: nowrap;
 }
 
+.truckly-marker-dimmed {
+  opacity: 0.5 !important;
+}
+
 .cluster-popup-outer {
   background: transparent;
   border-radius: 18px;
