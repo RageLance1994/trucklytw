@@ -953,7 +953,7 @@ export function DriverSidebar({
 
   return (
     <aside
-      className={`fixed top-0 bottom-0 right-0 z-40 w-[520px] max-w-lg border-l border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-x-0" : "hidden-right"
       }`}
       aria-hidden={!isOpen}
@@ -982,7 +982,7 @@ export function DriverSidebar({
         )}
       </div>
 
-      <div className="flex-1 overflow-hidden px-4 py-5 space-y-4 bg-[#0e0f14]">
+      <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0e0f14]">
         {isGeofenceMode ? (
           <GeofenceSidebar geofenceDraft={geofenceDraft} />
         ) : isRoutesMode ? (

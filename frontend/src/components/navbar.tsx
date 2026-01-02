@@ -18,7 +18,45 @@ export function Navbar() {
   const [mobileSection, setMobileSection] = React.useState<
     "flotta" | "analisi" | "mappe" | "impostazioni" | null
   >(null);
+  const [mapStyle, setMapStyle] = React.useState<
+    "base" | "light" | "dark" | "satellite"
+  >("base");
   const timeoutRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem("truckly:map-style");
+      if (
+        saved === "base" ||
+        saved === "light" ||
+        saved === "dark" ||
+        saved === "satellite"
+      ) {
+        setMapStyle(saved);
+      }
+    } catch {}
+
+    const handleMapStyle = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const mode =
+        detail?.mode === "base" ||
+        detail?.mode === "light" ||
+        detail?.mode === "dark" ||
+        detail?.mode === "satellite"
+          ? detail.mode
+          : null;
+      if (mode) setMapStyle(mode);
+    };
+
+    window.addEventListener("truckly:map-style", handleMapStyle as EventListener);
+    return () => {
+      window.removeEventListener(
+        "truckly:map-style",
+        handleMapStyle as EventListener,
+      );
+    };
+  }, []);
 
   const runSearch = React.useCallback((value: string) => {
     const query = value.trim();
@@ -130,6 +168,7 @@ export function Navbar() {
                   <DropdownMenuSubTrigger>Tipo</DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
                     <DropdownMenuItem
+                      className="flex items-center gap-2"
                       onSelect={() =>
                         window.dispatchEvent(
                           new CustomEvent("truckly:map-style", {
@@ -138,9 +177,16 @@ export function Navbar() {
                         )
                       }
                     >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          mapStyle === "satellite" ? "bg-emerald-400" : "opacity-0"
+                        }`}
+                        aria-hidden="true"
+                      />
                       Satellite
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      className="flex items-center gap-2"
                       onSelect={() =>
                         window.dispatchEvent(
                           new CustomEvent("truckly:map-style", {
@@ -149,9 +195,16 @@ export function Navbar() {
                         )
                       }
                     >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          mapStyle === "base" ? "bg-emerald-400" : "opacity-0"
+                        }`}
+                        aria-hidden="true"
+                      />
                       Base
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      className="flex items-center gap-2"
                       onSelect={() =>
                         window.dispatchEvent(
                           new CustomEvent("truckly:map-style", {
@@ -160,9 +213,16 @@ export function Navbar() {
                         )
                       }
                     >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          mapStyle === "light" ? "bg-emerald-400" : "opacity-0"
+                        }`}
+                        aria-hidden="true"
+                      />
                       Chiaro
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      className="flex items-center gap-2"
                       onSelect={() =>
                         window.dispatchEvent(
                           new CustomEvent("truckly:map-style", {
@@ -171,6 +231,12 @@ export function Navbar() {
                         )
                       }
                     >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          mapStyle === "dark" ? "bg-emerald-400" : "opacity-0"
+                        }`}
+                        aria-hidden="true"
+                      />
                       Scuro
                     </DropdownMenuItem>
                   </DropdownMenuSubContent>
@@ -334,7 +400,7 @@ export function Navbar() {
             </summary>
             <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -343,10 +409,16 @@ export function Navbar() {
                   )
                 }
               >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    mapStyle === "base" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
                 Base
               </button>
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -355,10 +427,16 @@ export function Navbar() {
                   )
                 }
               >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    mapStyle === "satellite" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
                 Satellite
               </button>
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -367,10 +445,16 @@ export function Navbar() {
                   )
                 }
               >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    mapStyle === "light" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
                 Chiaro
               </button>
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -379,6 +463,12 @@ export function Navbar() {
                   )
                 }
               >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    mapStyle === "dark" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
                 Scuro
               </button>
             </div>
