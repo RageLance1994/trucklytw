@@ -1,4 +1,6 @@
 import React from "react";
+import { API_BASE_URL } from "../config";
+import { TagInput } from "./tag-input";
 
 type DriverSidebarProps = {
   isOpen: boolean;
@@ -6,7 +8,7 @@ type DriverSidebarProps = {
   selectedDriverImei?: string | null;
   selectedRouteImei?: string | null;
   selectedDriverDevice?: any | null;
-  mode?: "driver" | "routes" | "geofence";
+  mode?: "driver" | "routes" | "geofence" | "vehicle";
   geofenceDraft?: {
     geofenceId: string;
     imei: string;
@@ -913,6 +915,7 @@ export function DriverSidebar({
 
   const isRoutesMode = mode === "routes";
   const isGeofenceMode = mode === "geofence";
+  const isVehicleMode = mode === "vehicle";
 
   React.useEffect(() => {
     let cancelled = false;
@@ -962,13 +965,21 @@ export function DriverSidebar({
         <div className="space-y-1.5">
           <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Pannello</p>
           <h2 className="text-xl font-semibold leading-tight text-white">
-            {isGeofenceMode ? "GeoFence" : isRoutesMode ? "Percorsi" : "Autista"}
+            {isGeofenceMode
+              ? "GeoFence"
+              : isRoutesMode
+              ? "Percorsi"
+              : isVehicleMode
+              ? "Nuovo veicolo"
+              : "Autista"}
           </h2>
           <p className="text-sm text-white/70">
             {isGeofenceMode
               ? "Configura la geofence appena creata."
               : isRoutesMode
               ? "Gestisci l'intervallo e scorri il percorso selezionato."
+              : isVehicleMode
+              ? "Inserisci i dati e visualizza l'anteprima sulla mappa principale."
               : "Seleziona un autista dal tooltip del mezzo per vedere i dettagli qui."}
           </p>
         </div>
@@ -987,6 +998,8 @@ export function DriverSidebar({
           <GeofenceSidebar geofenceDraft={geofenceDraft} />
         ) : isRoutesMode ? (
           <RoutesSidebar isOpen={isOpen} selectedVehicleImei={selectedRouteImei} />
+        ) : isVehicleMode ? (
+          <VehicleRegistrationSidebar isOpen={isOpen} />
         ) : (
           <>
             <Section
@@ -1058,6 +1071,467 @@ export function DriverSidebar({
         )}
       </div>
     </aside>
+  );
+}
+
+function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
+  const imeiRegex = /^\d{15}$/;
+  const [nickname, setNickname] = React.useState("");
+  const [plate, setPlate] = React.useState("");
+  const [brand, setBrand] = React.useState("");
+  const [model, setModel] = React.useState("");
+  const [simPrefix, setSimPrefix] = React.useState("+39");
+  const [simNumber, setSimNumber] = React.useState("");
+  const [simIccid, setSimIccid] = React.useState("");
+  const [deviceModel, setDeviceModel] = React.useState("FMC150");
+  const [codec, setCodec] = React.useState("8 Ext");
+  const [imei, setImei] = React.useState("");
+  const [tank1Capacity, setTank1Capacity] = React.useState("");
+  const [tank1Unit, setTank1Unit] = React.useState("litres");
+  const [secondTankEnabled, setSecondTankEnabled] = React.useState(false);
+  const [tank2Capacity, setTank2Capacity] = React.useState("");
+  const [tank2Unit, setTank2Unit] = React.useState("litres");
+  const [tags, setTags] = React.useState<string[]>([]);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
+  const [previewStatus, setPreviewStatus] = React.useState<"idle" | "connecting" | "active" | "error">("idle");
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const previewImeiRef = React.useRef<string | null>(null);
+  const previewMetaRef = React.useRef({ nickname, plate, brand, model });
+
+  React.useEffect(() => {
+    previewMetaRef.current = { nickname, plate, brand, model };
+  }, [nickname, plate, brand, model]);
+
+  const imeiValid = imeiRegex.test(imei.trim());
+  const tank1Value = Number(tank1Capacity);
+  const tank2Value = Number(tank2Capacity);
+  const tank1Valid = Number.isFinite(tank1Value) && tank1Value > 0;
+  const tank2Valid = !secondTankEnabled || (Number.isFinite(tank2Value) && tank2Value > 0);
+  const tank2UnitValid = !secondTankEnabled || Boolean(tank2Unit);
+
+  const canSubmit =
+    nickname.trim().length > 0 &&
+    plate.trim().length > 3 &&
+    brand.trim().length > 0 &&
+    model.trim().length > 0 &&
+    imeiValid &&
+    deviceModel.trim().length > 0 &&
+    codec.trim().length > 0 &&
+    simNumber.trim().length > 5 &&
+    simIccid.trim().length > 8 &&
+    tank1Valid &&
+    Boolean(tank1Unit) &&
+    tank2Valid &&
+    tank2UnitValid;
+
+  const resolvePreviewUrl = React.useCallback((targetImei: string) => {
+    if (typeof window === "undefined") return "";
+    const base = API_BASE_URL
+      ? API_BASE_URL.replace(/^http/, "ws")
+      : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
+    return `${base}/ws/devicepreview?imei=${encodeURIComponent(targetImei)}`;
+  }, []);
+
+  const clearPreviewMarker = React.useCallback((targetImei?: string) => {
+    if (typeof window === "undefined") return;
+    const fn = (window as any).trucklyClearPreviewVehicle;
+    if (typeof fn === "function") {
+      fn(targetImei);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isOpen || !imeiValid) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (previewImeiRef.current) {
+        clearPreviewMarker(previewImeiRef.current);
+        previewImeiRef.current = null;
+      }
+      setPreviewStatus("idle");
+      return;
+    }
+
+    if (previewImeiRef.current === imei && wsRef.current) {
+      return;
+    }
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    const url = resolvePreviewUrl(imei);
+    if (!url) return;
+
+    setPreviewStatus("connecting");
+    previewImeiRef.current = imei;
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+
+    ws.onopen = () => setPreviewStatus("connecting");
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setPreviewStatus("active");
+        const meta = previewMetaRef.current;
+        const previewFn = (window as any).trucklyPreviewVehicle;
+        if (typeof previewFn === "function") {
+          previewFn({
+            imei,
+            data,
+            vehicle: {
+              imei,
+              nickname: meta.nickname || "Preview",
+              plate: meta.plate || "IMEI " + imei,
+              brand: meta.brand,
+              model: meta.model,
+            },
+          });
+        }
+      } catch {
+        setPreviewStatus("error");
+      }
+    };
+    ws.onerror = () => setPreviewStatus("error");
+    ws.onclose = () => setPreviewStatus("idle");
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+      clearPreviewMarker(imei);
+    };
+  }, [clearPreviewMarker, imei, imeiValid, isOpen, resolvePreviewUrl]);
+
+  React.useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (previewImeiRef.current) {
+        clearPreviewMarker(previewImeiRef.current);
+        previewImeiRef.current = null;
+      }
+    };
+  }, [clearPreviewMarker]);
+
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    const payload: any = {
+      nickname: nickname.trim(),
+      plate: plate.trim(),
+      brand: brand.trim(),
+      model: model.trim(),
+      imei: imei.trim(),
+      deviceModel: deviceModel.trim(),
+      codec: codec.trim(),
+      tags,
+    };
+
+    const details: any = {
+      tanks: {
+        primary: {
+          capacity: Number.isFinite(tank1Value) ? tank1Value : null,
+          unit: tank1Unit,
+        },
+      },
+      sim: {
+        prefix: simPrefix.trim() || null,
+        number: simNumber.trim() || null,
+        iccid: simIccid.trim() || null,
+      },
+    };
+
+    if (secondTankEnabled && Number.isFinite(tank2Value)) {
+      details.tanks.secondary = {
+        capacity: tank2Value,
+        unit: tank2Unit,
+      };
+    }
+
+    payload.details = details;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/dashboard/vehicles/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || "Non hai i permessi per creare veicoli.");
+      }
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore salvataggio veicolo (${res.status})`);
+      }
+
+      setSuccess(`Veicolo ${payload.nickname} registrato.`);
+      setNickname("");
+      setPlate("");
+      setBrand("");
+      setModel("");
+      setImei("");
+      setSimPrefix("+39");
+      setSimNumber("");
+      setSimIccid("");
+      setDeviceModel("FMC150");
+      setCodec("8 Ext");
+      setTank1Capacity("");
+      setTank1Unit("litres");
+      setSecondTankEnabled(false);
+      setTank2Capacity("");
+      setTank2Unit("litres");
+      setTags([]);
+
+      if (previewImeiRef.current) {
+        clearPreviewMarker(previewImeiRef.current);
+        previewImeiRef.current = null;
+      }
+    } catch (err: any) {
+      setError(err?.message || "Errore durante la registrazione.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const tagSuggestions = [
+    "Telemetria",
+    "GPS",
+    "Temperatura",
+    "CAN",
+    "Rimorchio",
+    "Motore",
+    "Alert",
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="space-y-1">
+          <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+            Dati veicolo
+          </p>
+          <p className="text-sm text-white/60">
+            I campi contrassegnati sono obbligatori.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Nickname</label>
+            <input
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Targa</label>
+            <input
+              value={plate}
+              onChange={(e) => setPlate(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Marca</label>
+            <input
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Modello</label>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">SIM & dispositivo</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Prefisso</label>
+            <select
+              value={simPrefix}
+              onChange={(e) => setSimPrefix(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            >
+              <option value="+39">+39</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Numero SIM</label>
+            <input
+              value={simNumber}
+              onChange={(e) => setSimNumber(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-1 col-span-2">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">ICCID SIM</label>
+            <input
+              value={simIccid}
+              onChange={(e) => setSimIccid(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Modello dispositivo</label>
+            <select
+              value={deviceModel}
+              onChange={(e) => setDeviceModel(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            >
+              <option value="FMC150">FMC150</option>
+              <option value="FMC920">FMC920</option>
+              <option value="FMC650">FMC650</option>
+              <option value="FMB641">FMB641</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Codec</label>
+            <select
+              value={codec}
+              onChange={(e) => setCodec(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            >
+              <option value="8 Ext">8 Ext</option>
+              <option value="8">8</option>
+              <option value="12">12</option>
+            </select>
+          </div>
+          <div className="space-y-1 col-span-2">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">IMEI</label>
+            <input
+              value={imei}
+              onChange={(e) => setImei(e.target.value)}
+              className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
+                imei && !imeiValid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0c0f16]"
+              }`}
+              placeholder="15 cifre"
+            />
+            <p className="text-[11px] text-white/50">
+              {imeiValid
+                ? previewStatus === "active"
+                  ? "Anteprima attiva sulla mappa."
+                  : previewStatus === "connecting"
+                  ? "Connessione al dispositivo..."
+                  : "IMEI valido."
+                : imei.length
+                ? "IMEI non valido."
+                : "Inserisci un IMEI per vedere l'anteprima."}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Serbatoi</p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-3 items-center">
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Capienza serbatoio 1</label>
+              <input
+                type="number"
+                min={0}
+                value={tank1Capacity}
+                onChange={(e) => setTank1Capacity(e.target.value)}
+                className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
+                  tank1Capacity && !tank1Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0c0f16]"
+                }`}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Unita</label>
+              <select
+                value={tank1Unit}
+                onChange={(e) => setTank1Unit(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              >
+                <option value="litres">Litri</option>
+                <option value="gallons">Galloni</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-white/70">
+            <input
+              type="checkbox"
+              checked={secondTankEnabled}
+              onChange={(e) => setSecondTankEnabled(e.target.checked)}
+            />
+            Serbatoio secondario
+          </div>
+          {secondTankEnabled && (
+            <div className="grid grid-cols-3 gap-3 items-center">
+              <div className="col-span-2">
+                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Capienza serbatoio 2</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={tank2Capacity}
+                  onChange={(e) => setTank2Capacity(e.target.value)}
+                  className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
+                    tank2Capacity && !tank2Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0c0f16]"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Unita</label>
+                <select
+                  value={tank2Unit}
+                  onChange={(e) => setTank2Unit(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                >
+                  <option value="litres">Litri</option>
+                  <option value="gallons">Galloni</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Tags</p>
+        <TagInput
+          value={tags}
+          onChange={setTags}
+          suggestions={tagSuggestions}
+          storageKey="vehicleTags_suggestions"
+        />
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        {success && <p className="text-xs text-emerald-300">{success}</p>}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
+          className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {submitting ? "Salvataggio..." : "Registra veicolo"}
+        </button>
+      </div>
+    </div>
   );
 }
 

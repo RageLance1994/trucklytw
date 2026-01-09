@@ -171,7 +171,7 @@ function DashboardPage() {
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
   const [selectedRouteImei, setSelectedRouteImei] = React.useState<string | null>(null);
-  const [sidebarMode, setSidebarMode] = React.useState<"driver" | "routes" | "geofence">("driver");
+  const [sidebarMode, setSidebarMode] = React.useState<"driver" | "routes" | "geofence" | "vehicle">("driver");
   const [geofenceDraft, setGeofenceDraft] = React.useState<{
     geofenceId: string;
     imei: string;
@@ -296,6 +296,16 @@ function DashboardPage() {
     };
     window.addEventListener("truckly:routes-open", handler);
     return () => window.removeEventListener("truckly:routes-open", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = () => {
+      setSidebarMode("vehicle");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:vehicle-register-open", handler);
+    return () => window.removeEventListener("truckly:vehicle-register-open", handler);
   }, []);
 
   React.useEffect(() => {

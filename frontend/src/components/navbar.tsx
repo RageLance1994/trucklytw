@@ -117,13 +117,21 @@ export function Navbar() {
                 </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="min-w-[180px]">
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Veicoli</DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuItem>Registra nuovo</DropdownMenuItem>
-                      <DropdownMenuItem>Tabelle</DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Veicoli</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            window.dispatchEvent(
+                              new CustomEvent("truckly:vehicle-register-open"),
+                            )
+                          }
+                        >
+                          Registra nuovo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>Tabelle</DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
 
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>Autisti</DropdownMenuSubTrigger>

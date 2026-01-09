@@ -156,6 +156,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   const vehiclesRef = useRef<Vehicle[]>([]);
   const fuelCalibrationRef = useRef<Map<string, number>>(new Map());
   const avlCacheRef = useRef<Map<string, any>>(new Map());
+  const previewMarkersRef = useRef<Set<string>>(new Set());
 
   const renderStaticMarkers = (map: TrucklyMap, list: Vehicle[]) => {
     map.clearMarkers();
@@ -484,6 +485,111 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       cancelled = true;
       mapInstanceRef.current?.destroy();
       mapInstanceRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const getPreviewId = (imei: string) => `preview:${imei}`;
+
+    const upsertPreviewMarker = (payload: any) => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      const imei = payload?.imei || payload?.deviceId || payload?.id;
+      if (!imei) return;
+
+      const data = payload?.data || payload;
+      const gps =
+        data?.gps ||
+        data?.data?.gps ||
+        data?.data ||
+        data;
+      const lat = toNumber(
+        gps?.lat ??
+          gps?.latitude ??
+          gps?.Latitude ??
+          gps?.position?.lat ??
+          gps?.position?.Latitude,
+      );
+      const lon = toNumber(
+        gps?.lon ??
+          gps?.lng ??
+          gps?.longitude ??
+          gps?.Longitude ??
+          gps?.position?.lon ??
+          gps?.position?.lng ??
+          gps?.position?.Longitude,
+      );
+
+      if (!isValidCoordinate(lat, lon)) return;
+
+      const vehicle =
+        payload?.vehicle ||
+        ({
+          imei,
+          nickname: payload?.nickname,
+          plate: payload?.plate,
+        } as any);
+
+      const io = data?.io || data?.data?.io || {};
+      const statusInfo = deriveMovementStatus({ gps, io });
+      const markerStatus = statusInfo.class || "warning";
+
+      const markerHtml = renderVehicleMarker({
+        vehicle,
+        status: markerStatus,
+      });
+      const tooltipHtml = renderVehicleTooltip({
+        vehicle,
+        device: { data },
+        status: statusInfo,
+        formatDate: formatTooltipDate,
+      });
+
+      const previewId = getPreviewId(imei);
+      const isNew = !previewMarkersRef.current.has(previewId);
+      const marker = map.addOrUpdateMarker({
+        id: previewId,
+        lng: lon!,
+        lat: lat!,
+        vehicle,
+        device: data,
+        status: markerStatus,
+        html: markerHtml,
+        tooltip: tooltipHtml,
+        hasPopup: true,
+        classlist: "custom-marker preview-marker",
+      });
+
+      previewMarkersRef.current.add(previewId);
+      if (isNew && marker) {
+        map.focusMarker(marker as any, { openPopup: true, offset: true });
+      }
+    };
+
+    const clearPreviewMarker = (imei?: string) => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      if (imei) {
+        const id = getPreviewId(imei);
+        if (previewMarkersRef.current.has(id)) {
+          map.removeMarker(id);
+          previewMarkersRef.current.delete(id);
+        }
+        return;
+      }
+      previewMarkersRef.current.forEach((id) => {
+        map.removeMarker(id);
+      });
+      previewMarkersRef.current.clear();
+    };
+
+    (window as any).trucklyPreviewVehicle = upsertPreviewMarker;
+    (window as any).trucklyClearPreviewVehicle = clearPreviewMarker;
+
+    return () => {
+      delete (window as any).trucklyPreviewVehicle;
+      delete (window as any).trucklyClearPreviewVehicle;
+      clearPreviewMarker();
     };
   }, []);
 
