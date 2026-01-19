@@ -1,5 +1,5 @@
 import React from "react";
-import { dataManager } from "../lib/data-manager";
+import { dataManager, resolveBackendBaseUrl } from "../lib/data-manager";
 
 type BottomBarMode = "driver" | "fuel";
 
@@ -34,11 +34,54 @@ type FuelEvent = {
   isWithdrawal?: boolean;
 };
 
+type RefuelingDoc = {
+  eventId: string;
+  eventStart?: string | number | Date;
+  eventEnd?: string | number | Date;
+  liters?: number | null;
+  pricePerUnit?: number | null;
+  tankPrimary?: number | null;
+  tankSecondary?: number | null;
+  station?: string | null;
+  invoiceRef?: string | null;
+  metadata?: Record<string, any>;
+  attachments?: Array<{ name: string; mimeType: string; size: number }>;
+};
+
+type FuelTableRow = {
+  eventId: string;
+  start: number;
+  end: number;
+  liters: number | null;
+  type: "refuel" | "withdrawal";
+  source: "detected" | "manual";
+  refuelDoc?: RefuelingDoc;
+  detectedEvent?: FuelEvent;
+};
+
+type RefuelSavePayload = {
+  eventId: string;
+  start: number;
+  end: number;
+  liters: number | null;
+  type: "refuel" | "withdrawal";
+  station: string;
+  invoiceRef: string;
+  pricePerUnit: number | null;
+  tankPrimary: number | null;
+  tankSecondary: number | null;
+  notes: string;
+  source: "detected" | "manual";
+  hidden?: boolean;
+  attachments: File[];
+};
+
 type FuelSample = {
   ts: number;
   liters: number | null;
   tank1: number | null;
   tank2: number | null;
+  speed: number | null;
 };
 
 type FuelVehicle = {
@@ -166,6 +209,42 @@ const getTankCapacity = (vehicle?: FuelVehicle | null) => {
   return total > 0 ? total : null;
 };
 
+const buildManualEventId = () =>
+  `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+const normalizeRefuelings = (items: any[] = []): RefuelingDoc[] => {
+  return items
+    .map((doc) => {
+      const eventId = String(doc?.eventId || "").trim();
+      if (!eventId) return null;
+      return {
+        eventId,
+        eventStart: doc?.eventStart,
+        eventEnd: doc?.eventEnd,
+        liters: toFiniteNumber(doc?.liters),
+        pricePerUnit: toFiniteNumber(doc?.pricePerUnit),
+        tankPrimary: toFiniteNumber(doc?.tankPrimary),
+        tankSecondary: toFiniteNumber(doc?.tankSecondary),
+        station: typeof doc?.station === "string" ? doc.station : null,
+        invoiceRef: typeof doc?.invoiceRef === "string" ? doc.invoiceRef : null,
+        metadata: doc?.metadata && typeof doc.metadata === "object" ? doc.metadata : {},
+        attachments: Array.isArray(doc?.attachments) ? doc.attachments : [],
+      } as RefuelingDoc;
+    })
+    .filter(Boolean) as RefuelingDoc[];
+};
+
+const resolveRefuelType = (doc?: RefuelingDoc, evt?: FuelEvent) => {
+  const metaType = String(doc?.metadata?.type || "").toLowerCase().trim();
+  if (metaType === "withdrawal" || metaType === "prelievo") return "withdrawal";
+  if (metaType === "refuel" || metaType === "rifornimento") return "refuel";
+  if (evt?.isWithdrawal) return "withdrawal";
+  if (evt?.isRefuel) return "refuel";
+  const liters = doc?.liters ?? evt?.liters ?? evt?.delta;
+  if (Number.isFinite(liters) && (liters as number) < 0) return "withdrawal";
+  return "refuel";
+};
+
 
 const normalizeFuelEvents = (events: any[] = []): FuelEvent[] => {
   return events
@@ -270,8 +349,28 @@ const extractSamples = (history: any): FuelSample[] => {
       const tank2 = toFiniteNumber(
         io.tank2 ?? io.tank_2 ?? io.tankSecondary ?? io.secondaryTankCapacity,
       );
+      const speedCandidates = [
+        io.vehicleSpeed,
+        io.speed,
+        io.vehicle_speed,
+        entry?.gps?.Speed,
+        entry?.gps?.speed,
+      ];
+      let speed: number | null = null;
+      for (const cand of speedCandidates) {
+        const n = toFiniteNumber(cand);
+        if (Number.isFinite(n)) {
+          speed = n;
+          break;
+        }
+      }
 
-      if (!Number.isFinite(liters) && !Number.isFinite(tank1) && !Number.isFinite(tank2)) {
+      if (
+        !Number.isFinite(liters)
+        && !Number.isFinite(tank1)
+        && !Number.isFinite(tank2)
+        && !Number.isFinite(speed)
+      ) {
         return null;
       }
 
@@ -280,6 +379,7 @@ const extractSamples = (history: any): FuelSample[] => {
         liters: Number.isFinite(liters) ? liters : null,
         tank1: Number.isFinite(tank1) ? tank1 : null,
         tank2: Number.isFinite(tank2) ? tank2 : null,
+        speed: Number.isFinite(speed) ? speed : null,
       };
     })
     .filter(Boolean)
@@ -314,8 +414,20 @@ const buildFuelSeries = (samples: FuelSample[]) => {
     .map((s) => [s.ts, toFiniteNumber(s.liters)] as [number, number | null])
     .filter(([, v]) => Number.isFinite(v))
     .map(([ts, v]) => [ts, v as number] as [number, number]);
+  const tank1 = samples
+    .map((s) => [s.ts, toFiniteNumber(s.tank1)] as [number, number | null])
+    .filter(([, v]) => Number.isFinite(v))
+    .map(([ts, v]) => [ts, v as number] as [number, number]);
+  const tank2 = samples
+    .map((s) => [s.ts, toFiniteNumber(s.tank2)] as [number, number | null])
+    .filter(([, v]) => Number.isFinite(v))
+    .map(([ts, v]) => [ts, v as number] as [number, number]);
+  const speed = samples
+    .map((s) => [s.ts, toFiniteNumber(s.speed)] as [number, number | null])
+    .filter(([, v]) => Number.isFinite(v))
+    .map(([ts, v]) => [ts, v as number] as [number, number]);
   const smoothedFuel = smoothSeriesArray(fuel, Math.max(3, Math.round(fuel.length / 200)));
-  return { fuel: smoothedFuel };
+  return { fuel: smoothedFuel, tank1, tank2, speed };
 };
 
 export function DriverBottomBar({
@@ -326,11 +438,11 @@ export function DriverBottomBar({
   selectedVehicle,
   mode,
 }: DriverBottomBarProps) {
-  const title = mode === "fuel" ? "Fuel dashboard" : "Driver activity + tables";
+  const title = mode === "fuel" ? "Dashboard carburante" : "Attivita autista + tabelle";
   const subtitle =
     mode === "fuel"
       ? `Intervallo carburante. Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
-      : `Tabella driver e report attivita. Selezione attuale: ${
+      : `Tabella autisti e report attivita. Selezione attuale: ${
           selectedDriverImei || "nessuna"
         }`;
 
@@ -344,7 +456,7 @@ export function DriverBottomBar({
       <div className="flex items-start justify-between px-6 py-4 border-b border-white/10">
         <div className="space-y-1.5">
           <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">
-            Bottom bar
+            Pannello inferiore
           </p>
           <h2 className="text-lg font-semibold leading-tight text-white">{title}</h2>
           <p className="text-sm text-white/70">{subtitle}</p>
@@ -449,7 +561,7 @@ function DriverDashboard({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-              Driver activity chart
+              Grafico attivita autista
             </p>
             <p className="text-sm text-white/60">
               Report attivita e dettagli giornalieri. Selezione: {selectedDriverImei || "--"}
@@ -460,18 +572,18 @@ function DriverDashboard({
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-              Driver ID
+              ID autista
             </label>
             <input
               value={driverId}
               onChange={(e) => setDriverId(e.target.value)}
-              placeholder="UUID del driver (es. da /api/drivers)"
+              placeholder="UUID autista (es. da /api/drivers)"
               className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-              Start
+              Inizio
             </label>
             <input
               type="datetime-local"
@@ -482,7 +594,7 @@ function DriverDashboard({
           </div>
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-              End
+              Fine
             </label>
             <input
               type="datetime-local"
@@ -499,7 +611,7 @@ function DriverDashboard({
             disabled={loading}
             className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm font-medium hover:bg-white/15 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Caricamento..." : "Genera grafico di test"}
+            {loading ? "Caricamento..." : "Genera grafico di prova"}
           </button>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
@@ -616,16 +728,16 @@ function DriverDashboard({
 
       <div className="flex flex-col gap-4 min-w-0">
         <TableCard
-          title="Tables baseline"
+          title="Tabelle base"
           subtitle="Sezione base per report tabellari."
           rows={[
-            ["Driver status", "Da definire"],
+            ["Stato autista", "Da definire"],
             ["Ultimo evento", "Da definire"],
             ["Allarmi attivi", "Da definire"],
           ]}
         />
         <TableCard
-          title="Table-like info"
+          title="Riepilogo"
           subtitle="Metriche e riepiloghi rapidi."
           rows={[
             ["Km oggi", "--"],
@@ -657,13 +769,54 @@ function FuelDashboard({
   const [error, setError] = React.useState<string | null>(null);
   const [historyRaw, setHistoryRaw] = React.useState<any[]>([]);
   const [events, setEvents] = React.useState<FuelEvent[]>([]);
+  const [refuelings, setRefuelings] = React.useState<RefuelingDoc[]>([]);
+  const [refuelingsError, setRefuelingsError] = React.useState<string | null>(null);
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [modalLoading, setModalLoading] = React.useState(false);
+  const [modalError, setModalError] = React.useState<string | null>(null);
+  const [activeRow, setActiveRow] = React.useState<FuelTableRow | null>(null);
 
   React.useEffect(() => {
     setHistoryRaw([]);
     setEvents([]);
+    setRefuelings([]);
     setError(null);
+    setRefuelingsError(null);
+    setModalError(null);
+    setModalOpen(false);
+    setActiveRow(null);
     if (isOpen && selectedVehicleImei) {
       void fetchFuelHistory();
+    }
+  }, [selectedVehicleImei]);
+
+  const fetchRefuelings = React.useCallback(async () => {
+    if (!selectedVehicleImei) {
+      setRefuelings([]);
+      setRefuelingsError(null);
+      return;
+    }
+    try {
+      setRefuelingsError(null);
+      const baseUrl = resolveBackendBaseUrl();
+      const res = await fetch(`${baseUrl}/dashboard/refuelings/${selectedVehicleImei}`, {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok || !contentType.includes("application/json")) {
+        const txt = await res.text();
+        if (txt && txt.trim().startsWith("<")) {
+          throw new Error("Sessione non valida o endpoint non disponibile.");
+        }
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      const payload = await res.json();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setRefuelings(normalizeRefuelings(items));
+    } catch (err: any) {
+      setRefuelings([]);
+      setRefuelingsError(err?.message || "Errore nel recupero rifornimenti");
     }
   }, [selectedVehicleImei]);
 
@@ -694,6 +847,7 @@ function FuelDashboard({
       const fuelEvents = Array.isArray(data?.fuelEvents) ? data.fuelEvents : [];
       setHistoryRaw(raw);
       setEvents(normalizeFuelEvents(fuelEvents));
+      await fetchRefuelings();
     } catch (err: any) {
       setError(err?.message || "Errore nel recupero carburante");
       setHistoryRaw([]);
@@ -701,23 +855,165 @@ function FuelDashboard({
     } finally {
       setLoading(false);
     }
-  }, [selectedVehicleImei, startDate, endDate]);
+  }, [selectedVehicleImei, startDate, endDate, fetchRefuelings]);
 
   React.useEffect(() => {
     if (!isOpen) return;
     void fetchFuelHistory();
   }, [isOpen, fetchFuelHistory]);
 
+  const tableRows = React.useMemo(() => {
+    const rows: FuelTableRow[] = [];
+    const refuelMap = new Map(refuelings.map((doc) => [doc.eventId, doc]));
+    const hiddenIds = new Set(
+      refuelings
+        .filter((doc) => doc.metadata?.hidden)
+        .map((doc) => doc.eventId),
+    );
+
+    events.forEach((evt) => {
+      const eventId = String(evt.eventId || "").trim();
+      if (!eventId || hiddenIds.has(eventId)) return;
+      const doc = refuelMap.get(eventId);
+      const type = resolveRefuelType(doc, evt);
+      const liters = doc?.liters ?? evt.liters ?? evt.delta ?? null;
+      rows.push({
+        eventId,
+        start: evt.start || 0,
+        end: evt.end || evt.start || 0,
+        liters: Number.isFinite(liters) ? (liters as number) : null,
+        type,
+        source: "detected",
+        refuelDoc: doc,
+        detectedEvent: evt,
+      });
+    });
+
+    refuelings.forEach((doc) => {
+      if (doc.metadata?.hidden) return;
+      if (events.some((evt) => evt.eventId === doc.eventId)) return;
+      const start = toTimestamp(doc.eventStart) || 0;
+      const end = toTimestamp(doc.eventEnd) || start;
+      rows.push({
+        eventId: doc.eventId,
+        start,
+        end,
+        liters: Number.isFinite(doc.liters) ? (doc.liters as number) : null,
+        type: resolveRefuelType(doc),
+        source: "manual",
+        refuelDoc: doc,
+      });
+    });
+
+    return rows.sort((a, b) => b.start - a.start);
+  }, [events, refuelings]);
+
+  const openNewModal = () => {
+    const start = toTimestamp(toIso(startDate)) || Date.now();
+    const end = toTimestamp(toIso(endDate)) || start;
+    setActiveRow({
+      eventId: buildManualEventId(),
+      start,
+      end,
+      liters: null,
+      type: "refuel",
+      source: "manual",
+    });
+    setModalError(null);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (row: FuelTableRow) => {
+    setActiveRow(row);
+    setModalError(null);
+    setModalOpen(true);
+  };
+
+  const handleSaveRefueling = async (payload: RefuelSavePayload) => {
+    if (!selectedVehicleImei) return;
+    if (!Number.isFinite(payload.start) || !Number.isFinite(payload.end) || payload.end < payload.start) {
+      setModalError("Intervallo evento non valido.");
+      return;
+    }
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      const baseUrl = resolveBackendBaseUrl();
+      const formData = new FormData();
+      formData.append("imei", selectedVehicleImei);
+      formData.append("eventId", payload.eventId);
+      formData.append("eventStart", new Date(payload.start).toISOString());
+      formData.append("eventEnd", new Date(payload.end).toISOString());
+      if (Number.isFinite(payload.liters)) formData.append("liters", String(payload.liters));
+      if (Number.isFinite(payload.pricePerUnit)) formData.append("pricePerUnit", String(payload.pricePerUnit));
+      if (Number.isFinite(payload.tankPrimary)) formData.append("tankPrimary", String(payload.tankPrimary));
+      if (Number.isFinite(payload.tankSecondary)) formData.append("tankSecondary", String(payload.tankSecondary));
+      if (payload.station) formData.append("station", payload.station);
+      if (payload.invoiceRef) formData.append("invoiceRef", payload.invoiceRef);
+      const eventMeta = {
+        type: payload.type,
+        notes: payload.notes,
+        hidden: payload.hidden || false,
+      };
+      formData.append("eventMeta", JSON.stringify(eventMeta));
+      formData.append("source", payload.source);
+      payload.attachments.forEach((file) => formData.append("attachments", file));
+
+      const res = await fetch(`${baseUrl}/dashboard/refuelings`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok || !contentType.includes("application/json")) {
+        const txt = await res.text();
+        if (txt && txt.trim().startsWith("<")) {
+          throw new Error("Sessione non valida o endpoint non disponibile.");
+        }
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      await fetchRefuelings();
+      setModalOpen(false);
+      setActiveRow(null);
+    } catch (err: any) {
+      setModalError(err?.message || "Errore nel salvataggio rifornimento");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleHideRow = async (row: FuelTableRow) => {
+    if (!selectedVehicleImei) return;
+    await handleSaveRefueling({
+      eventId: row.eventId,
+      start: row.start,
+      end: row.end,
+      liters: row.liters,
+      type: row.type,
+      station: row.refuelDoc?.station || "",
+      invoiceRef: row.refuelDoc?.invoiceRef || "",
+      pricePerUnit: row.refuelDoc?.pricePerUnit ?? null,
+      tankPrimary: row.refuelDoc?.tankPrimary ?? null,
+      tankSecondary: row.refuelDoc?.tankSecondary ?? null,
+      notes: String(row.refuelDoc?.metadata?.notes || ""),
+      source: row.source,
+      hidden: true,
+      attachments: [],
+    });
+  };
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <>
+      <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+        <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-              Fuel line chart
+              Grafico carburante
             </p>
             <p className="text-sm text-white/60">
-              Livello carburante con refuel evidenziati in verde.
+              Livello carburante con rifornimenti evidenziati in verde.
             </p>
           </div>
           <div className="flex items-end gap-3">
@@ -754,7 +1050,7 @@ function FuelDashboard({
         {!error && (
           <div className="rounded-xl border border-white/10 bg-[#0c0f16] p-4 overflow-hidden">
             {loading ? (
-              <div className="flex h-[360px] items-center justify-center text-sm text-white/60">
+              <div className="flex h-[420px] items-center justify-center text-sm text-white/60">
                 Caricamento carburante...
               </div>
             ) : (
@@ -769,49 +1065,361 @@ function FuelDashboard({
         )}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
-        <div className="space-y-1">
-          <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-            Refuel / withdrawal events
-          </p>
-          <p className="text-sm text-white/60">
-            {events.length} eventi nel periodo selezionato.
-          </p>
+        <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+              Eventi rifornimento / prelievo
+            </p>
+            <p className="text-sm text-white/60">
+              {tableRows.length} eventi nel periodo selezionato.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openNewModal}
+            className="h-9 rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition"
+          >
+            Nuovo evento
+          </button>
         </div>
 
-        <div className="mt-4 space-y-2 overflow-y-auto">
+        {refuelingsError && (
+          <p className="mt-3 text-sm text-red-400">{refuelingsError}</p>
+        )}
+
+        <div className="mt-4 overflow-x-auto">
           {loading ? (
             <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
               Caricamento eventi carburante...
             </div>
-          ) : events.length === 0 ? (
+          ) : tableRows.length === 0 ? (
             <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
               Nessun evento disponibile per questo intervallo.
             </div>
           ) : (
-            events.map((evt) => {
-              const label = evt.isWithdrawal ? "Prelievo" : "Rifornimento";
-              const tone = evt.isWithdrawal ? "border-red-500/40 bg-red-500/10" : "border-emerald-500/40 bg-emerald-500/10";
-              const liters = evt.liters ?? evt.delta;
-
-              return (
-                <div
-                  key={evt.eventId || `${evt.start}`}
-                  className={`rounded-lg border px-3 py-2 text-sm text-white/85 ${tone}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{label}</span>
-                    <span className="text-xs text-white/60">{formatShortDateTime(evt.start)}</span>
-                  </div>
-                  <div className="mt-1 flex items-center justify-between text-xs text-white/70">
-                    <span>{formatLiters(liters)}</span>
-                    <span>Fine: {formatShortDateTime(evt.end)}</span>
-                  </div>
-                </div>
-              );
-            })
+            <table className="min-w-[760px] w-full border-separate border-spacing-0 text-sm text-white/80">
+              <thead>
+                <tr className="text-xs uppercase tracking-[0.14em] text-white/45">
+                  <th className="text-left px-3 py-2">Tipo</th>
+                  <th className="text-left px-3 py-2">Inizio</th>
+                  <th className="text-left px-3 py-2">Fine</th>
+                  <th className="text-left px-3 py-2">Litri</th>
+                  <th className="text-left px-3 py-2">Origine</th>
+                  <th className="text-left px-3 py-2">Documenti</th>
+                  <th className="text-right px-3 py-2">Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map((row) => {
+                  const label = row.type === "withdrawal" ? "Prelievo" : "Rifornimento";
+                  const tone = row.type === "withdrawal" ? "text-red-300" : "text-emerald-300";
+                  const docs = row.refuelDoc?.attachments?.length || 0;
+                  return (
+                    <tr key={row.eventId} className="border-t border-white/5">
+                      <td className={`px-3 py-2 font-semibold ${tone}`}>{label}</td>
+                      <td className="px-3 py-2">{formatShortDateTime(row.start)}</td>
+                      <td className="px-3 py-2">{formatShortDateTime(row.end)}</td>
+                      <td className="px-3 py-2">{formatLiters(row.liters)}</td>
+                      <td className="px-3 py-2">
+                        {row.source === "manual" ? "Manuale" : "Rilevato"}
+                      </td>
+                      <td className="px-3 py-2">{docs ? `${docs} file` : "--"}</td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(row)}
+                            className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/80 hover:text-white hover:border-white/40 transition"
+                          >
+                            Dettagli
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleHideRow(row)}
+                            className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/60 hover:text-white hover:border-white/30 transition"
+                          >
+                            {row.source === "manual" ? "Elimina" : "Nascondi"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
+      </div>
+      </div>
+      <RefuelModal
+        open={modalOpen}
+        loading={modalLoading}
+        error={modalError}
+        row={activeRow}
+        onClose={() => {
+          setModalOpen(false);
+          setActiveRow(null);
+          setModalError(null);
+        }}
+        onSave={handleSaveRefueling}
+      />
+    </>
+  );
+}
+
+function RefuelModal({
+  open,
+  loading,
+  error,
+  row,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  row: FuelTableRow | null;
+  onClose: () => void;
+  onSave: (payload: RefuelSavePayload) => void;
+}) {
+  const [type, setType] = React.useState<"refuel" | "withdrawal">("refuel");
+  const [startInput, setStartInput] = React.useState("");
+  const [endInput, setEndInput] = React.useState("");
+  const [litersInput, setLitersInput] = React.useState("");
+  const [station, setStation] = React.useState("");
+  const [invoiceRef, setInvoiceRef] = React.useState("");
+  const [priceInput, setPriceInput] = React.useState("");
+  const [tankPrimaryInput, setTankPrimaryInput] = React.useState("");
+  const [tankSecondaryInput, setTankSecondaryInput] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [attachments, setAttachments] = React.useState<File[]>([]);
+
+  React.useEffect(() => {
+    if (!row) {
+      setType("refuel");
+      setStartInput("");
+      setEndInput("");
+      setLitersInput("");
+      setStation("");
+      setInvoiceRef("");
+      setPriceInput("");
+      setTankPrimaryInput("");
+      setTankSecondaryInput("");
+      setNotes("");
+      setAttachments([]);
+      return;
+    }
+    setType(row.type || resolveRefuelType(row.refuelDoc, row.detectedEvent));
+    setStartInput(row.start ? toLocalInputValue(new Date(row.start)) : "");
+    setEndInput(row.end ? toLocalInputValue(new Date(row.end)) : "");
+    setLitersInput(
+      Number.isFinite(row.liters) ? String(row.liters) : "",
+    );
+    setStation(row.refuelDoc?.station || "");
+    setInvoiceRef(row.refuelDoc?.invoiceRef || "");
+    setPriceInput(
+      Number.isFinite(row.refuelDoc?.pricePerUnit) ? String(row.refuelDoc?.pricePerUnit) : "",
+    );
+    setTankPrimaryInput(
+      Number.isFinite(row.refuelDoc?.tankPrimary) ? String(row.refuelDoc?.tankPrimary) : "",
+    );
+    setTankSecondaryInput(
+      Number.isFinite(row.refuelDoc?.tankSecondary) ? String(row.refuelDoc?.tankSecondary) : "",
+    );
+    setNotes(String(row.refuelDoc?.metadata?.notes || ""));
+    setAttachments([]);
+  }, [row]);
+
+  if (!open || !row) return null;
+
+  const onSubmit = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const start = toTimestamp(startInput);
+    const end = toTimestamp(endInput) || start;
+    const liters = toFiniteNumber(litersInput);
+    const pricePerUnit = toFiniteNumber(priceInput);
+    const tankPrimary = toFiniteNumber(tankPrimaryInput);
+    const tankSecondary = toFiniteNumber(tankSecondaryInput);
+
+    onSave({
+      eventId: row.eventId,
+      start: Number.isFinite(start) ? (start as number) : 0,
+      end: Number.isFinite(end) ? (end as number) : 0,
+      liters: Number.isFinite(liters) ? (liters as number) : null,
+      type,
+      station: station.trim(),
+      invoiceRef: invoiceRef.trim(),
+      pricePerUnit: Number.isFinite(pricePerUnit) ? (pricePerUnit as number) : null,
+      tankPrimary: Number.isFinite(tankPrimary) ? (tankPrimary as number) : null,
+      tankSecondary: Number.isFinite(tankSecondary) ? (tankSecondary as number) : null,
+      notes: notes.trim(),
+      source: row.source,
+      attachments,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10121a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
+              Gestione evento
+            </p>
+            <h3 className="text-lg font-semibold text-white">Rifornimento / Prelievo</h3>
+            <p className="text-sm text-white/60">
+              Integra documenti, note e dati dell&apos;evento selezionato.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/40 transition"
+          >
+            Chiudi
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Tipo</label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as "refuel" | "withdrawal")}
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              >
+                <option value="refuel">Rifornimento</option>
+                <option value="withdrawal">Prelievo</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Litri</label>
+              <input
+                value={litersInput}
+                onChange={(e) => setLitersInput(e.target.value)}
+                placeholder="Es. 120"
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Inizio</label>
+              <input
+                type="datetime-local"
+                value={startInput}
+                onChange={(e) => setStartInput(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Fine</label>
+              <input
+                type="datetime-local"
+                value={endInput}
+                onChange={(e) => setEndInput(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Stazione</label>
+              <input
+                value={station}
+                onChange={(e) => setStation(e.target.value)}
+                placeholder="Nome distributore"
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Riferimento fattura</label>
+              <input
+                value={invoiceRef}
+                onChange={(e) => setInvoiceRef(e.target.value)}
+                placeholder="Es. FT-2026-001"
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Prezzo/L</label>
+              <input
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                placeholder="Es. 1.75"
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Serbatoio 1</label>
+              <input
+                value={tankPrimaryInput}
+                onChange={(e) => setTankPrimaryInput(e.target.value)}
+                placeholder="Litri"
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Serbatoio 2</label>
+              <input
+                value={tankSecondaryInput}
+                onChange={(e) => setTankSecondaryInput(e.target.value)}
+                placeholder="Litri"
+                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.1em] text-white/60">Note</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Note aggiuntive sull'evento"
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.1em] text-white/60">Documenti</label>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setAttachments(Array.from(e.target.files || []))}
+              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/70 file:mr-3 file:rounded file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:text-white/80 hover:file:bg-white/20"
+            />
+            {attachments.length > 0 && (
+              <p className="text-xs text-white/60">{attachments.length} file selezionati</p>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+            >
+              Annulla
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-lg bg-emerald-500/20 border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100 hover:bg-emerald-500/30 transition disabled:opacity-50"
+            >
+              {loading ? "Salvataggio..." : "Salva"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -849,11 +1457,22 @@ function FuelEChart({
       return;
     }
 
-    const { fuel } = buildFuelSeries(samples);
+    const { fuel, tank1, tank2, speed } = buildFuelSeries(samples);
     const maxCapacity =
       Number.isFinite(tankCapacity) && (tankCapacity as number) > 0
         ? (tankCapacity as number)
         : null;
+    const fuelValues = fuel.map(([, v]) => v).filter((v) => Number.isFinite(v));
+    const positiveFuel = fuelValues.filter((v) => v > 0);
+    let fuelMin = null as number | null;
+    if (positiveFuel.length) {
+      fuelMin = Math.min(...positiveFuel);
+    } else if (fuelValues.length) {
+      fuelMin = Math.min(...fuelValues);
+    }
+    if (Number.isFinite(fuelMin) && Number.isFinite(maxCapacity) && (fuelMin as number) >= (maxCapacity as number)) {
+      fuelMin = (maxCapacity as number) - 1;
+    }
     const spans = events
       .filter((evt) => evt.isRefuel || evt.isWithdrawal)
       .map((evt) => {
@@ -884,7 +1503,7 @@ function FuelEChart({
       {
         backgroundColor: "transparent",
         animation: true,
-        grid: { left: 64, right: 40, top: 52, bottom: 48, containLabel: true },
+        grid: { left: 64, right: 40, top: 84, bottom: 48, containLabel: true },
         tooltip: {
           trigger: "axis",
           confine: true,
@@ -897,6 +1516,10 @@ function FuelEChart({
               .filter((p) => p && p.seriesName)
               .map((p) => {
                 const val = Array.isArray(p.value) ? p.value[1] : p.value;
+                if (p.seriesName === "Velocita") {
+                  const speedValue = Number.isFinite(val) ? `${Math.round(val)} km/h` : "--";
+                  return `${p.marker} ${p.seriesName}: ${speedValue}`;
+                }
                 return `${p.marker} ${p.seriesName}: ${formatLiters(val)}`;
               });
             return [date, ...lines].join("<br/>");
@@ -913,21 +1536,31 @@ function FuelEChart({
           axisTick: { show: false },
           splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
         },
-        yAxis: {
-          type: "value",
-          name: "Carburante (L)",
-          min: maxCapacity ? 0 : "dataMin",
-          max: maxCapacity ?? "dataMax",
-          nameLocation: "end",
-          nameGap: 18,
-          nameTextStyle: { color: "#fbbf24", fontSize: 12, padding: [0, 0, 8, 0] },
-          axisLine: { lineStyle: { color: "#fbbf24" } },
-          axisLabel: {
-            color: "#fbbf24",
-            formatter: (value: number) => Math.round(value),
+        yAxis: [
+          {
+            type: "value",
+            name: "Carburante (L)",
+            min: Number.isFinite(fuelMin) ? (fuelMin as number) : "dataMin",
+            max: maxCapacity ?? "dataMax",
+            nameLocation: "end",
+            nameGap: 18,
+            nameTextStyle: { color: "#fbbf24", fontSize: 12, padding: [0, 0, 8, 0] },
+            axisLine: { lineStyle: { color: "#fbbf24" } },
+            axisLabel: {
+              color: "#fbbf24",
+              formatter: (value: number) => Math.round(value),
+            },
+            splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
           },
-          splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
-        },
+          {
+            type: "value",
+            name: "Velocita (km/h)",
+            position: "right",
+            axisLine: { lineStyle: { color: "#60a5fa" } },
+            axisLabel: { color: "#60a5fa" },
+            splitLine: { show: false },
+          },
+        ],
         dataZoom: [
           { type: "inside", xAxisIndex: 0 },
           {
@@ -945,6 +1578,15 @@ function FuelEChart({
             textStyle: { color: "#cbd5f5" },
           },
         ],
+        legend: {
+          data: ["Livello carburante", "Serbatoio 1", "Serbatoio 2", "Velocita"],
+          top: 8,
+          left: "center",
+          textStyle: { color: "#e5e7eb" },
+          itemWidth: 16,
+          itemHeight: 8,
+          inactiveColor: "rgba(229,231,235,0.35)",
+        },
         series: [
           {
             name: "Livello carburante",
@@ -955,6 +1597,34 @@ function FuelEChart({
             itemStyle: { color: "#fbbf24" },
             data: fuel,
             markArea: spans.length ? { data: spans } : undefined,
+          },
+          {
+            name: "Serbatoio 1",
+            type: "line",
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 1.6, color: "#34d399" },
+            itemStyle: { color: "#34d399" },
+            data: tank1,
+          },
+          {
+            name: "Serbatoio 2",
+            type: "line",
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 1.6, color: "#c084fc" },
+            itemStyle: { color: "#c084fc" },
+            data: tank2,
+          },
+          {
+            name: "Velocita",
+            type: "line",
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 1.2, color: "#60a5fa" },
+            itemStyle: { color: "#60a5fa" },
+            data: speed,
+            yAxisIndex: 1,
           },
         ],
       },
@@ -992,7 +1662,7 @@ function FuelEChart({
     );
   }
 
-  return <div ref={hostRef} className="h-[360px] w-full min-w-0 overflow-hidden" />;
+  return <div ref={hostRef} className="h-[420px] w-full min-w-0 overflow-hidden" />;
 }
 
 function TableCard({

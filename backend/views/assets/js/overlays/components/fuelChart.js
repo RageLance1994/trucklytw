@@ -57,8 +57,14 @@ export class FuelChart {
     return events
       .map((evt, idx) => {
         const start = this.toTimestamp(evt?.startMs ?? evt?.start ?? evt?.startTs);
-        const end = this.toTimestamp(evt?.endMs ?? evt?.end ?? evt?.endTs ?? start);
+        let end = this.toTimestamp(evt?.endMs ?? evt?.end ?? evt?.endTs ?? start);
         if (!Number.isFinite(start)) return null;
+        const durationMs = this.toNumber(evt?.durationMs);
+        if (Number.isFinite(durationMs) && durationMs > 0) {
+          const durationEnd = start + durationMs;
+          if (!Number.isFinite(end) || end <= start) end = durationEnd;
+          else if (durationEnd > end) end = durationEnd;
+        }
         const normalizedType = (evt?.normalizedType || evt?.type || '').toLowerCase();
         const isRefuel = normalizedType === 'refuel' || normalizedType === 'rifornimento';
         const isWithdrawal = normalizedType === 'withdrawal' || normalizedType === 'fuel-theft' || normalizedType === 'theft';
@@ -139,9 +145,17 @@ export class FuelChart {
     const tank2 = samples
       .map((s) => [s.ts, this.toNumber(s.tank2)])
       .filter(([, v]) => Number.isFinite(v));
+    const capacity = samples
+      .map((s) => {
+        const t1 = this.toNumber(s.tank1) || 0;
+        const t2 = this.toNumber(s.tank2) || 0;
+        const total = t1 + t2;
+        return Number.isFinite(total) && total > 0 ? total : null;
+      })
+      .filter((v) => Number.isFinite(v));
 
     const smoothedFuel = this.smoothSeries(fuel, Math.max(3, Math.round(fuel.length / 200)));
-    return { fuel: smoothedFuel, tank1, tank2 };
+    return { fuel: smoothedFuel, tank1, tank2, capacity };
   }
 
   buildAnnotations(events = []) {
@@ -183,9 +197,23 @@ export class FuelChart {
       return;
     }
 
-    const { fuel, tank1, tank2 } = this.buildSeries(samples);
+    const { fuel, tank1, tank2, capacity } = this.buildSeries(samples);
     const series = [];
     const fuelAxisIndex = 0;
+    const fuelValues = fuel.map(([, v]) => v).filter((v) => Number.isFinite(v));
+    let fuelMin = null;
+    let fuelMax = null;
+    if (fuelValues.length) {
+      const positiveFuel = fuelValues.filter((v) => v > 0);
+      const minSource = positiveFuel.length ? positiveFuel : fuelValues;
+      fuelMin = Math.min(...minSource);
+      fuelMax = Math.max(...fuelValues);
+    }
+    const capacityMax = capacity.length ? Math.max(...capacity) : null;
+    const axisMax = Number.isFinite(capacityMax) ? capacityMax : fuelMax;
+    if (Number.isFinite(fuelMin) && Number.isFinite(axisMax) && fuelMin >= axisMax) {
+      fuelMin = axisMax - 1;
+    }
 
     series.push({
       name: 'Livello carburante',
@@ -274,6 +302,9 @@ export class FuelChart {
           type: 'value',
           name: 'Carburante (L)',
           position: 'left',
+          scale: true,
+          min: Number.isFinite(fuelMin) ? fuelMin : undefined,
+          max: Number.isFinite(axisMax) ? axisMax : undefined,
           axisLine: { lineStyle: { color: '#ffb87a' } },
           axisLabel: { color: '#ffb87a' }
         }
