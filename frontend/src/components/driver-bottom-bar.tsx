@@ -1,5 +1,5 @@
 import React from "react";
-import { API_BASE_URL } from "../config";
+import { dataManager } from "../lib/data-manager";
 
 type BottomBarMode = "driver" | "fuel";
 
@@ -685,30 +685,13 @@ function FuelDashboard({
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/fuel/history`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          imei: selectedVehicleImei,
-          from: toIso(startDate),
-          to: toIso(endDate),
-        }),
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
+      const data = await dataManager.getHistory(
+        selectedVehicleImei,
+        toIso(startDate),
+        toIso(endDate),
+      );
       const raw = Array.isArray(data?.raw) ? data.raw : [];
-      const fuelEvents = Array.isArray(data?.fuelEvents)
-        ? data.fuelEvents
-        : Array.isArray(data?.events)
-          ? data.events
-          : [];
-
+      const fuelEvents = Array.isArray(data?.fuelEvents) ? data.fuelEvents : [];
       setHistoryRaw(raw);
       setEvents(normalizeFuelEvents(fuelEvents));
     } catch (err: any) {

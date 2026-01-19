@@ -14,6 +14,11 @@ const { TachoSync } = require('../utils/tacho')
 
 const ALLOWED_TANK_UNITS = new Set(['litres', 'gallons']);
 const HISTORY_BUCKET_MS = 60_000;
+const HISTORY_BUCKET_MIN_MS = 60_000;
+const HISTORY_BUCKET_MAX_MS = 3_600_000;
+const HISTORY_INDEX_CACHE = new Set();
+const FUEL_EVENT_INDEX_CACHE = new Set();
+const REFUEL_INDEX_CACHE = new Set();
 const MAX_REFUEL_ATTACHMENT_SIZE = 8 * 1024 * 1024; // 8MB
 const ALLOWED_REFUEL_ATTACHMENT_MIMES = new Set([
   'application/pdf',
@@ -356,6 +361,7 @@ const fetchFuelEventsForRange = async (imei, fromMs, toMs) => {
   try {
     const Model = getRefuelingModel(imei);
     if (!Model) return [];
+    ensureRefuelingIndexes(Model);
 
     const docs = await Model.find({
       imei: `${imei}`,
@@ -381,6 +387,161 @@ const fetchFuelEventsForRange = async (imei, fromMs, toMs) => {
     console.error('[history.fuelEvents] unable to fetch fuel events', err);
     return [];
   }
+};
+
+const fetchDetectedFuelEvents = async (imei, fromMs, toMs) => {
+  if (!imei || !Number.isFinite(fromMs) || !Number.isFinite(toMs)) return [];
+  try {
+    const Model = getModel(`${imei}_fuelevents`, Models.fuelEventSchema);
+    if (!Model) return [];
+    ensureFuelEventIndexes(Model);
+    const dayMs = 86_400_000;
+    const docs = await Model.find({ startMs: { $gte: fromMs, $lte: toMs + dayMs } })
+      .sort({ startMs: 1 })
+      .lean()
+      .exec();
+    return Array.isArray(docs) ? docs.map(mapFuelEventRecord).filter(Boolean) : [];
+  } catch (err) {
+    console.error('[history.fuelEvents] unable to fetch detected events', err);
+    return [];
+  }
+};
+
+const mergeFuelEvents = (lists = []) => {
+  const merged = new Map();
+  lists.flat().forEach((evt) => {
+    if (!evt) return;
+    const key = evt.eventId || `${evt.start}-${evt.end}-${evt.type}`;
+    merged.set(key, evt);
+  });
+  return Array.from(merged.values());
+};
+
+const resolveBucketMs = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return HISTORY_BUCKET_MS;
+  return Math.min(Math.max(numeric, HISTORY_BUCKET_MIN_MS), HISTORY_BUCKET_MAX_MS);
+};
+
+const HISTORY_IO_FIELDS = {
+  ignition: "$io.ignition",
+  ignitionState: "$io.ignitionState",
+  engine: "$io.engine",
+  engineStatus: "$io.engineStatus",
+  speed: "$io.speed",
+  vehicleSpeed: "$io.vehicleSpeed",
+  vehicle_speed: "$io.vehicle_speed",
+  movement: "$io.movement",
+  vehicleMovement: "$io.vehicleMovement",
+  motion: "$io.motion",
+  moving: "$io.moving",
+  totalOdometer: "$io.totalOdometer",
+  odometer: "$io.odometer",
+  tripOdometer: "$io.tripOdometer",
+  mileage: "$io.mileage",
+  current_fuel: "$io.current_fuel",
+  currentFuel: "$io.currentFuel",
+  fuel_total: "$io.fuel_total",
+  fuel: "$io.fuel",
+  tank: "$io.tank",
+  tankLiters: "$io.tankLiters",
+  tank1: "$io.tank1",
+  tank_1: "$io.tank_1",
+  tank2: "$io.tank2",
+  tank_2: "$io.tank_2",
+  tankPrimary: "$io.tankPrimary",
+  tankSecondary: "$io.tankSecondary",
+  primaryTankCapacity: "$io.primaryTankCapacity",
+  secondaryTankCapacity: "$io.secondaryTankCapacity",
+  current_fuel_percent: "$io.current_fuel_percent",
+  currentFuelPercent: "$io.currentFuelPercent",
+  fuel_percent: "$io.fuel_percent",
+  tankPerc: "$io.tankPerc",
+  driver1Id: "$io.driver1Id",
+  driver1Name: "$io.driver1Name",
+  driver1CardPresence: "$io.driver1CardPresence",
+  driver1WorkingState: "$io.driver1WorkingState",
+  driver2Id: "$io.driver2Id",
+  driver2Name: "$io.driver2Name",
+  driver2CardPresence: "$io.driver2CardPresence",
+  driver2WorkingState: "$io.driver2WorkingState"
+};
+
+const HISTORY_GPS_FIELDS = {
+  Longitude: "$gps.Longitude",
+  Latitude: "$gps.Latitude",
+  Speed: "$gps.Speed",
+  Odometer: "$gps.Odometer",
+  odometer: "$gps.odometer"
+};
+
+const buildHistoryPipeline = ({ fromDate, toDate, bucketMs }) => ([
+  {
+    $match: {
+      timestamp: {
+        $gt: fromDate,
+        $lte: toDate,
+      },
+    },
+  },
+  { $sort: { timestamp: 1 } },
+  {
+    $project: {
+      timestamp: 1,
+      gps: HISTORY_GPS_FIELDS,
+      io: HISTORY_IO_FIELDS
+    }
+  },
+  {
+    $group: {
+      _id: {
+        $toLong: {
+          $subtract: [
+            { $toLong: '$timestamp' },
+            { $mod: [{ $toLong: '$timestamp' }, bucketMs] },
+          ],
+        },
+      },
+      doc: { $first: '$$ROOT' },
+    },
+  },
+  { $replaceRoot: { newRoot: '$doc' } },
+  { $sort: { timestamp: 1 } },
+]);
+
+const ensureIndexOnce = async (cache, key, task) => {
+  if (cache.has(key)) return;
+  cache.add(key);
+  try {
+    await task();
+  } catch (err) {
+    console.warn('[indexes] failed to create index for', key, err?.message || err);
+    cache.delete(key);
+  }
+};
+
+const ensureHistoryIndexes = (model) => {
+  if (!model?.collection?.name) return;
+  const key = `${model.collection.name}:timestamp`;
+  void ensureIndexOnce(HISTORY_INDEX_CACHE, key, () =>
+    model.collection.createIndex({ timestamp: 1 }, { background: true })
+  );
+};
+
+const ensureFuelEventIndexes = (model) => {
+  if (!model?.collection?.name) return;
+  const key = `${model.collection.name}:startMs`;
+  void ensureIndexOnce(FUEL_EVENT_INDEX_CACHE, key, () =>
+    model.collection.createIndex({ startMs: 1 }, { background: true })
+  );
+};
+
+const ensureRefuelingIndexes = (model) => {
+  if (!model?.collection?.name) return;
+  const key = `${model.collection.name}:eventStart`;
+  void ensureIndexOnce(REFUEL_INDEX_CACHE, key, () =>
+    model.collection.createIndex({ imei: 1, eventStart: 1 }, { background: true })
+  );
 };
 
 const mapFuelAnalysis = (analysis = {}, metaExtras = {}) => {
@@ -620,7 +781,7 @@ router.post('/vehicles/:action', auth, async (req, res) => {
 
 router.post('/history/:action?', auth, imeiOwnership, async (req, res) => {
   const { action } = req.params;
-  const { from, to, imei } = req.body;
+  const { from, to, imei, bucketMs: bucketMsRaw } = req.body;
 
   const normaliseDate = (value) => {
     const date = value instanceof Date ? value : new Date(value);
@@ -636,46 +797,23 @@ router.post('/history/:action?', auth, imeiOwnership, async (req, res) => {
 
   const fromMs = fromDate.getTime();
   const toMs = toDate.getTime();
+  const bucketMs = resolveBucketMs(bucketMsRaw);
 
   const model = getModel(`${imei}_monitoring`, avlSchema);
-
-
-
-  const historyStages = [
-    {
-      $match: {
-        timestamp: {
-          $gt: fromDate,
-          $lte: toDate,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: {
-          $toLong: {
-            $subtract: [
-              { $toLong: '$timestamp' },
-              { $mod: [{ $toLong: '$timestamp' }, HISTORY_BUCKET_MS] },
-            ],
-          },
-        },
-        doc: { $first: '$$ROOT' },
-      },
-    },
-  ];
+  ensureHistoryIndexes(model);
+  const historyStages = buildHistoryPipeline({ fromDate, toDate, bucketMs });
 
   switch (action) {
     case 'preview':
       try {
         const [aggregation, first, last] = await Promise.all([
-          model.aggregate([...historyStages, { $count: 'total' }]),
+          model.aggregate([...historyStages, { $count: 'total' }]).allowDiskUse(true),
           model.findOne({ timestamp: { $gt: fromDate, $lte: toDate } }).sort({ timestamp: 1 }),
           model.findOne({ timestamp: { $gt: fromDate, $lte: toDate } }).sort({ timestamp: -1 }),
         ]);
         const count = Number(aggregation?.[0]?.total) || 0;
         const chunks = Math.max(1, Math.ceil(count / 1000));
-        return res.status(200).json({ count, chunks, first, last });
+        return res.status(200).json({ count, chunks, first, last, bucketMs });
       } catch (err) {
         console.error('[history.preview] aggregation failed', err);
         return res.status(500).json({ message: 'Impossibile calcolare l\'anteprima.' });
@@ -683,7 +821,11 @@ router.post('/history/:action?', auth, imeiOwnership, async (req, res) => {
 
     case 'events':
       try {
-        const fuelEvents = await fetchFuelEventsForRange(imei, fromMs, toMs);
+        const [refuelEvents, detectedEvents] = await Promise.all([
+          fetchFuelEventsForRange(imei, fromMs, toMs),
+          fetchDetectedFuelEvents(imei, fromMs, toMs)
+        ]);
+        const fuelEvents = mergeFuelEvents([refuelEvents, detectedEvents]);
         return res.status(200).json({ fuelEvents });
       } catch (err) {
         console.error('[history.events] aggregation failed', err);
@@ -692,15 +834,13 @@ router.post('/history/:action?', auth, imeiOwnership, async (req, res) => {
 
     case 'get':
       try {
-        const [raw, fuelEvents] = await Promise.all([
-          model.aggregate([
-            ...historyStages,
-            { $replaceRoot: { newRoot: '$doc' } },
-            { $sort: { timestamp: 1 } },
-          ]),
-          fetchFuelEventsForRange(imei, fromMs, toMs)
+        const [raw, refuelEvents, detectedEvents] = await Promise.all([
+          model.aggregate(historyStages).allowDiskUse(true),
+          fetchFuelEventsForRange(imei, fromMs, toMs),
+          fetchDetectedFuelEvents(imei, fromMs, toMs)
         ]);
-        return res.status(200).json({ raw, fuelEvents });
+        const fuelEvents = mergeFuelEvents([refuelEvents, detectedEvents]);
+        return res.status(200).json({ raw, fuelEvents, bucketMs });
       } catch (err) {
         console.error('[history.get] aggregation failed', err);
         return res.status(500).json({ message: 'Impossibile recuperare la cronologia.' });

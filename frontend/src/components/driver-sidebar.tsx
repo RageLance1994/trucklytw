@@ -1,5 +1,6 @@
 import React from "react";
 import { API_BASE_URL } from "../config";
+import { dataManager } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
 
 type DriverSidebarProps = {
@@ -638,11 +639,6 @@ function RoutesSidebar({
   const [scrubValue, setScrubValue] = React.useState(1);
   const prevImeiRef = React.useRef<string | null>(null);
 
-  const routesBaseUrl = React.useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return `${window.location.protocol}//${window.location.hostname}:8080`;
-  }, []);
-
   const normalizedHistory = React.useMemo(
     () => downsampleRoute(normalizeRouteHistory(historyRaw)),
     [historyRaw],
@@ -666,50 +662,14 @@ function RoutesSidebar({
     setLoading(true);
     setError(null);
     try {
-      const [historyRes, eventsRes] = await Promise.all([
-        fetch(`${routesBaseUrl}/dashboard/history/get`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            imei: selectedVehicleImei,
-            from: fromMs,
-            to: toMs,
-          }),
-        }),
-        fetch(`${routesBaseUrl}/dashboard/fuelevents/history`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            imei: selectedVehicleImei,
-            from: fromMs,
-            to: toMs,
-          }),
-        }),
-      ]);
-
-      if (!historyRes.ok) {
-        const txt = await historyRes.text();
-        throw new Error(txt || `HTTP ${historyRes.status}`);
-      }
-
-      const data = await historyRes.json();
+      const data = await dataManager.getHistory(selectedVehicleImei, fromMs, toMs);
       const raw = Array.isArray(data?.raw) ? data.raw : [];
+      const normalizedEvents = Array.isArray(data?.fuelEvents)
+        ? data.fuelEvents.map(normalizeFuelEvent).filter(Boolean)
+        : [];
       setHistoryRaw(raw);
+      setEvents(normalizedEvents);
       setScrubValue(1);
-
-      if (eventsRes.ok) {
-        const eventsData = await eventsRes.json();
-        const normalizedEvents = Array.isArray(eventsData)
-          ? eventsData.map(normalizeFuelEvent).filter(Boolean)
-          : Array.isArray(eventsData?.fuelEvents)
-            ? eventsData.fuelEvents.map(normalizeFuelEvent).filter(Boolean)
-            : [];
-        setEvents(normalizedEvents);
-      } else {
-        setEvents([]);
-      }
     } catch (err: any) {
       setError(err?.message || "Errore nel recupero percorsi");
       setHistoryRaw([]);
@@ -717,7 +677,7 @@ function RoutesSidebar({
     } finally {
       setLoading(false);
     }
-  }, [routesBaseUrl, selectedVehicleImei, startDate, endDate]);
+  }, [selectedVehicleImei, startDate, endDate]);
 
   React.useEffect(() => {
     if (prevImeiRef.current && prevImeiRef.current !== selectedVehicleImei) {

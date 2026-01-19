@@ -6,6 +6,9 @@ const avlSchema = new mongoose.Schema({
 
 }, { strict: false })
 
+// Speed up history queries that filter/sort by timestamp.
+avlSchema.index({ timestamp: 1 });
+
 
 
 const getModel = (cname, schema) => {
@@ -106,6 +109,9 @@ const fuelEventSchema = new mongoose.Schema({
   driverId: { type: String, default: null }
 }, { timestamps: true });
 
+fuelEventSchema.index({ startMs: 1 });
+fuelEventSchema.index({ imei: 1, startMs: 1 });
+
 
 const DRIVER_STATE_NAMES = ["driving", "working", "resting", "error", "unknown", "unlogged"];
 
@@ -173,6 +179,7 @@ const RefuelingSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 RefuelingSchema.index({ imei: 1, eventId: 1 }, { unique: true });
+RefuelingSchema.index({ imei: 1, eventStart: 1 });
 
 const getRefuelingModel = (imei) => {
   if (!imei) throw new Error('IMEI richiesto per modello refueling');
