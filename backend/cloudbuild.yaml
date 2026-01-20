@@ -1,4 +1,5 @@
 steps:
+  # 1) Build Docker image (usa backend/ come contesto)
   - name: 'gcr.io/cloud-builders/docker'
     dir: backend
     args:
@@ -9,6 +10,16 @@ steps:
         '.'
       ]
 
+  # 2) Push Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: backend
+    args:
+      [
+        'push',
+        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:latest'
+      ]
+
+  # 3) Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -25,4 +36,5 @@ steps:
         '--allow-unauthenticated'
       ]
 
+# Forziamo Cloud Build a usare QUESTO bucket (che esiste davvero)
 logsBucket: gs://truckly-477816-cloudbuild-logs
