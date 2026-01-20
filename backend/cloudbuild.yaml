@@ -1,5 +1,4 @@
 steps:
-  # Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
@@ -9,7 +8,6 @@ steps:
         '.'
       ]
 
-  # Push Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
@@ -17,7 +15,6 @@ steps:
         'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:latest'
       ]
 
-  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -34,5 +31,4 @@ steps:
         '--allow-unauthenticated'
       ]
 
-options:
-  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
+logsBucket: gs://truckly-477816-cloudbuild-logs
