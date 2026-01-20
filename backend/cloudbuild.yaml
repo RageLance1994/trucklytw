@@ -34,8 +34,5 @@ steps:
         '--allow-unauthenticated'
       ]
 
-# REQUIRED when using user-managed service account
+# REQUIRED with user-managed service account
 logsBucket: gs://truckly-477816-cloudbuild-logs
-
-options:
-  logging: CLOUD_LOGGING_ONLY
