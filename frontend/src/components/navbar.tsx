@@ -11,10 +11,12 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
+import { API_BASE_URL } from "../config";
 
 export function Navbar() {
   const [search, setSearch] = React.useState("");
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [companyName, setCompanyName] = React.useState("Account");
   const [mobileSection, setMobileSection] = React.useState<
     "flotta" | "analisi" | "mappe" | "impostazioni" | null
   >(null);
@@ -58,6 +60,31 @@ export function Navbar() {
     };
   }, []);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/session`, {
+          cache: "no-store" as RequestCache,
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.user?.companyName) {
+          setCompanyName(data.user.companyName);
+        }
+      } catch (err) {
+        console.warn("[Navbar] session lookup failed", err);
+      }
+    };
+
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const runSearch = React.useCallback((value: string) => {
     const query = value.trim();
 
@@ -95,7 +122,12 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-[#0a0a0d]">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         <div className="flex items-center gap-3 py-3">
-          <div className="text-xl font-bold tracking-tight">Truckly</div>
+          <img
+            src="/assets/images/logo_white.png"
+            alt="Truckly"
+            className="h-6 w-auto"
+            loading="lazy"
+          />
 
           <div className="flex flex-1 items-center justify-center gap-6">
             <div className="flex w-full items-center md:w-auto">
@@ -265,6 +297,44 @@ export function Navbar() {
               </DropdownMenu>
             </nav>
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="hidden md:inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-white/70 hover:text-white hover:border-white/30 transition">
+                <span className="max-w-[160px] truncate">{companyName}</span>
+                <svg
+                  viewBox="0 0 20 20"
+                  className="h-4 w-4 text-white/50"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M5.5 7.5L10 12l4.5-4.5-1.4-1.4L10 9.2 6.9 6.1 5.5 7.5z" />
+                </svg>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[180px]">
+              <DropdownMenuItem>Impostazioni</DropdownMenuItem>
+              <DropdownMenuItem>Fatture</DropdownMenuItem>
+              <DropdownMenuItem>Report Fiscali</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={async () => {
+                  try {
+                    await fetch(`${API_BASE_URL}/logout`, {
+                      method: "GET",
+                      credentials: "include",
+                    });
+                  } catch (err) {
+                    console.warn("[Navbar] logout failed", err);
+                  } finally {
+                    window.location.href = "/login";
+                  }
+                }}
+              >
+                Esci
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <button
             type="button"

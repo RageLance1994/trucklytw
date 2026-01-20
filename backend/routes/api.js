@@ -5,10 +5,47 @@ const fs = require('fs');
 const { auth, imeiOwnership } = require('../utils/users');
 const { Vehicles, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
 const { decryptString, decryptJSON } = require('../utils/encryption');
+const { _Users } = require('../utils/database');
 const { SeepTrucker } = require('../utils/seep');
 
 const router = express.Router();
 const HISTORY_BUCKET_MS = 60_000;
+
+router.get('/session', async (req, res) => {
+  const token = req.cookies?.auth_token;
+  if (!token) {
+    return res.status(401).json({ error: 'UNAUTHORIZED' });
+  }
+
+  try {
+    const user = await _Users.get(token);
+    if (!user) {
+      return res.status(401).json({ error: 'UNAUTHORIZED' });
+    }
+
+    let companyName = null;
+    if (user.companyEnc) {
+      try {
+        companyName = decryptString(user.companyEnc);
+      } catch (err) {
+        console.warn('[api] /session company decrypt error:', err?.message || err);
+      }
+    }
+
+    return res.status(200).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName || null,
+        lastName: user.lastName || null,
+        companyName,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /session error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
 
 // Helper used by /api/vehicles to decrypt Enc fields
 function decorateVehicle(raw) {

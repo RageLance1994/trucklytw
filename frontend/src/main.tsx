@@ -49,6 +49,32 @@ function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const checkSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/session`, {
+          cache: "no-store" as RequestCache,
+          credentials: "include",
+        });
+
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.user) {
+          navigate(next, { replace: true });
+        }
+      } catch (err) {
+        console.warn("[Login] session check failed", err);
+      }
+    };
+
+    checkSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, next]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -111,9 +137,14 @@ function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#09090b] text-[#f4f4f5]">
       <div className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900/70 p-8 shadow-xl">
-        <h1 className="text-2xl font-semibold mb-6 text-center">
-          Truckly Login
-        </h1>
+        <div className="mb-6 flex justify-center">
+          <img
+            src="/assets/images/logo_white.png"
+            alt="Truckly"
+            className="h-9 w-auto"
+            loading="lazy"
+          />
+        </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
@@ -158,6 +189,7 @@ function LoginPage() {
 }
 
 function DashboardPage() {
+  const navigate = useNavigate();
   const [vehicles, setVehicles] = React.useState<Vehicle[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -196,8 +228,19 @@ function DashboardPage() {
           credentials: "include",
         });
 
+        if (res.status === 401) {
+          navigate("/login", { replace: true });
+          return;
+        }
+
         if (!res.ok) {
           throw new Error(`Failed to load vehicles (${res.status})`);
+        }
+
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          navigate("/login", { replace: true });
+          return;
         }
 
         const data = await res.json();
@@ -219,7 +262,7 @@ function DashboardPage() {
     };
 
     fetchVehicles();
-  }, []);
+  }, [navigate]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
