@@ -17,6 +17,7 @@ export function Navbar() {
   const [search, setSearch] = React.useState("");
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [companyName, setCompanyName] = React.useState("Account");
+  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
   const [mobileSection, setMobileSection] = React.useState<
     "flotta" | "analisi" | "mappe" | "impostazioni" | null
   >(null);
@@ -73,6 +74,9 @@ export function Navbar() {
         const data = await res.json().catch(() => null);
         if (!cancelled && data?.user?.companyName) {
           setCompanyName(data.user.companyName);
+        }
+        if (!cancelled && Number.isInteger(data?.user?.role)) {
+          setIsSuperAdmin(data.user.role <= 1);
         }
       } catch (err) {
         console.warn("[Navbar] session lookup failed", err);
@@ -291,7 +295,15 @@ export function Navbar() {
                 </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="min-w-[160px]">
-                  <DropdownMenuItem>Utenti</DropdownMenuItem>
+                  {isSuperAdmin && (
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        window.dispatchEvent(new CustomEvent("truckly:admin-open"))
+                      }
+                    >
+                      Utenti
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem>Integrazioni</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -573,9 +585,17 @@ export function Navbar() {
               </svg>
             </summary>
             <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
-                Utenti
-              </button>
+              {isSuperAdmin && (
+                <button
+                  className="w-full px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("truckly:admin-open"));
+                    setIsMenuOpen(false);
+                  }}
+                >
+                  Utenti
+                </button>
+              )}
               <button className="w-full px-2 py-1 text-left hover:text-white transition">
                 Integrazioni
               </button>

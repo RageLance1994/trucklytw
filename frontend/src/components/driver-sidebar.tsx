@@ -1,7 +1,13 @@
-import React from "react";
+﻿import React from "react";
 import { API_BASE_URL } from "../config";
 import { dataManager } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 type DriverSidebarProps = {
   isOpen: boolean;
@@ -9,7 +15,7 @@ type DriverSidebarProps = {
   selectedDriverImei?: string | null;
   selectedRouteImei?: string | null;
   selectedDriverDevice?: any | null;
-  mode?: "driver" | "routes" | "geofence" | "vehicle";
+  mode?: "driver" | "routes" | "geofence" | "vehicle" | "admin";
   geofenceDraft?: {
     geofenceId: string;
     imei: string;
@@ -42,6 +48,29 @@ type RoutePoint = {
     ignition: number;
   };
 };
+
+type AdminUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: number | null;
+  privilege: number | null;
+  createdAt: string | number | null;
+};
+
+type AdminCompany = {
+  id: string;
+  name: string;
+  createdAt: string | number | null;
+  updatedAt?: string | number | null;
+  userCount: number;
+  users: AdminUser[];
+};
+
+type SortDir = "asc" | "desc";
+type CompanySortField = "name" | "userCount" | "createdAt";
+type UserSortField = "name" | "email" | "role" | "privilege" | "createdAt";
 
 const MS_MIN = 60 * 1000;
 const MS_HOUR = 60 * MS_MIN;
@@ -97,6 +126,35 @@ type DriverMetrics = {
 };
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
+
+const formatShortDate = (value: string | number | null | undefined) => {
+  if (!value) return "N/D";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/D";
+  return date.toLocaleDateString("it-IT");
+};
+
+const formatRoleLabel = (value: number | null | undefined) => {
+  if (value == null) return "N/D";
+  return value <= 1 ? "Admin" : "Operatore";
+};
+
+const sortWithDir = <T,>(
+  list: T[],
+  dir: SortDir,
+  selector: (item: T) => string | number | null | undefined,
+) => {
+  const multiplier = dir === "desc" ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const av = selector(a);
+    const bv = selector(b);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * multiplier;
+    return String(av).localeCompare(String(bv), "it", { sensitivity: "base" }) * multiplier;
+  });
+};
 
 const toLocalInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -851,6 +909,346 @@ function RoutesSidebar({
   );
 }
 
+type SortButtonProps = {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+  align?: "left" | "right";
+};
+
+function SortButton({
+  label,
+  active,
+  dir,
+  onClick,
+  align = "left",
+}: SortButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1 text-[10px] sm:text-xs uppercase tracking-[0.2em] text-white/55 hover:text-white/85 transition ${
+        align === "right" ? "justify-end" : "justify-start"
+      }`}
+    >
+      <span>{label}</span>
+      {active && (
+        <i
+          className={`fa ${dir === "asc" ? "fa-sort-up" : "fa-sort-down"} text-white/60`}
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
+}
+
+function AdminSidebar({ isOpen }: { isOpen: boolean }) {
+  const [companies, setCompanies] = React.useState<AdminCompany[]>([]);
+  const [search, setSearch] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  const [companySort, setCompanySort] = React.useState<{
+    field: CompanySortField;
+    dir: SortDir;
+  }>({ field: "name", dir: "asc" });
+  const [userSort, setUserSort] = React.useState<{
+    field: UserSortField;
+    dir: SortDir;
+  }>({ field: "name", dir: "asc" });
+  const [userSearch, setUserSearch] = React.useState<Record<string, string>>({});
+
+  const fetchCompanies = React.useCallback(async () => {
+    const query = new URLSearchParams();
+    const trimmed = search.trim();
+    if (trimmed) query.set("search", trimmed);
+    const url = `${API_BASE_URL || ""}/api/admin/companies${query.toString() ? `?${query}` : ""}`;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setCompanies(Array.isArray(data?.companies) ? data.companies : []);
+    } catch (err: any) {
+      setError(err?.message || "Errore durante il caricamento.");
+    } finally {
+      setLoading(false);
+    }
+  }, [search]);
+
+  React.useEffect(() => {
+    if (!isOpen) return undefined;
+    const handle = window.setTimeout(() => {
+      fetchCompanies();
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [isOpen, fetchCompanies, search]);
+
+  const sortedCompanies = React.useMemo(() => {
+    return sortWithDir(companies, companySort.dir, (company) => {
+      if (companySort.field === "userCount") return company.userCount ?? 0;
+      if (companySort.field === "createdAt") {
+        return company.createdAt ? new Date(company.createdAt).getTime() : 0;
+      }
+      return company.name || "";
+    });
+  }, [companies, companySort]);
+
+  const toggleCompany = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const updateCompanySort = (field: CompanySortField) => {
+    setCompanySort((prev) => ({
+      field,
+      dir: prev.field === field && prev.dir === "asc" ? "desc" : "asc",
+    }));
+  };
+
+  const updateUserSort = (field: UserSortField) => {
+    setUserSort((prev) => ({
+      field,
+      dir: prev.field === field && prev.dir === "asc" ? "desc" : "asc",
+    }));
+  };
+
+  const companyGrid =
+    "grid min-w-0 grid-cols-[minmax(0,2.2fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
+  const userGrid =
+    "grid min-w-0 grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-3 sm:p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">Aziende</p>
+          <button
+            type="button"
+            onClick={fetchCompanies}
+            className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+          >
+            {loading ? "Aggiorno..." : "Aggiorna"}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-end">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cerca azienda..."
+            className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
+          />
+        </div>
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+
+        <div className="space-y-3">
+          <div className={`${companyGrid} px-3 text-[9px] sm:text-[10px]`}>
+            <SortButton
+              label="Azienda"
+              active={companySort.field === "name"}
+              dir={companySort.dir}
+              onClick={() => updateCompanySort("name")}
+            />
+            <SortButton
+              label="Utenti"
+              active={companySort.field === "userCount"}
+              dir={companySort.dir}
+              onClick={() => updateCompanySort("userCount")}
+            />
+            <SortButton
+              label="Creato"
+              active={companySort.field === "createdAt"}
+              dir={companySort.dir}
+              onClick={() => updateCompanySort("createdAt")}
+            />
+            <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/55 text-right">
+              Azioni
+            </div>
+          </div>
+
+          {sortedCompanies.length === 0 && !loading ? (
+            <div className="rounded-xl border border-white/10 bg-[#0c0f16] px-3 py-3 text-xs text-white/60">
+              Nessuna azienda trovata.
+            </div>
+          ) : (
+            sortedCompanies.map((company) => {
+              const isExpanded = expanded.has(company.id);
+              const searchValue = (userSearch[company.id] || "").trim().toLowerCase();
+              const filteredUsers = searchValue
+                ? company.users.filter((user) => {
+                    const name = `${user.firstName} ${user.lastName}`.toLowerCase();
+                    return (
+                      name.includes(searchValue) ||
+                      user.email.toLowerCase().includes(searchValue)
+                    );
+                  })
+                : company.users;
+              const sortedUsers = sortWithDir(filteredUsers, userSort.dir, (user) => {
+                if (userSort.field === "email") return user.email;
+                if (userSort.field === "role") return user.role ?? 99;
+                if (userSort.field === "privilege") return user.privilege ?? 99;
+                if (userSort.field === "createdAt") {
+                  return user.createdAt ? new Date(user.createdAt).getTime() : 0;
+                }
+                return `${user.firstName} ${user.lastName}`.trim();
+              });
+
+              return (
+                <div
+                  key={company.id}
+                  className="rounded-xl border border-white/10 bg-[#0c0f16] px-3 py-3 text-xs text-white/80"
+                >
+                  <div className={`${companyGrid}`}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCompany(company.id)}
+                      className="flex items-center gap-2 min-w-0 text-left"
+                    >
+                      <i
+                        className={`fa ${isExpanded ? "fa-caret-down" : "fa-caret-right"} text-white/50`}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate font-medium text-white/90">{company.name}</span>
+                    </button>
+                    <div className="text-white/70">{company.userCount}</div>
+                    <div className="text-white/70">{formatShortDate(company.createdAt)}</div>
+                    <div className="flex justify-end">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 items-center justify-center text-white/60 hover:text-white transition"
+                          >
+                            <i className="fa fa-ellipsis-h text-[11px]" aria-hidden="true" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[160px]">
+                          <DropdownMenuItem>Nuovo utente</DropdownMenuItem>
+                          <DropdownMenuItem>Dettagli azienda</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+                      <div className="flex items-center justify-end">
+                        <input
+                          value={userSearch[company.id] || ""}
+                          onChange={(e) =>
+                            setUserSearch((prev) => ({
+                              ...prev,
+                              [company.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Cerca utenti..."
+                          className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
+                        />
+                      </div>
+
+                      <div className={`${userGrid} px-2 text-[9px] sm:text-[10px]`}>
+                        <SortButton
+                          label="Nome"
+                          active={userSort.field === "name"}
+                          dir={userSort.dir}
+                          onClick={() => updateUserSort("name")}
+                        />
+                        <div className="hidden sm:block">
+                          <SortButton
+                            label="Email"
+                            active={userSort.field === "email"}
+                            dir={userSort.dir}
+                            onClick={() => updateUserSort("email")}
+                          />
+                        </div>
+                        <SortButton
+                          label="Ruolo"
+                          active={userSort.field === "role"}
+                          dir={userSort.dir}
+                          onClick={() => updateUserSort("role")}
+                        />
+                        <div className="hidden sm:block">
+                          <SortButton
+                            label="Privilegio"
+                            active={userSort.field === "privilege"}
+                            dir={userSort.dir}
+                            onClick={() => updateUserSort("privilege")}
+                          />
+                        </div>
+                        <SortButton
+                          label="Creato"
+                          active={userSort.field === "createdAt"}
+                          dir={userSort.dir}
+                          onClick={() => updateUserSort("createdAt")}
+                        />
+                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/55 text-right">
+                          Azioni
+                        </div>
+                      </div>
+
+                      {sortedUsers.length === 0 ? (
+                        <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/60">
+                          Nessun utente trovato.
+                        </div>
+                      ) : (
+                        sortedUsers.map((user) => (
+                          <div
+                            key={user.id}
+                            className={`${userGrid} rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-[10px] sm:text-[11px] text-white/80`}
+                          >
+                            <div className="min-w-0 truncate">
+                              {`${user.firstName} ${user.lastName}`.trim() || user.email}
+                            </div>
+                            <div className="hidden sm:block min-w-0 truncate text-white/70">{user.email}</div>
+                            <div className="text-white/70">{formatRoleLabel(user.role)}</div>
+                            <div className="hidden sm:block text-white/70">{user.privilege ?? "N/D"}</div>
+                            <div className="text-white/70">{formatShortDate(user.createdAt)}</div>
+                            <div className="flex justify-end">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-7 w-7 items-center justify-center text-white/60 hover:text-white transition"
+                                  >
+                                    <i className="fa fa-ellipsis-h text-[11px]" aria-hidden="true" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[160px]">
+                                  <DropdownMenuItem>Modifica</DropdownMenuItem>
+                                  <DropdownMenuItem>Disattiva</DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        ))
+                          )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DriverSidebar({
   isOpen,
   onClose,
@@ -876,10 +1274,11 @@ export function DriverSidebar({
   const isRoutesMode = mode === "routes";
   const isGeofenceMode = mode === "geofence";
   const isVehicleMode = mode === "vehicle";
+  const isAdminMode = mode === "admin";
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!isOpen) return () => {};
+    if (!isOpen || isAdminMode) return () => {};
     if (!hasDriver1) {
       setCounterBars(initialCounters);
       setActivityStatus("Nessun autista rilevato dal tachigrafo.");
@@ -912,18 +1311,20 @@ export function DriverSidebar({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, driver1Id, hasDriver1, routesBaseUrl, initialCounters]);
+  }, [isOpen, driver1Id, hasDriver1, routesBaseUrl, initialCounters, isAdminMode]);
 
   return (
     <aside
       className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-x-0" : "hidden-right"
-      }`}
+      } ${isAdminMode ? "w-full max-w-none sm:w-full lg:w-[40vw] lg:min-w-[40vw] lg:max-w-none" : ""}`}
       aria-hidden={!isOpen}
     >
       <div className="flex items-start justify-between px-5 py-5 border-b border-white/10">
         <div className="space-y-1.5">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Pannello</p>
+          {!isAdminMode && (
+            <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Pannello</p>
+          )}
           <h2 className="text-xl font-semibold leading-tight text-white">
             {isGeofenceMode
               ? "GeoFence"
@@ -931,17 +1332,21 @@ export function DriverSidebar({
               ? "Percorsi"
               : isVehicleMode
               ? "Nuovo veicolo"
+              : isAdminMode
+              ? "Utenti"
               : "Autista"}
           </h2>
-          <p className="text-sm text-white/70">
-            {isGeofenceMode
-              ? "Configura la geofence appena creata."
-              : isRoutesMode
-              ? "Gestisci l'intervallo e scorri il percorso selezionato."
-              : isVehicleMode
-              ? "Inserisci i dati e visualizza l'anteprima sulla mappa principale."
-              : "Seleziona un autista dal tooltip del mezzo per vedere i dettagli qui."}
-          </p>
+          {!isAdminMode && (
+            <p className="text-sm text-white/70">
+              {isGeofenceMode
+                ? "Configura la geofence appena creata."
+                : isRoutesMode
+                ? "Gestisci l'intervallo e scorri il percorso selezionato."
+                : isVehicleMode
+                ? "Inserisci i dati e visualizza l'anteprima sulla mappa principale."
+                : "Seleziona un autista dal tooltip del mezzo per vedere i dettagli qui."}
+            </p>
+          )}
         </div>
         {onClose && (
           <button
@@ -960,6 +1365,8 @@ export function DriverSidebar({
           <RoutesSidebar isOpen={isOpen} selectedVehicleImei={selectedRouteImei} />
         ) : isVehicleMode ? (
           <VehicleRegistrationSidebar isOpen={isOpen} />
+        ) : isAdminMode ? (
+          <AdminSidebar isOpen={isOpen} />
         ) : (
           <>
             <Section
@@ -1711,3 +2118,5 @@ function CounterBar({
     </div>
   );
 }
+
+

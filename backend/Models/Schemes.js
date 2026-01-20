@@ -63,6 +63,12 @@ const SimSchema = new mongoose.Schema({
   status: { type: Number, enum: [0,1,2], default: 0 }, // 0=active,1=suspended,2=archived
 }, { timestamps: true });
 
+const CompanySchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true, unique: true },
+  taxIdEnc: { type: String, default: null },
+  billingAddressEnc: { type: String, default: null },
+  status: { type: Number, enum: [0, 1, 2], default: 0 }, // 0=active,1=suspended,2=archived
+}, { timestamps: true });
 
 
 
@@ -76,9 +82,7 @@ const UserSchema = new mongoose.Schema({
   phoneEnc: { type: String, required: true },   // criptato
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true },
-  companyEnc: { type: String, default: null },    // criptato
-  taxIdEnc: { type: String, required: true },   // criptato
-  billingAddressEnc: { type: String, required: true }, // JSON criptato
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", default: null },
   settingsEnc: { type: String, default: null },    // JSON criptato
   vehicles: [{ type: mongoose.Schema.Types.ObjectId, ref: "Vehicle" }],
   drivers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Driver" }],
@@ -152,6 +156,7 @@ const authorizedIMEISchema = new mongoose.Schema({
 
 const AuthorizedIMEIS = mongoose.model('AuthorizedIMEIS', authorizedIMEISchema, 'AuthorizedIMEIS');
 const UserModel = mongoose.model('Users', UserSchema, 'Users');
+const Companies = mongoose.model("Company", CompanySchema, "Company");
 const Vehicles = mongoose.model("Vehicle", VehicleSchema, "Vehicle");
 const Drivers = mongoose.model("Drivers", DriverSchema, "Drivers");
 const Sims = mongoose.model("Sims", SimSchema, "Sims");
@@ -195,6 +200,7 @@ module.exports = {
   Vehicles, VehicleSchema,
   Drivers, DriverSchema,
   Sims, SimSchema,
+  Companies, CompanySchema,
   UserModel,
   RefuelingSchema,
   driverEventSchema,fuelEventSchema

@@ -30,6 +30,26 @@
   border-color: #27272a; /* zinc-800 */
 }
 
+/* Transparent horizontal scrollbar track */
+*::-webkit-scrollbar {
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+}
+
+.truckly-scroll-x {
+  overflow-x: scroll;
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  padding: 0;
+}
+
 /* Map marker styles (ported from Next globals.css, kept outside Tailwind layers) */
 .custom-marker {
   transition: opacity 0.2s ease;

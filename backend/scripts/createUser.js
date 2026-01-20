@@ -16,14 +16,14 @@ const parseArgs = (argv) => {
   return args;
 };
 
-const required = ['firstName', 'lastName', 'phone', 'email', 'password', 'company', 'street', 'city', 'zip', 'state', 'country', 'taxId'];
+const required = ['firstName', 'lastName', 'phone', 'email', 'password', 'companyId'];
 
 const args = parseArgs(process.argv.slice(2));
 const missing = required.filter((field) => !args[field]);
 
 if (missing.length) {
   console.error('Missing required fields:', missing.join(', '));
-  console.error('Usage: node scripts/createUser.js --firstName Alice --lastName Doe --phone +391234567890 --email alice@example.com --password secret --company Acme --street ViaRoma1 --city Roma --zip 00100 --state RM --country IT --taxId TXX...');
+  console.error('Usage: node scripts/createUser.js --firstName Alice --lastName Doe --phone +391234567890 --email alice@example.com --password secret --companyId 65f... ');
   console.error('Optional: --role 1 --status 0 --privilege 2');
   process.exit(1);
 }
@@ -41,15 +41,9 @@ const privilege = Number.isFinite(Number(args.privilege)) ? Number(args.privileg
     args.phone,
     args.email,
     args.password,
-    args.company,
-    args.street,
-    args.city,
-    args.zip,
-    args.state,
-    args.country,
+    args.companyId,
     role,
     status,
-    args.taxId,
     privilege
   );
 

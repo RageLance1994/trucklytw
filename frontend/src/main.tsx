@@ -203,7 +203,9 @@ function DashboardPage() {
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
   const [selectedRouteImei, setSelectedRouteImei] = React.useState<string | null>(null);
-  const [sidebarMode, setSidebarMode] = React.useState<"driver" | "routes" | "geofence" | "vehicle">("driver");
+  const [sidebarMode, setSidebarMode] = React.useState<
+    "driver" | "routes" | "geofence" | "vehicle" | "admin"
+  >("driver");
   const [geofenceDraft, setGeofenceDraft] = React.useState<{
     geofenceId: string;
     imei: string;
@@ -370,6 +372,20 @@ function DashboardPage() {
   }, []);
 
   React.useEffect(() => {
+    const handler = () => {
+      if (isDriverSidebarOpen && sidebarMode === "admin") {
+        setIsDriverSidebarOpen(false);
+        return;
+      }
+      setSidebarMode("admin");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:admin-open", handler);
+    return () => window.removeEventListener("truckly:admin-open", handler);
+  }, [isDriverSidebarOpen, sidebarMode]);
+
+  React.useEffect(() => {
     if (bottomBarState.open) {
       setIsDriverSidebarOpen(false);
     }
@@ -409,7 +425,7 @@ function DashboardPage() {
             selectedVehicleImei={selectedFuelImei}
             selectedVehicle={selectedFuelVehicle}
           />
-          {!isQuickSidebarOpen && (
+          {!isQuickSidebarOpen && !isDriverSidebarOpen && (
             <button
               type="button"
               onClick={() => setIsQuickSidebarOpen(true)}

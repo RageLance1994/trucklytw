@@ -68,11 +68,9 @@ class Users {
         return await this.model.find({});
     }
 
-    async new(firstName, lastName, phone, email, password, companyName, street, city, zip, state, country, role = 1, status = 0, taxId, privilege = 2) {
+    async new(firstName, lastName, phone, email, password, companyId, role = 1, status = 0, privilege = 2) {
         try {
             const passwordHash = await bcrypt.hash(password, 10);
-
-            const billingAddress = { street, city, zip, state, country };
 
             const user = {
                 firstName,
@@ -80,9 +78,7 @@ class Users {
                 phoneEnc: encryptString(phone),
                 email,
                 passwordHash,
-                companyEnc: encryptString(companyName),
-                taxIdEnc: encryptString(taxId), // o un valore dinamico che decidi
-                billingAddressEnc: encryptJSON(billingAddress),
+                companyId,
                 vehicles: [],
                 drivers: [],
                 role,

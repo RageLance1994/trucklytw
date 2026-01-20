@@ -3,13 +3,18 @@ const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
 const { auth, imeiOwnership } = require('../utils/users');
-const { Vehicles, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
-const { decryptString, decryptJSON } = require('../utils/encryption');
+const { Vehicles, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
+const { decryptString, decryptJSON, encryptString, encryptJSON } = require('../utils/encryption');
 const { _Users } = require('../utils/database');
 const { SeepTrucker } = require('../utils/seep');
 
 const router = express.Router();
 const HISTORY_BUCKET_MS = 60_000;
+
+const isSuperAdmin = (user) => {
+  const role = Number.isInteger(user?.role) ? user.role : null;
+  return Number.isInteger(role) && role <= 1;
+};
 
 router.get('/session', async (req, res) => {
   const token = req.cookies?.auth_token;
@@ -24,11 +29,13 @@ router.get('/session', async (req, res) => {
     }
 
     let companyName = null;
-    if (user.companyEnc) {
+    const companyId = user.companyId || null;
+    if (companyId) {
       try {
-        companyName = decryptString(user.companyEnc);
+        const company = await Companies.findById(companyId).lean();
+        companyName = company?.name || null;
       } catch (err) {
-        console.warn('[api] /session company decrypt error:', err?.message || err);
+        console.warn('[api] /session company lookup error:', err?.message || err);
       }
     }
 
@@ -38,11 +45,149 @@ router.get('/session', async (req, res) => {
         email: user.email,
         firstName: user.firstName || null,
         lastName: user.lastName || null,
+        companyId,
         companyName,
+        role: Number.isInteger(user.role) ? user.role : null,
+        privilege: Number.isInteger(user.privilege) ? user.privilege : null,
       },
     });
   } catch (err) {
     console.error('[api] /session error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/admin/companies', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const search = String(req.query.search || '').trim();
+  const sortFieldRaw = String(req.query.sortField || 'name');
+  const sortDirRaw = String(req.query.sortDir || 'asc').toLowerCase();
+  const sortDir = sortDirRaw === 'desc' ? -1 : 1;
+  const sortFields = new Set(['name', 'createdAt', 'updatedAt', 'status']);
+  const sortField = sortFields.has(sortFieldRaw) ? sortFieldRaw : 'name';
+
+  const filter = search ? { name: { $regex: search, $options: 'i' } } : {};
+
+  try {
+    const companies = await Companies.find(filter).sort({ [sortField]: sortDir }).lean();
+    const companyIds = companies.map((company) => company._id);
+    const users = await UserModel.find({ companyId: { $in: companyIds } }).lean();
+
+    const usersByCompany = new Map();
+    users.forEach((user) => {
+      const key = user.companyId?.toString?.() || '';
+      if (!usersByCompany.has(key)) usersByCompany.set(key, []);
+      usersByCompany.get(key).push({
+        id: user._id?.toString?.() || user._id,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email,
+        role: Number.isInteger(user.role) ? user.role : null,
+        privilege: Number.isInteger(user.privilege) ? user.privilege : null,
+        status: Number.isInteger(user.status) ? user.status : null,
+        createdAt: user.createdAt || null,
+      });
+    });
+
+    const payload = companies.map((company) => {
+      const key = company._id?.toString?.() || '';
+      const list = usersByCompany.get(key) || [];
+      list.sort((a, b) => (a.privilege ?? 99) - (b.privilege ?? 99));
+      return {
+        id: key,
+        name: company.name,
+        status: company.status ?? 0,
+        createdAt: company.createdAt || null,
+        updatedAt: company.updatedAt || null,
+        userCount: list.length,
+        users: list,
+      };
+    });
+
+    return res.status(200).json({ companies: payload });
+  } catch (err) {
+    console.error('[api] /admin/companies error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/admin/companies', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const { name, taxId, billingAddress } = req.body || {};
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
+  if (!trimmedName) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Nome azienda richiesto.' });
+  }
+
+  try {
+    const company = await Companies.create({
+      name: trimmedName,
+      taxIdEnc: taxId ? encryptString(String(taxId)) : null,
+      billingAddressEnc: billingAddress ? encryptJSON(billingAddress) : null,
+    });
+    return res.status(201).json({
+      company: {
+        id: company._id?.toString?.() || company._id,
+        name: company.name,
+        status: company.status ?? 0,
+        createdAt: company.createdAt || null,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /admin/companies create error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/admin/users', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const {
+    firstName,
+    lastName,
+    phone,
+    email,
+    password,
+    companyId,
+    role = 1,
+    status = 0,
+    privilege = 2,
+  } = req.body || {};
+
+  if (!firstName || !lastName || !phone || !email || !password || !companyId) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Campi obbligatori mancanti.' });
+  }
+
+  try {
+    const user = await _Users.new(
+      String(firstName),
+      String(lastName),
+      String(phone),
+      String(email),
+      String(password),
+      companyId,
+      Number(role),
+      Number(status),
+      Number(privilege),
+    );
+    return res.status(201).json({
+      user: {
+        id: user._id?.toString?.() || user.id,
+        email: user.email,
+        role: user.role,
+        privilege: user.privilege,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /admin/users create error:', err);
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
