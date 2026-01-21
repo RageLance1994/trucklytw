@@ -1,5 +1,23 @@
 steps:
-  # 1) Build Docker image (usa backend/ come contesto)
+  # 0) Install frontend deps
+  - name: 'node:20'
+    dir: frontend
+    args: ['npm', 'ci']
+
+  # 1) Build frontend (Vite -> frontend/dist)
+  - name: 'node:20'
+    dir: frontend
+    args: ['npm', 'run', 'build']
+
+  # 2) Copia dist nel backend (prepara il contesto Docker)
+  - name: 'bash'
+    args:
+      [
+        '-c',
+        'rm -rf backend/dist && cp -r frontend/dist backend/dist'
+      ]
+
+  # 3) Build Docker image (contesto backend/)
   - name: 'gcr.io/cloud-builders/docker'
     dir: backend
     args:
@@ -10,7 +28,7 @@ steps:
         '.'
       ]
 
-  # 2) Push Docker image to Artifact Registry
+  # 4) Push Docker image
   - name: 'gcr.io/cloud-builders/docker'
     dir: backend
     args:
@@ -19,7 +37,7 @@ steps:
         'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:$SHORT_SHA'
       ]
 
-  # 3) Deploy to Cloud Run
+  # 5) Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
