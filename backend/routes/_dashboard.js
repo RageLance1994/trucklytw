@@ -10,6 +10,7 @@ const { da, DriverAnalyst } = require('../datainspectors/_drivers');
 const { fa, FuelAnalyst } = require('../datainspectors/_fuel')
 const { decryptJSON, encryptJSON } = require('../utils/encryption');
 const { TachoSync } = require('../utils/tacho')
+const isProduction = process.env.NODE_ENV === "production";
 
 
 const ALLOWED_TANK_UNITS = new Set(['litres', 'gallons']);
@@ -611,6 +612,7 @@ router.get('/', auth, async (req, res) => {
   const privilege = Number.isInteger(req.user?.privilege) ? req.user.privilege : null;
   const role = Number.isInteger(req.user?.role) ? req.user.role : null;
 
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 });
 
@@ -619,6 +621,7 @@ router.get('/map', auth, async (req, res) => {
 
   var vehicles = await req.user.vehicles.list() || [];
 
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 })
 
@@ -1072,6 +1075,7 @@ router.post('/tooltip/:action?', auth, imeiOwnership, async (req, res) => {
 
   switch (req.params.action) {
     case 'mainmap':
+      if (isProduction) return res.status(404).end();
       return res.sendStatus(410);
     default:
       res.status(400).json({ message: 'Azione tooltip non supportata.' });
@@ -1248,6 +1252,7 @@ router.get('/test/tooltip', auth, async (req, res) => {
     ]
   };
 
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 });
 
@@ -1255,6 +1260,7 @@ router.get('/test/tooltip', auth, async (req, res) => {
 router.get('/test/riepilogodriver', auth, async (req, res) => {
 
   var { d = "", from, to } = req.query;
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 
 })

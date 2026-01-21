@@ -6,15 +6,18 @@ const mongoose = require('mongoose');
 const { auth } = require('../utils/users')
 const { _Users } = require('../utils/database');
 const bcrypt = require('bcryptjs');
+const isProduction = process.env.NODE_ENV === "production";
 
 // Login
 router.get('/', (req, res) => {
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 });
 
 
 router.get('/preview/:template',async(req,res) => {
   console.log(req.params)
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 })
 
@@ -32,6 +35,7 @@ router.get('/login', (req, res) => {
   }
   if (req.user) return (res.redirect('/dashboard'));
 
+  if (isProduction) return res.status(404).end();
   return res.sendStatus(410);
 })
 
@@ -42,6 +46,7 @@ router.post('/login', express.urlencoded({ extended: true }), async (req, res) =
   console.log(req.body)
   var user = await _Users.get(username);
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    if (isProduction) return res.status(404).end();
     return res.sendStatus(410);
   }
   user.cookie(res, req);
