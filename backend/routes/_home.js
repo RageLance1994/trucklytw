@@ -9,13 +9,13 @@ const bcrypt = require('bcryptjs');
 
 // Login
 router.get('/', (req, res) => {
-  return(res.render('index'))
+  return res.sendStatus(410);
 });
 
 
 router.get('/preview/:template',async(req,res) => {
   console.log(req.params)
-  return(res.render(`wrappers/overlays/${req.params.template}`))
+  return res.sendStatus(410);
 })
 
 
@@ -32,7 +32,7 @@ router.get('/login', (req, res) => {
   }
   if (req.user) return (res.redirect('/dashboard'));
 
-  return (res.render('auth/login'))
+  return res.sendStatus(410);
 })
 
 
@@ -42,9 +42,7 @@ router.post('/login', express.urlencoded({ extended: true }), async (req, res) =
   console.log(req.body)
   var user = await _Users.get(username);
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return res.render('auth/login', {
-      rParams: { error: 'Email o password errata, riprova per favore.' }
-    });
+    return res.sendStatus(410);
   }
   user.cookie(res, req);
   return (res.redirect('/dashboard'))

@@ -19,6 +19,9 @@ const cookieParser = require('cookie-parser');
 
 const port = process.env.PORT || 8080;
 
+console.log(`Process port is ${process.env.PORT}, backup port is ${port}`); 
+
+
 const corsAllowedOrigins = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -75,8 +78,6 @@ var routes = [
   { location: '/ws', mw: require('./routes/_websockets') },
   { location: '/api', mw: require('./routes/api') },
 ];
-
-app.set('view engine', 'ejs');
 
 routes.map((r) => {
   var { location, mw } = r;

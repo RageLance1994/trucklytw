@@ -611,15 +611,7 @@ router.get('/', auth, async (req, res) => {
   const privilege = Number.isInteger(req.user?.privilege) ? req.user.privilege : null;
   const role = Number.isInteger(req.user?.role) ? req.user.role : null;
 
-  return (res.render('dashboard/dashboard', {
-    rParams: {
-      user: {
-        privilege,
-        role,
-        effectivePrivilege: getPrivilegeLevel(req.user)
-      }
-    }
-  }));
+  return res.sendStatus(410);
 });
 
 
@@ -627,7 +619,7 @@ router.get('/map', auth, async (req, res) => {
 
   var vehicles = await req.user.vehicles.list() || [];
 
-  return (res.render('frames/mapFrame.ejs', { rParams: { vehicles } }))
+  return res.sendStatus(410);
 })
 
 // JSON vehicles API for the React dashboard.
@@ -1080,16 +1072,7 @@ router.post('/tooltip/:action?', auth, imeiOwnership, async (req, res) => {
 
   switch (req.params.action) {
     case 'mainmap':
-      res.render('wrappers/vehicleTooltip.ejs', {
-        vehicle,
-        device,
-        status,
-        fuelSummary,
-        driverEvents,
-
-        formatDate: (d) => new Date(d).toLocaleString('it-IT')
-      });
-      break;
+      return res.sendStatus(410);
     default:
       res.status(400).json({ message: 'Azione tooltip non supportata.' });
   }
@@ -1265,14 +1248,14 @@ router.get('/test/tooltip', auth, async (req, res) => {
     ]
   };
 
-  res.render('wrappers/vehicleTooltip', mockData);
+  return res.sendStatus(410);
 });
 
 
 router.get('/test/riepilogodriver', auth, async (req, res) => {
 
   var { d = "", from, to } = req.query;
-  return (res.render('wrappers/riepilogoDriver',))
+  return res.sendStatus(410);
 
 })
 

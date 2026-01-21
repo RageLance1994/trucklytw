@@ -6,7 +6,7 @@ steps:
       [
         'build',
         '-t',
-        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:latest',
+        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:$SHORT_SHA',
         '.'
       ]
 
@@ -16,7 +16,7 @@ steps:
     args:
       [
         'push',
-        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:latest'
+        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:$SHORT_SHA'
       ]
 
   # 3) Deploy to Cloud Run
@@ -28,7 +28,7 @@ steps:
         'deploy',
         'truckly-backend',
         '--image',
-        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:latest',
+        'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:$SHORT_SHA',
         '--region',
         'europe-west1',
         '--platform',
@@ -36,5 +36,4 @@ steps:
         '--allow-unauthenticated'
       ]
 
-# Forziamo Cloud Build a usare QUESTO bucket (che esiste davvero)
 logsBucket: gs://truckly-477816-cloudbuild-logs
