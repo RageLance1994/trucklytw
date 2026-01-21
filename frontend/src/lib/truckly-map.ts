@@ -745,7 +745,14 @@ export class TrucklyMap {
       const numericLat = Number(input.lat);
       if (!Number.isFinite(numericLng) || !Number.isFinite(numericLat)) return null;
 
-      const angle = Number(input.angle ?? input.device?.data?.gps?.Angle ?? input.device?.gps?.Angle ?? 0);
+      const angle = Number(
+        input.angle ??
+          input.device?.data?.gps?.angle ??
+          input.device?.data?.gps?.Angle ??
+          input.device?.gps?.angle ??
+          input.device?.gps?.Angle ??
+          0,
+      );
       const collapsedValue = this.map.getZoom() < MAX_ZOOM ? "true" : "false";
       const defaultTemplate = this._getDefaultMarkerTemplate({ useArrow: true });
       const templateToUse = input.html ?? defaultTemplate;
@@ -764,6 +771,10 @@ export class TrucklyMap {
 
         if (!useCustomTemplate) {
           this._updateDefaultMarkerContent(element, { vehicle: input.vehicle, angle });
+        } else {
+          element.querySelectorAll<HTMLElement>("[data-role='marker-arrow']").forEach((node) => {
+            node.style.transform = `rotate(${angle}deg)`;
+          });
         }
 
         marker._usesDefaultTemplate = !useCustomTemplate;
@@ -816,6 +827,9 @@ export class TrucklyMap {
           if (useCustomTemplate) {
             element.innerHTML = input.html!;
             marker._usesDefaultTemplate = false;
+            element.querySelectorAll<HTMLElement>("[data-role='marker-arrow']").forEach((node) => {
+              node.style.transform = `rotate(${angle}deg)`;
+            });
           } else {
             if (!marker._usesDefaultTemplate) {
               element.innerHTML = defaultTemplate;
@@ -934,9 +948,9 @@ export class TrucklyMap {
       const el = (marker as ManagedMarker)?._element;
       if (!el) return;
       const clusterMeta = (marker as ManagedMarker)._clusterMeta;
-      const restoreHTML = (marker as ManagedMarker)._baseHTML !== undefined
-        ? (marker as ManagedMarker)._baseHTML
-        : (marker as ManagedMarker)._defaultHTML;
+      const restoreHTML = (marker as ManagedMarker)._defaultHTML !== undefined
+        ? (marker as ManagedMarker)._defaultHTML
+        : (marker as ManagedMarker)._baseHTML;
       if (restoreHTML !== undefined) el.innerHTML = restoreHTML;
       el.style.display = "";
       el.classList.remove("clustered-marker");

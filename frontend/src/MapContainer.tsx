@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { TrucklyMap } from "./lib/truckly-map";
 import { WSClient } from "./lib/ws-client";
@@ -157,6 +157,109 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   const fuelCalibrationRef = useRef<Map<string, number>>(new Map());
   const avlCacheRef = useRef<Map<string, any>>(new Map());
   const previewMarkersRef = useRef<Set<string>>(new Set());
+  const [markerStyle, setMarkerStyle] = useState<
+    "full" | "compact" | "plate" | "name" | "direction"
+  >("full");
+  const markerStyleRef = useRef(markerStyle);
+
+  useEffect(() => {
+    markerStyleRef.current = markerStyle;
+  }, [markerStyle]);
+
+  const buildMarkerHtml = (vehicle: any, status?: string, styleOverride?: typeof markerStyle) => {
+    const variant = styleOverride || markerStyleRef.current;
+    return renderVehicleMarker({ vehicle, status, variant });
+  };
+
+  const refreshMarkers = useCallback((styleOverride?: typeof markerStyle) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const resolvedStyle = styleOverride || markerStyleRef.current;
+    const variantClass =
+      resolvedStyle === "full"
+        ? "truckly-marker--complete"
+        : resolvedStyle === "compact"
+        ? "truckly-marker--compact"
+        : resolvedStyle === "plate"
+        ? "truckly-marker--plateonly"
+        : resolvedStyle === "name"
+        ? "truckly-marker--nameonly"
+        : "truckly-marker--direction";
+    map.markers.forEach((marker, id) => {
+      const vehicle = (marker as any).vehicle || null;
+      const device = (marker as any).device || null;
+      const statusClass = (marker as any).status || "";
+      const lngLat = (marker as any).getLngLat?.();
+      const lng = lngLat?.lng ?? (marker as any)._lng;
+      const lat = lngLat?.lat ?? (marker as any)._lat;
+      if (!vehicle || !isValidCoordinate(Number(lat), Number(lng))) return;
+
+      const data = device?.data || device || null;
+      const gps =
+        data?.gps ||
+        data?.data?.gps ||
+        data?.data ||
+        data ||
+        {};
+      const statusInfo = data ? deriveMovementStatus(data) : deriveStatusInfo(vehicle.status);
+      const markerStatus =
+        statusInfo.class === "success"
+          ? "driving"
+          : statusInfo.class === "warning"
+          ? "working"
+          : statusInfo.class === "danger"
+          ? "resting"
+          : "";
+      const tooltipHtml = renderVehicleTooltip({
+        vehicle,
+        device: data ? { data } : undefined,
+        status: statusInfo,
+        fuelSummary: data?.fuelSummary,
+        driverEvents: data?.driverEvents,
+        formatDate: formatTooltipDate,
+      });
+
+      map.addOrUpdateMarker({
+        id,
+        lng: Number(lng),
+        lat: Number(lat),
+        vehicle,
+        device: data,
+        status: statusInfo.class || statusClass,
+        angle: gps?.angle ?? gps?.Angle ?? vehicle?.angle,
+        html: buildMarkerHtml(vehicle, markerStatus, styleOverride),
+        tooltip: tooltipHtml,
+        hasPopup: true,
+      });
+
+      const markerEl = (marker as any).getElement?.() ?? (marker as any)._element;
+      if (!markerEl) return;
+      const inner = markerEl.querySelector(".truckly-marker") as HTMLElement | null;
+      if (inner) {
+        inner.classList.remove(
+          "truckly-marker--complete",
+          "truckly-marker--compact",
+          "truckly-marker--plateonly",
+          "truckly-marker--nameonly",
+          "truckly-marker--direction",
+        );
+        inner.classList.add(variantClass);
+      } else {
+        markerEl.innerHTML = buildMarkerHtml(vehicle, markerStatus, styleOverride);
+      }
+    });
+  }, []);
+
+  const handleMarkerStyle = useCallback((event: Event) => {
+    const detail = (event as CustomEvent).detail || {};
+    const style = detail?.style;
+    if (style === "full" || style === "compact" || style === "plate" || style === "name" || style === "direction") {
+      setMarkerStyle(style);
+      try {
+        window.localStorage.setItem("truckly:marker-style", style);
+      } catch {}
+    }
+  }, []);
 
   const renderStaticMarkers = (map: TrucklyMap, list: Vehicle[]) => {
     map.clearMarkers();
@@ -172,10 +275,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
           ? vehicle.status.toLowerCase()
           : "";
 
-      const markerHtml = renderVehicleMarker({
-        vehicle,
-        status: statusKey,
-      });
+      const markerHtml = buildMarkerHtml(vehicle, statusKey);
       const tooltipHtml = renderVehicleTooltip({
         vehicle,
         device: {
@@ -298,6 +398,39 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         } catch {}
       };
 
+      (window as any).trucklySetMarkerStyle = (style: "full" | "compact" | "plate" | "name" | "direction") => {
+        setMarkerStyle(style);
+        try {
+          window.localStorage.setItem("truckly:marker-style", style);
+        } catch {}
+        refreshMarkers(style);
+      };
+      (window as any).trucklyForceMarkerClass = (style: "full" | "compact" | "plate" | "name" | "direction") => {
+        const variantClass =
+          style === "full"
+            ? "truckly-marker--complete"
+            : style === "compact"
+            ? "truckly-marker--compact"
+            : style === "plate"
+            ? "truckly-marker--plateonly"
+            : style === "name"
+            ? "truckly-marker--nameonly"
+            : "truckly-marker--direction";
+        document.querySelectorAll<HTMLElement>(".truckly-marker").forEach((el) => {
+          el.classList.remove(
+            "truckly-marker--complete",
+            "truckly-marker--compact",
+            "truckly-marker--plateonly",
+            "truckly-marker--nameonly",
+            "truckly-marker--direction",
+          );
+          el.classList.add(variantClass);
+        });
+      };
+      (window as any).trucklyRefreshMarkers = (style?: "full" | "compact" | "plate" | "name" | "direction") => {
+        refreshMarkers(style);
+      };
+
       (window as any).trucklyDrawRoute = (imei: string, history: any[]) => {
         mapInstanceRef.current?.drawRoute(imei, history);
       };
@@ -343,7 +476,8 @@ export function MapContainer({ vehicles }: MapContainerProps) {
           vehicle,
           device: { gps, io, timestamp },
           status: statusInfo.class,
-          html: null,
+          angle: heading,
+          html: buildMarkerHtml(vehicle, statusInfo.class),
           tooltip: tooltipHtml,
           hasPopup: true,
         });
@@ -420,10 +554,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
               ? "resting"
               : "";
 
-          const markerHtml = renderVehicleMarker({
-            vehicle,
-            status: markerStatus,
-          });
+          const markerHtml = buildMarkerHtml(vehicle, markerStatus);
           const tooltipHtml = renderVehicleTooltip({
             vehicle,
             device: { data },
@@ -474,6 +605,21 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         }
       } catch {}
 
+      try {
+        const savedMarker = window.localStorage.getItem("truckly:marker-style") as
+          | "full"
+          | "compact"
+          | "plate"
+          | "name"
+          | "direction"
+          | null;
+        if (savedMarker && ["full", "compact", "plate", "name", "direction"].includes(savedMarker)) {
+          setMarkerStyle(savedMarker);
+        }
+      } catch {}
+
+      window.addEventListener("truckly:marker-style", handleMarkerStyle as EventListener);
+
       if (vehiclesRef.current.length) {
         renderStaticMarkers(instance, vehiclesRef.current);
       }
@@ -483,6 +629,9 @@ export function MapContainer({ vehicles }: MapContainerProps) {
 
     return () => {
       cancelled = true;
+      window.removeEventListener("truckly:marker-style", handleMarkerStyle as EventListener);
+      delete (window as any).trucklyRefreshMarkers;
+      delete (window as any).trucklyForceMarkerClass;
       mapInstanceRef.current?.destroy();
       mapInstanceRef.current = null;
     };
@@ -534,10 +683,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       const statusInfo = deriveMovementStatus({ gps, io });
       const markerStatus = statusInfo.class || "warning";
 
-      const markerHtml = renderVehicleMarker({
-        vehicle,
-        status: markerStatus,
-      });
+      const markerHtml = buildMarkerHtml(vehicle, markerStatus);
       const tooltipHtml = renderVehicleTooltip({
         vehicle,
         device: { data },
@@ -554,6 +700,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         vehicle,
         device: data,
         status: markerStatus,
+        angle: gps?.angle ?? gps?.Angle,
         html: markerHtml,
         tooltip: tooltipHtml,
         hasPopup: true,
@@ -743,10 +890,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
               ? "resting"
               : "";
 
-          const markerHtml = renderVehicleMarker({
-            vehicle,
-            status: markerStatus,
-          });
+          const markerHtml = buildMarkerHtml(vehicle, markerStatus);
           const tooltipHtml = renderVehicleTooltip({
             vehicle,
             device: { data },
@@ -774,6 +918,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       wsRef.current.updateSubscriptions(imeis);
     }
   }, [vehicles]);
+
+  useEffect(() => {
+    refreshMarkers();
+  }, [markerStyle, vehicles, refreshMarkers]);
 
   // Close WebSocket on unmount
   useEffect(() => {

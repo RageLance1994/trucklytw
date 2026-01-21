@@ -9,6 +9,7 @@ const escapeHtml = (value: unknown) =>
 type MarkerContext = {
   vehicle?: Record<string, any>;
   status?: string;
+  variant?: "full" | "compact" | "plate" | "name" | "direction";
 };
 
 const buildTruckIcon = (strokeColor: string) => `
@@ -20,7 +21,7 @@ const buildTruckIcon = (strokeColor: string) => `
   </svg>
 `;
 
-export function renderVehicleMarker({ vehicle, status }: MarkerContext) {
+export function renderVehicleMarker({ vehicle, status, variant = "full" }: MarkerContext) {
   const nickname = vehicle?.nickname || vehicle?.name || "";
   const plate =
     typeof vehicle?.plate === "string"
@@ -53,16 +54,31 @@ export function renderVehicleMarker({ vehicle, status }: MarkerContext) {
   }
 
   const iconStyle = tvColor ? `style="background:${tvColor};"` : "";
-  const strokeColor = tvColor || "white";
+  const strokeColor = "white";
   const truckIcon = buildTruckIcon(strokeColor);
+  const arrowIcon = `<svg data-role="marker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>`;
+
+  const normalizedVariant =
+    variant === "plate"
+      ? "plateonly"
+      : variant === "direction"
+      ? "direction"
+      : variant === "compact"
+      ? "compact"
+      : variant === "name"
+      ? "nameonly"
+      : "complete";
 
   return `
-    <div class="truckly-marker">
+    <div class="truckly-marker truckly-marker--${normalizedVariant}">
       <div class="truckly-marker__icon" ${iconStyle}>
         ${truckIcon}
       </div>
-      <div class="truckly-marker__label">${escapeHtml(label)}</div>
+      <div class="truckly-marker__text">
+        <span class="truckly-marker__nickname">${escapeHtml(nickname || "-")}</span>
+        <span class="truckly-marker__plate">${escapeHtml(plate || "-")}</span>
+      </div>
+      <span class="truckly-marker__arrow">${arrowIcon}</span>
     </div>
   `;
 }
-

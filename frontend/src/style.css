@@ -152,6 +152,19 @@
   font-size: 12px;
 }
 
+.truckly-marker__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.truckly-marker__nickname,
+.truckly-marker__plate {
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* Color icon background by movement state using TV palette */
 .truckly-marker.marker-driving .truckly-marker__icon {
   background: var(--tv-green, #22c55e);
@@ -165,8 +178,59 @@
   background: var(--tv-yellow, #eab308);
 }
 
-.truckly-marker__label {
-  white-space: nowrap;
+.truckly-marker__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #38bdf8;
+}
+
+.truckly-marker__arrow svg {
+  width: 16px;
+  height: 16px;
+}
+
+.truckly-marker--compact .truckly-marker__text {
+  display: none;
+}
+
+.truckly-marker--plateonly .truckly-marker__icon,
+.truckly-marker--plateonly .truckly-marker__nickname {
+  display: none;
+}
+
+.truckly-marker--nameonly .truckly-marker__icon,
+.truckly-marker--nameonly .truckly-marker__plate {
+  display: none;
+}
+
+.truckly-marker--direction .truckly-marker__icon,
+.truckly-marker--direction .truckly-marker__nickname,
+.truckly-marker--direction .truckly-marker__plate,
+.truckly-marker--direction .truckly-marker__text {
+  display: none;
+}
+
+.truckly-marker--compact {
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.truckly-marker--plateonly {
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.truckly-marker--nameonly {
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.truckly-marker--direction {
+  gap: 0;
+  padding: 4px 6px;
 }
 
 .truckly-marker-dimmed {

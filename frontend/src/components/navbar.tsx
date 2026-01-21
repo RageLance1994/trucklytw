@@ -24,6 +24,9 @@ export function Navbar() {
   const [mapStyle, setMapStyle] = React.useState<
     "base" | "light" | "dark" | "satellite"
   >("base");
+  const [markerStyle, setMarkerStyle] = React.useState<
+    "full" | "compact" | "plate" | "name" | "direction"
+  >("full");
   const timeoutRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
@@ -40,6 +43,19 @@ export function Navbar() {
       }
     } catch {}
 
+    try {
+      const savedMarker = window.localStorage.getItem("truckly:marker-style");
+      if (
+        savedMarker === "full" ||
+        savedMarker === "compact" ||
+        savedMarker === "plate" ||
+        savedMarker === "name" ||
+        savedMarker === "direction"
+      ) {
+        setMarkerStyle(savedMarker);
+      }
+    } catch {}
+
     const handleMapStyle = (event: Event) => {
       const detail = (event as CustomEvent).detail || {};
       const mode =
@@ -52,11 +68,29 @@ export function Navbar() {
       if (mode) setMapStyle(mode);
     };
 
+    const handleMarkerStyle = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const style =
+        detail?.style === "full" ||
+        detail?.style === "compact" ||
+        detail?.style === "plate" ||
+        detail?.style === "name" ||
+        detail?.style === "direction"
+          ? detail.style
+          : null;
+      if (style) setMarkerStyle(style);
+    };
+
     window.addEventListener("truckly:map-style", handleMapStyle as EventListener);
+    window.addEventListener("truckly:marker-style", handleMarkerStyle as EventListener);
     return () => {
       window.removeEventListener(
         "truckly:map-style",
         handleMapStyle as EventListener,
+      );
+      window.removeEventListener(
+        "truckly:marker-style",
+        handleMarkerStyle as EventListener,
       );
     };
   }, []);
@@ -122,6 +156,57 @@ export function Navbar() {
     }
   };
 
+  const applyMarkerStyle = (style: "full" | "compact" | "plate" | "name" | "direction") => {
+    if (typeof window === "undefined") return;
+    setMarkerStyle(style);
+    try {
+      window.localStorage.setItem("truckly:marker-style", style);
+    } catch {}
+
+    const setter = (window as any).trucklySetMarkerStyle;
+    if (typeof setter === "function") {
+      setter(style);
+    }
+    const refresher = (window as any).trucklyApplyAvlCache;
+    if (typeof refresher === "function") {
+      refresher();
+    }
+    const refreshMarkers = (window as any).trucklyRefreshMarkers;
+    if (typeof refreshMarkers === "function") {
+      refreshMarkers(style);
+    }
+    const forceClass = (window as any).trucklyForceMarkerClass;
+    if (typeof forceClass === "function") {
+      forceClass(style);
+    }
+    window.dispatchEvent(
+      new CustomEvent("truckly:marker-style", {
+        detail: { style },
+      }),
+    );
+  };
+
+  React.useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const el = target.closest("[data-marker-style]") as HTMLElement | null;
+      const style = el?.getAttribute("data-marker-style");
+      if (!style) return;
+      if (
+        style === "full" ||
+        style === "compact" ||
+        style === "plate" ||
+        style === "name" ||
+        style === "direction"
+      ) {
+        applyMarkerStyle(style);
+      }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-[#0a0a0d]">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
@@ -154,7 +239,10 @@ export function Navbar() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="min-w-[180px]">
                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>Veicoli</DropdownMenuSubTrigger>
+                    <DropdownMenuSubTrigger>
+                      <i className="fa fa-truck mr-2 text-[12px]" aria-hidden="true" />
+                      Veicoli
+                    </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
                         <DropdownMenuItem
                           onSelect={() =>
@@ -163,24 +251,40 @@ export function Navbar() {
                             )
                           }
                         >
+                          <i className="fa fa-plus mr-2 text-[12px]" aria-hidden="true" />
                           Registra nuovo
                         </DropdownMenuItem>
-                        <DropdownMenuItem>Tabelle</DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <i className="fa fa-table mr-2 text-[12px]" aria-hidden="true" />
+                          Tabelle
+                        </DropdownMenuItem>
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
 
                   <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Autisti</DropdownMenuSubTrigger>
+                    <DropdownMenuSubTrigger>
+                      <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
+                      Autisti
+                    </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
-                      <DropdownMenuItem>Registra nuovo</DropdownMenuItem>
-                      <DropdownMenuItem>Tabelle</DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <i className="fa fa-plus mr-2 text-[12px]" aria-hidden="true" />
+                        Registra nuovo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <i className="fa fa-table mr-2 text-[12px]" aria-hidden="true" />
+                        Tabelle
+                      </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
 
                   <DropdownMenuSeparator />
 
                   <DropdownMenuItem disabled className="flex flex-col items-start">
-                    <span>Rotte</span>
+                    <span>
+                      <i className="fa fa-road mr-2 text-[12px]" aria-hidden="true" />
+                      Rotte
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       Disponibile a breve
                     </span>
@@ -195,9 +299,18 @@ export function Navbar() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="min-w-[160px]">
-                <DropdownMenuItem>Carburante</DropdownMenuItem>
-                <DropdownMenuItem>Eventi</DropdownMenuItem>
-                <DropdownMenuItem>Conformita</DropdownMenuItem>
+                <DropdownMenuItem>
+                  <i className="fa fa-tint mr-2 text-[12px]" aria-hidden="true" />
+                  Carburante
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <i className="fa fa-bell mr-2 text-[12px]" aria-hidden="true" />
+                  Eventi
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <i className="fa fa-shield mr-2 text-[12px]" aria-hidden="true" />
+                  Conformita
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() =>
                     window.dispatchEvent(
@@ -207,6 +320,7 @@ export function Navbar() {
                     )
                   }
                 >
+                  <i className="fa fa-download mr-2 text-[12px]" aria-hidden="true" />
                   Scarico dati
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -220,7 +334,10 @@ export function Navbar() {
               </DropdownMenuTrigger>
               <DropdownMenuContent className="min-w-[160px]">
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Tipo</DropdownMenuSubTrigger>
+                  <DropdownMenuSubTrigger>
+                    <i className="fa fa-map mr-2 text-[12px]" aria-hidden="true" />
+                    Tipo
+                  </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
                     <DropdownMenuItem
                       className="flex items-center gap-2"
@@ -232,6 +349,7 @@ export function Navbar() {
                         )
                       }
                     >
+                      <i className="fa fa-globe mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
                           mapStyle === "satellite" ? "bg-emerald-400" : "opacity-0"
@@ -250,6 +368,7 @@ export function Navbar() {
                         )
                       }
                     >
+                      <i className="fa fa-map-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
                           mapStyle === "base" ? "bg-emerald-400" : "opacity-0"
@@ -268,6 +387,7 @@ export function Navbar() {
                         )
                       }
                     >
+                      <i className="fa fa-sun-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
                           mapStyle === "light" ? "bg-emerald-400" : "opacity-0"
@@ -286,6 +406,7 @@ export function Navbar() {
                         )
                       }
                     >
+                      <i className="fa fa-moon-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
                           mapStyle === "dark" ? "bg-emerald-400" : "opacity-0"
@@ -293,6 +414,110 @@ export function Navbar() {
                         aria-hidden="true"
                       />
                       Scuro
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <i className="fa fa-car mr-2 text-[12px]" aria-hidden="true" />
+                    Veicoli
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent
+                    onClickCapture={(event) => {
+                      const target = event.target as HTMLElement | null;
+                      const el = target?.closest("[data-marker-style]") as HTMLElement | null;
+                      const style = el?.getAttribute("data-marker-style");
+                      if (
+                        style === "full" ||
+                        style === "compact" ||
+                        style === "plate" ||
+                        style === "name" ||
+                        style === "direction"
+                      ) {
+                        applyMarkerStyle(style);
+                      }
+                    }}
+                  >
+                    <DropdownMenuItem asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                        onMouseDown={() => applyMarkerStyle("full")}
+                        data-marker-style="full"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            markerStyle === "full" ? "bg-emerald-400" : "opacity-0"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Completo
+                      </button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                        onMouseDown={() => applyMarkerStyle("compact")}
+                        data-marker-style="compact"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            markerStyle === "compact" ? "bg-emerald-400" : "opacity-0"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Compatto
+                      </button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                        onMouseDown={() => applyMarkerStyle("plate")}
+                        data-marker-style="plate"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            markerStyle === "plate" ? "bg-emerald-400" : "opacity-0"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Solo targa
+                      </button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                        onMouseDown={() => applyMarkerStyle("name")}
+                        data-marker-style="name"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            markerStyle === "name" ? "bg-emerald-400" : "opacity-0"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Targa e direzione
+                      </button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                        onMouseDown={() => applyMarkerStyle("direction")}
+                        data-marker-style="direction"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            markerStyle === "direction" ? "bg-emerald-400" : "opacity-0"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Solo Direzione
+                      </button>
                     </DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
@@ -312,10 +537,14 @@ export function Navbar() {
                         window.dispatchEvent(new CustomEvent("truckly:admin-open"))
                       }
                     >
+                      <i className="fa fa-users mr-2 text-[12px]" aria-hidden="true" />
                       Utenti
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem>Integrazioni</DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <i className="fa fa-plug mr-2 text-[12px]" aria-hidden="true" />
+                    Integrazioni
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </nav>
@@ -336,15 +565,30 @@ export function Navbar() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem>Impostazioni</DropdownMenuItem>
-              <DropdownMenuItem>Fatture</DropdownMenuItem>
-              <DropdownMenuItem>Report Fiscali</DropdownMenuItem>
+              <DropdownMenuItem>
+                <i className="fa fa-user-circle mr-2 text-[12px]" aria-hidden="true" />
+                Account
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <i className="fa fa-cog mr-2 text-[12px]" aria-hidden="true" />
+                Impostazioni
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
+                Fatture
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <i className="fa fa-line-chart mr-2 text-[12px]" aria-hidden="true" />
+                Report Fiscali
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={() => {
                   window.location.href = `${API_BASE_URL}/logout`;
                 }}
+                className="text-white/80 hover:text-red-100 hover:!bg-red-500/35"
               >
+                <i className="fa fa-sign-out mr-2 text-[12px]" aria-hidden="true" />
                 Esci
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -575,6 +819,75 @@ export function Navbar() {
                   aria-hidden="true"
                 />
                 Scuro
+              </button>
+
+              <div className="pt-2 mt-2 border-t border-white/10 text-[11px] uppercase tracking-[0.2em] text-white/50">
+                Veicoli
+              </div>
+              <button
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                onClick={() => applyMarkerStyle("full")}
+                data-marker-style="full"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    markerStyle === "full" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
+                Completo
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                onClick={() => applyMarkerStyle("compact")}
+                data-marker-style="compact"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    markerStyle === "compact" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
+                Compatto
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                onClick={() => applyMarkerStyle("plate")}
+                data-marker-style="plate"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    markerStyle === "plate" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
+                Solo targa
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                onClick={() => applyMarkerStyle("name")}
+                data-marker-style="name"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    markerStyle === "name" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
+                Targa e direzione
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                onClick={() => applyMarkerStyle("direction")}
+                data-marker-style="direction"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    markerStyle === "direction" ? "bg-emerald-400" : "opacity-0"
+                  }`}
+                  aria-hidden="true"
+                />
+                Solo Direzione
               </button>
             </div>
           </details>
