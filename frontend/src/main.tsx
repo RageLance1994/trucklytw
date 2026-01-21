@@ -17,6 +17,7 @@ import { DriverSidebar } from "./components/driver-sidebar";
 import { QuickSidebar } from "./components/quick-sidebar";
 import { DriverBottomBar } from "./components/driver-bottom-bar";
 import { HomePage } from "./pages/HomePage";
+import { AccessRequestPage } from "./pages/AccessRequestPage";
 import {
   API_BASE_URL,
   LOGIN_PATH,
@@ -138,8 +139,8 @@ function LoginPage() {
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a] text-[#f4f4f5]">
-      <HomeNavbar compact />
-      <div className="flex items-center justify-center px-4 py-16">
+      <HomeNavbar />
+      <div className="flex min-h-[calc(100vh-96px)] items-center justify-center px-4 pb-16 pt-6">
         <div className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900/70 p-8 shadow-xl">
           <div className="mb-6 flex justify-center">
             <img
@@ -453,6 +454,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/" element={<HomePage />} />
+        <Route path="/accesso" element={<AccessRequestPage />} />
       </Routes>
     </BrowserRouter>
   );

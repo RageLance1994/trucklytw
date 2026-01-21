@@ -40,8 +40,8 @@ export function HomePage() {
               La piattaforma semplice per gestire la tua flotta.
             </h1>            
             <div className="flex flex-wrap gap-3 truckly-fade-up">
-              <Button className="h-10 px-5 text-xs uppercase tracking-[0.2em]">
-                Richiedi accesso
+              <Button asChild className="h-10 px-5 text-xs uppercase tracking-[0.2em]">
+                <a href="/accesso">Richiedi accesso</a>
               </Button>
               <a
                 href="/login"

@@ -8,7 +8,7 @@ type HomeNavbarProps = {
 export function HomeNavbar({ compact = false }: HomeNavbarProps) {
   return (
     <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
-      <div className="flex items-center gap-3">
+      <a href="/" className="flex items-center gap-3">
         <img
           src="/assets/images/logo_white.png"
           alt="Truckly"
@@ -18,7 +18,7 @@ export function HomeNavbar({ compact = false }: HomeNavbarProps) {
         <span className="text-xs uppercase tracking-[0.28em] text-white/60">
           Fleet OS
         </span>
-      </div>
+      </a>
       {!compact && (
         <nav className="hidden items-center gap-6 text-xs uppercase tracking-[0.24em] text-white/60 md:flex">
           <a href="#piattaforma" className="hover:text-white transition">
@@ -43,8 +43,8 @@ export function HomeNavbar({ compact = false }: HomeNavbarProps) {
           Accedi
         </a>
         {!compact && (
-          <Button className="h-9 px-4 text-xs uppercase tracking-[0.2em]">
-            Richiedi accesso
+          <Button asChild className="h-9 px-4 text-xs uppercase tracking-[0.2em]">
+            <a href="/accesso">Richiedi accesso</a>
           </Button>
         )}
       </div>
