@@ -57,9 +57,11 @@ router.post('/login', express.urlencoded({ extended: true }), async (req, res) =
 })
 
 
-router.get("/logout", auth, (req, res) => {
+router.get("/logout", (req, res) => {
   try {
-    console.log(req.user)
+    const wantsJson =
+      req.headers.accept?.includes("application/json") ||
+      req.headers["x-requested-with"] === "XMLHttpRequest";
     if (req.user?.uncookie) {
       req.user.uncookie(res, req);
     } else {
@@ -69,6 +71,9 @@ router.get("/logout", auth, (req, res) => {
         sameSite: 'lax',
         path: '/'
       });
+    }
+    if (wantsJson) {
+      return res.status(200).json({ ok: true });
     }
     return res.redirect("/login");
   } catch (err) {

@@ -341,17 +341,8 @@ export function Navbar() {
               <DropdownMenuItem>Report Fiscali</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onSelect={async () => {
-                  try {
-                    await fetch(`${API_BASE_URL}/logout`, {
-                      method: "GET",
-                      credentials: "include",
-                    });
-                  } catch (err) {
-                    console.warn("[Navbar] logout failed", err);
-                  } finally {
-                    window.location.href = "/login";
-                  }
+                onSelect={() => {
+                  window.location.href = `${API_BASE_URL}/logout`;
                 }}
               >
                 Esci
