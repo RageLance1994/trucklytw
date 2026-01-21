@@ -3,8 +3,7 @@ const isDev = import.meta.env.DEV;
 
 // In dev, default to same-origin ("") so Vite's proxy can avoid CORS.
 // In prod, fall back to the public domain if not overridden.
-export const API_BASE_URL =
-  envBase !== undefined ? envBase : isDev ? "" : "https://truckly.eu";
+export const API_BASE_URL = envBase ?? "";
 
 // Default to the existing Express form endpoint `/login`.
 export const LOGIN_PATH = import.meta.env.VITE_LOGIN_PATH || "/login";
