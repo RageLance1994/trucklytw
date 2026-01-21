@@ -178,7 +178,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
 
   return (
     <aside
-      className={`fixed top-0 bottom-0 left-0 z-40 w-[92vw] max-w-[440px] border-r border-white/10 bg-[#0c0c0d] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed top-0 bottom-0 left-0 z-40 w-[92vw] max-w-[440px] border-r border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-x-0" : "-translate-x-full pointer-events-none opacity-0"
       }`}
       aria-hidden={!isOpen}

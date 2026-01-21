@@ -455,7 +455,7 @@ export function DriverBottomBar({
 
   return (
     <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0c0c0d] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-y-0" : "hidden-bottom"
       }`}
       aria-hidden={!isOpen}
@@ -479,7 +479,7 @@ export function DriverBottomBar({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0c0c0d]">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0a0a0a]">
         {mode === "fuel" ? (
           <FuelDashboard
             isOpen={isOpen}
@@ -801,7 +801,7 @@ function DriverDashboard({
                     )}
                     {isHovered && (
                       <div
-                        className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0c0c0d] text-[#f8fafc] shadow-xl pointer-events-none"
+                        className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0a0a0a] text-[#f8fafc] shadow-xl pointer-events-none"
                         style={{ left, top }}
                       >
                         <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2 text-sm">

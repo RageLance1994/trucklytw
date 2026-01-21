@@ -12,6 +12,7 @@ import "./style.css";
 import { MapContainer } from "./MapContainer";
 import { Button } from "./components/ui/button";
 import { HomeNavbar } from "./components/home-navbar";
+import { Navbar } from "./components/navbar";
 import { DriverSidebar } from "./components/driver-sidebar";
 import { QuickSidebar } from "./components/quick-sidebar";
 import { DriverBottomBar } from "./components/driver-bottom-bar";
@@ -398,6 +399,7 @@ function DashboardPage() {
 
   return (
     <div className="w-full h-screen flex flex-col bg-[#0a0a0a] text-[#f4f4f5]">
+      <Navbar />
       {loading ? (
         <div className="p-6 text-sm text-zinc-300">Loading vehicles...</div>
       ) : error ? (
@@ -433,7 +435,7 @@ function DashboardPage() {
             <button
               type="button"
               onClick={() => setIsQuickSidebarOpen(true)}
-              className="fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#121212]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur hover:text-white hover:border-white/40 transition"
+              className="fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur hover:text-white hover:border-white/40 transition"
             >
               Vista rapida
             </button>
