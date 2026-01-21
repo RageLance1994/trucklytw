@@ -7,6 +7,7 @@ const { Vehicles, Companies, UserModel, getModel, avlSchema, getRefuelingModel, 
 const { decryptString, decryptJSON, encryptString, encryptJSON } = require('../utils/encryption');
 const { _Users } = require('../utils/database');
 const { SeepTrucker } = require('../utils/seep');
+const { TachoSync } = require('../utils/tacho');
 
 const router = express.Router();
 const HISTORY_BUCKET_MS = 60_000;
@@ -119,28 +120,214 @@ router.post('/admin/companies', auth, async (req, res) => {
     return res.status(403).json({ error: 'FORBIDDEN' });
   }
 
-  const { name, taxId, billingAddress } = req.body || {};
+  const {
+    name,
+    taxId,
+    vatId,
+    sdiCode,
+    billingAddress,
+    legalAddress,
+    tkCompanyId,
+    registerTeltonika,
+    parentCompanyId
+  } = req.body || {};
   const trimmedName = typeof name === 'string' ? name.trim() : '';
   if (!trimmedName) {
     return res.status(400).json({ error: 'BAD_REQUEST', message: 'Nome azienda richiesto.' });
   }
 
   try {
+    let resolvedTkCompanyId = typeof tkCompanyId === 'string' && tkCompanyId.trim()
+      ? tkCompanyId.trim()
+      : null;
+
+    const shouldRegisterTeltonika =
+      registerTeltonika === true ||
+      registerTeltonika === 1 ||
+      registerTeltonika === '1' ||
+      registerTeltonika === 'true' ||
+      registerTeltonika === 'on';
+
+    if (shouldRegisterTeltonika) {
+      let parentId = typeof parentCompanyId === 'string' && parentCompanyId.trim()
+        ? parentCompanyId.trim()
+        : null;
+      if (!parentId) {
+        const companyTree = await TachoSync.companies();
+        const list = Array.isArray(companyTree?.items)
+          ? companyTree.items
+          : Array.isArray(companyTree)
+            ? companyTree
+            : [];
+        parentId = list[0]?.id || null;
+      }
+      if (!parentId) {
+        return res.status(400).json({ error: 'BAD_REQUEST', message: 'Parent company Teltonika mancante.' });
+      }
+      const created = await TachoSync.createCompany({
+        name: trimmedName,
+        parentCompanyId: parentId
+      });
+      if (!created?.id) {
+        return res.status(502).json({ error: 'TELTONIKA_ERROR', message: 'Impossibile creare azienda Teltonika.' });
+      }
+      resolvedTkCompanyId = created.id;
+    }
+
     const company = await Companies.create({
       name: trimmedName,
-      taxIdEnc: taxId ? encryptString(String(taxId)) : null,
-      billingAddressEnc: billingAddress ? encryptJSON(billingAddress) : null,
+      tkCompanyId: resolvedTkCompanyId,
+      taxIdEnc: (taxId || vatId) ? encryptString(String(taxId || vatId)) : null,
+      sdiCodeEnc: sdiCode ? encryptString(String(sdiCode)) : null,
+      billingAddressEnc: (billingAddress || legalAddress)
+        ? encryptJSON({ legalAddress: billingAddress || legalAddress })
+        : null,
     });
     return res.status(201).json({
       company: {
         id: company._id?.toString?.() || company._id,
         name: company.name,
+        tkCompanyId: company.tkCompanyId || null,
         status: company.status ?? 0,
         createdAt: company.createdAt || null,
       },
     });
   } catch (err) {
     console.error('[api] /admin/companies create error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/tacho/companies', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  try {
+    const companies = await TachoSync.companiesFlat();
+    const payload = companies.map((company) => ({
+      id: company.id,
+      name: company.name,
+      parentId: company.parentId || null,
+      depth: Number.isFinite(company.depth) ? company.depth : 0,
+    }));
+    return res.status(200).json({ companies: payload });
+  } catch (err) {
+    console.error('[api] /tacho/companies error:', err?.message || err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/tacho/files', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const source = String(req.query.source || 'all').toLowerCase();
+  const pageNumber = Number(req.query.pageNumber || req.query.page || 1) || 1;
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize || 50) || 50, 1), 100);
+  const companyId = typeof req.query.companyId === 'string' ? req.query.companyId : null;
+  const from = typeof req.query.from === 'string' ? req.query.from : null;
+  const to = typeof req.query.to === 'string' ? req.query.to : null;
+  const containsRaw = typeof req.query.contains === 'string' ? req.query.contains : null;
+  const contains = containsRaw && containsRaw.trim().length >= 3 ? containsRaw.trim() : null;
+
+  const params = {
+    PageNumber: pageNumber,
+    PageSize: pageSize,
+    OrderBy: 'downloadTime',
+    Descending: true,
+    AllCompanies: companyId ? false : true,
+    CompanyId: companyId || undefined,
+    From: from || undefined,
+    To: to || undefined,
+    Contains: contains || undefined,
+  };
+
+  const wantsDriver = source !== 'vehicle';
+  const wantsVehicle = source !== 'driver';
+
+  try {
+    const [driverRes, vehicleRes] = await Promise.all([
+      wantsDriver ? TachoSync.listDriverFiles(params) : Promise.resolve(null),
+      wantsVehicle ? TachoSync.listVehicleFiles(params) : Promise.resolve(null),
+    ]);
+
+    const driverItems = Array.isArray(driverRes?.items) ? driverRes.items : [];
+    const vehicleItems = Array.isArray(vehicleRes?.items) ? vehicleRes.items : [];
+
+    const normalize = (item, kind) => ({
+      id: item?.id,
+      fileName: item?.fileName || null,
+      downloadTime: item?.downloadTime || null,
+      company: item?.company || null,
+      driver: item?.driver || null,
+      vehicle: item?.vehicle || null,
+      source: kind,
+    });
+
+    const allItems = [
+      ...driverItems.map((item) => normalize(item, 'driver')),
+      ...vehicleItems.map((item) => normalize(item, 'vehicle')),
+    ];
+
+    const filtered = allItems.filter((item) => {
+      const name = typeof item.fileName === 'string' ? item.fileName.toLowerCase() : '';
+      return !name || name.endsWith('.ddd');
+    });
+
+    filtered.sort((a, b) => {
+      const ta = a.downloadTime ? new Date(a.downloadTime).getTime() : 0;
+      const tb = b.downloadTime ? new Date(b.downloadTime).getTime() : 0;
+      return tb - ta;
+    });
+
+    return res.status(200).json({
+      items: filtered,
+      total: filtered.length,
+      sources: {
+        driverCount: driverItems.length,
+        vehicleCount: vehicleItems.length,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /tacho/files error:', err?.message || err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/tacho/files/download', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const source = String(req.query.source || 'vehicle').toLowerCase();
+  const id = typeof req.query.id === 'string' ? req.query.id : null;
+  const ids = Array.isArray(req.query.ids) ? req.query.ids : id ? [id] : [];
+  const format = typeof req.query.format === 'string' && req.query.format.trim()
+    ? req.query.format.trim()
+    : 'DDD';
+  const fileName = typeof req.query.name === 'string' && req.query.name.trim()
+    ? req.query.name.trim()
+    : null;
+
+  if (!ids.length) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'id richiesto' });
+  }
+
+  try {
+    const response = source === 'driver'
+      ? await TachoSync.downloadDriverFiles(ids, format)
+      : await TachoSync.downloadVehicleFiles(ids, format);
+
+    const contentType = response.headers?.['content-type'] || 'application/octet-stream';
+    const dispositionName = fileName || (ids.length > 1 ? 'tacho-files.zip' : 'tacho-file.ddd');
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${dispositionName}"`);
+    return res.status(200).send(response.data);
+  } catch (err) {
+    console.error('[api] /tacho/files/download error:', err?.message || err);
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });

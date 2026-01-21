@@ -197,7 +197,7 @@ function DashboardPage() {
   const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(true);
   const [bottomBarState, setBottomBarState] = React.useState<{
     open: boolean;
-    mode: "driver" | "fuel";
+    mode: "driver" | "fuel" | "tacho";
   }>({ open: false, mode: "driver" });
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
@@ -288,7 +288,8 @@ function DashboardPage() {
   React.useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail || {};
-      const mode = detail?.mode === "fuel" ? "fuel" : "driver";
+      const mode =
+        detail?.mode === "fuel" || detail?.mode === "tacho" ? detail.mode : "driver";
       const imei = detail?.imei || null;
 
       if (mode === "fuel") {

@@ -51,6 +51,7 @@ const SECTION_STYLES = `
 <style>
   .truckly-tooltip {
     font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    font-size: 12px;
     background: #0e0f14;
     color: #f8fafc;
     border-radius: 18px;
@@ -69,7 +70,7 @@ const SECTION_STYLES = `
     margin-bottom: 12px;
   }
   .truckly-tooltip__header h1 {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     margin: 0;
     flex: 1;
@@ -77,7 +78,7 @@ const SECTION_STYLES = `
   .truckly-pill {
     padding: 2px 8px;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 10px;
     background: transparent;
     border: 1px solid rgba(148,163,184,0.4);
     color: rgba(248,250,252,0.9);
@@ -109,7 +110,7 @@ const SECTION_STYLES = `
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 13px;
+    font-size: 12px;
     color: rgba(248,250,252,0.8);
   }
   .truckly-row svg {
@@ -124,38 +125,45 @@ const SECTION_STYLES = `
     padding: 10px 12px;
   }
   .truckly-card h2 {
-    font-size: 12px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: rgba(148,163,184,0.9);
     margin: 0 0 6px 0;
   }
   .truckly-card strong {
-    font-size: 16px;
+    font-size: 14px;
   }
   .truckly-actions {
     display: grid;
     grid-template-columns: repeat(5, minmax(0,1fr));
-    gap: 8px;
+    gap: 6px;
   }
   .truckly-action-btn {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    padding: 10px 0;
+    padding: 8px 0 9px;
     border-radius: 12px;
     background: rgba(248,250,252,0.04);
     border: 1px solid rgba(248,250,252,0.06);
     color: rgba(248,250,252,0.9);
-    font-size: 11px;
+    font-size: 9px;
+    line-height: 1.15;
+    text-align: center;
     cursor: pointer;
     outline: none;
     width: 100%;
   }
   .truckly-action-icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
+  }
+  .truckly-action-btn span:last-child {
+    max-width: 56px;
+    white-space: normal;
+    word-break: break-word;
   }
 </style>
 `;

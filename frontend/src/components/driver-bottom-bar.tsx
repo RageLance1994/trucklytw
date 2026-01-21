@@ -1,7 +1,7 @@
 import React from "react";
 import { dataManager, resolveBackendBaseUrl } from "../lib/data-manager";
 
-type BottomBarMode = "driver" | "fuel";
+type BottomBarMode = "driver" | "fuel" | "tacho";
 
 type DriverBottomBarProps = {
   isOpen: boolean;
@@ -438,13 +438,20 @@ export function DriverBottomBar({
   selectedVehicle,
   mode,
 }: DriverBottomBarProps) {
-  const title = mode === "fuel" ? "Dashboard carburante" : "Attivita autista + tabelle";
+  const title =
+    mode === "fuel"
+      ? "Dashboard carburante"
+      : mode === "tacho"
+        ? "Scarico dati"
+        : "Attivita autista + tabelle";
   const subtitle =
     mode === "fuel"
       ? `Intervallo carburante. Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
-      : `Tabella autisti e report attivita. Selezione attuale: ${
-          selectedDriverImei || "nessuna"
-        }`;
+      : mode === "tacho"
+        ? "Elenco file .ddd disponibili dal servizio Teltonika."
+        : `Tabella autisti e report attivita. Selezione attuale: ${
+            selectedDriverImei || "nessuna"
+          }`;
 
   return (
     <aside
@@ -478,11 +485,142 @@ export function DriverBottomBar({
             selectedVehicleImei={selectedVehicleImei}
             selectedVehicle={selectedVehicle}
           />
+        ) : mode === "tacho" ? (
+          <TachoFilesDashboard isOpen={isOpen} />
         ) : (
           <DriverDashboard selectedDriverImei={selectedDriverImei} />
         )}
       </div>
     </aside>
+  );
+}
+
+function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
+  const [files, setFiles] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
+
+  const fetchFiles = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const baseUrl = resolveBackendBaseUrl();
+      const query = new URLSearchParams();
+      if (search.trim().length >= 3) {
+        query.set("contains", search.trim());
+      }
+      const res = await fetch(
+        `${baseUrl}/api/tacho/files${query.toString() ? `?${query}` : ""}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setFiles(Array.isArray(data?.items) ? data.items : []);
+    } catch (err: any) {
+      setError(err?.message || "Errore durante il caricamento.");
+    } finally {
+      setLoading(false);
+    }
+  }, [search]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    fetchFiles();
+  }, [fetchFiles, isOpen]);
+
+  const baseUrl = resolveBackendBaseUrl();
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+              File disponibili
+            </p>
+            <p className="text-sm text-white/60">
+              Scarica i file .ddd da Teltonika per autisti e veicoli.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchFiles}
+            className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+          >
+            {loading ? "Aggiorno..." : "Aggiorna"}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-end">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filtra per nome file..."
+            className="w-full sm:w-56 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
+          />
+        </div>
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+
+        <div className="rounded-xl border border-white/10 bg-[#0c0f16] overflow-hidden">
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+            <span>File</span>
+            <span>Origine</span>
+            <span>Riferimento</span>
+            <span>Azienda</span>
+            <span>Download</span>
+            <span className="text-right">Azioni</span>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto">
+            {files.length === 0 && !loading ? (
+              <div className="px-3 py-3 text-xs text-white/60">
+                Nessun file disponibile.
+              </div>
+            ) : (
+              files.map((file) => {
+                const sourceLabel = file?.source === "driver" ? "Autista" : "Veicolo";
+                const refLabel =
+                  file?.source === "driver"
+                    ? file?.driver?.driverName || file?.driver?.cardNumber || "--"
+                    : file?.vehicle?.number || file?.vehicle?.imei || "--";
+                const companyLabel = file?.company?.name || "--";
+                const name = file?.fileName || "file.ddd";
+                const downloadTs = toTimestamp(file?.downloadTime);
+                const downloadUrl = `${baseUrl}/api/tacho/files/download?source=${encodeURIComponent(
+                  file?.source || "vehicle",
+                )}&id=${encodeURIComponent(file?.id || "")}&name=${encodeURIComponent(name)}`;
+                return (
+                  <div
+                    key={file?.id}
+                    className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/10"
+                  >
+                    <span className="truncate">{name}</span>
+                    <span className="text-white/60">{sourceLabel}</span>
+                    <span className="truncate text-white/70">{refLabel}</span>
+                    <span className="truncate text-white/60">{companyLabel}</span>
+                    <span className="text-white/60">
+                      {downloadTs ? formatShortDateTime(downloadTs) : "N/D"}
+                    </span>
+                    <div className="text-right">
+                      <a
+                        href={downloadUrl}
+                        className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+                      >
+                        Scarica
+                      </a>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

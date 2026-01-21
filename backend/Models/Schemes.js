@@ -65,7 +65,9 @@ const SimSchema = new mongoose.Schema({
 
 const CompanySchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, unique: true },
+  tkCompanyId: { type: String, trim: true, default: null },
   taxIdEnc: { type: String, default: null },
+  sdiCodeEnc: { type: String, default: null },
   billingAddressEnc: { type: String, default: null },
   status: { type: Number, enum: [0, 1, 2], default: 0 }, // 0=active,1=suspended,2=archived
 }, { timestamps: true });

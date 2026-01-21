@@ -198,6 +198,17 @@ export function Navbar() {
                 <DropdownMenuItem>Carburante</DropdownMenuItem>
                 <DropdownMenuItem>Eventi</DropdownMenuItem>
                 <DropdownMenuItem>Conformita</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("truckly:bottom-bar-toggle", {
+                        detail: { mode: "tacho" },
+                      }),
+                    )
+                  }
+                >
+                  Scarico dati
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -463,6 +474,19 @@ export function Navbar() {
               </button>
               <button className="w-full px-2 py-1 text-left hover:text-white transition">
                 Conformita
+              </button>
+              <button
+                className="w-full px-2 py-1 text-left hover:text-white transition"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("truckly:bottom-bar-toggle", {
+                      detail: { mode: "tacho" },
+                    }),
+                  );
+                  setIsMenuOpen(false);
+                }}
+              >
+                Scarico dati
               </button>
             </div>
           </details>

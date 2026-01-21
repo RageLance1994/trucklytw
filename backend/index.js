@@ -72,7 +72,7 @@ const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SE
 const distPath = path.join(__dirname, "dist");
 
 var routes = [
-  { location: '/', mw: require('./routes/_home') },
+  { location: '/', mw: !isProduction ? require('./routes/_home') :   (req, res) => {res.sendFile(path.join(__dirname, "dist", "index.html"))}},
   { location: '/dashboard', mw: require('./routes/_dashboard') },
   { location: '/ws', mw: require('./routes/_websockets') },
   { location: '/api', mw: require('./routes/api') },

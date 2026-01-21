@@ -68,6 +68,13 @@ type AdminCompany = {
   users: AdminUser[];
 };
 
+type TachoCompany = {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  depth?: number;
+};
+
 type SortDir = "asc" | "desc";
 type CompanySortField = "name" | "userCount" | "createdAt";
 type UserSortField = "name" | "email" | "role" | "privilege" | "createdAt";
@@ -958,6 +965,36 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
     dir: SortDir;
   }>({ field: "name", dir: "asc" });
   const [userSearch, setUserSearch] = React.useState<Record<string, string>>({});
+  const [tachoCompanies, setTachoCompanies] = React.useState<TachoCompany[]>([]);
+  const [tachoQuery, setTachoQuery] = React.useState("");
+  const [tachoDropdownOpen, setTachoDropdownOpen] = React.useState(false);
+  const [selectedTachoCompany, setSelectedTachoCompany] = React.useState<TachoCompany | null>(null);
+  const [importName, setImportName] = React.useState("");
+  const [tachoLoading, setTachoLoading] = React.useState(false);
+  const [tachoError, setTachoError] = React.useState<string | null>(null);
+  const [registering, setRegistering] = React.useState(false);
+  const [registerSuccess, setRegisterSuccess] = React.useState<string | null>(null);
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<"new" | "import">("new");
+  const [newName, setNewName] = React.useState("");
+  const [legalAddress, setLegalAddress] = React.useState("");
+  const [vatId, setVatId] = React.useState("");
+  const [sdiCode, setSdiCode] = React.useState("");
+  const [registerTeltonika, setRegisterTeltonika] = React.useState(false);
+  const [userModalOpen, setUserModalOpen] = React.useState(false);
+  const [userCompanyId, setUserCompanyId] = React.useState<string | null>(null);
+  const [userCompanyName, setUserCompanyName] = React.useState<string | null>(null);
+  const [userFirstName, setUserFirstName] = React.useState("");
+  const [userLastName, setUserLastName] = React.useState("");
+  const [userPhone, setUserPhone] = React.useState("");
+  const [userEmail, setUserEmail] = React.useState("");
+  const [userPassword, setUserPassword] = React.useState("");
+  const [userRole, setUserRole] = React.useState(1);
+  const [userPrivilege, setUserPrivilege] = React.useState(2);
+  const [userStatus, setUserStatus] = React.useState(0);
+  const [userSubmitting, setUserSubmitting] = React.useState(false);
+  const [userError, setUserError] = React.useState<string | null>(null);
+  const [userSuccess, setUserSuccess] = React.useState<string | null>(null);
 
   const fetchCompanies = React.useCallback(async () => {
     const query = new URLSearchParams();
@@ -982,13 +1019,75 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
     }
   }, [search]);
 
+  const fetchTachoCompanies = React.useCallback(async () => {
+    setTachoLoading(true);
+    setTachoError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL || ""}/api/tacho/companies`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setTachoCompanies(Array.isArray(data?.companies) ? data.companies : []);
+    } catch (err: any) {
+      setTachoError(err?.message || "Errore durante il caricamento Teltonika.");
+    } finally {
+      setTachoLoading(false);
+    }
+  }, []);
+
+  const resetModal = () => {
+    setActiveTab("new");
+    setNewName("");
+    setLegalAddress("");
+    setVatId("");
+    setSdiCode("");
+    setRegisterTeltonika(false);
+    setSelectedTachoCompany(null);
+    setImportName("");
+    setTachoQuery("");
+    setTachoDropdownOpen(false);
+    setTachoError(null);
+    setRegisterSuccess(null);
+  };
+
+  const resetUserModal = () => {
+    setUserFirstName("");
+    setUserLastName("");
+    setUserPhone("");
+    setUserEmail("");
+    setUserPassword("");
+    setUserRole(1);
+    setUserPrivilege(2);
+    setUserStatus(0);
+    setUserSubmitting(false);
+    setUserError(null);
+    setUserSuccess(null);
+  };
+
+  const clearModalForm = () => {
+    setNewName("");
+    setLegalAddress("");
+    setVatId("");
+    setSdiCode("");
+    setRegisterTeltonika(false);
+    setSelectedTachoCompany(null);
+    setImportName("");
+    setTachoQuery("");
+    setTachoDropdownOpen(false);
+  };
+
   React.useEffect(() => {
     if (!isOpen) return undefined;
     const handle = window.setTimeout(() => {
       fetchCompanies();
+      fetchTachoCompanies();
     }, 200);
     return () => window.clearTimeout(handle);
-  }, [isOpen, fetchCompanies, search]);
+  }, [isOpen, fetchCompanies, fetchTachoCompanies, search]);
 
   const sortedCompanies = React.useMemo(() => {
     return sortWithDir(companies, companySort.dir, (company) => {
@@ -999,6 +1098,113 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
       return company.name || "";
     });
   }, [companies, companySort]);
+
+  const filteredTachoCompanies = React.useMemo(() => {
+    const query = tachoQuery.trim().toLowerCase();
+    if (!query) return tachoCompanies;
+    return tachoCompanies.filter((company) => {
+      const nameMatch = company.name?.toLowerCase().includes(query);
+      const idMatch = company.id?.toLowerCase().includes(query);
+      return nameMatch || idMatch;
+    });
+  }, [tachoCompanies, tachoQuery]);
+
+  const handleRegisterCompany = async () => {
+    if (activeTab === "new") {
+      if (!newName.trim()) {
+        setTachoError("Inserisci la ragione sociale.");
+        return;
+      }
+    } else {
+      if (!selectedTachoCompany) {
+        setTachoError("Seleziona una azienda Teltonika.");
+        return;
+      }
+      if (!importName.trim()) {
+        setTachoError("Inserisci il nome azienda.");
+        return;
+      }
+    }
+
+    setRegistering(true);
+    setRegisterSuccess(null);
+    setTachoError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL || ""}/api/admin/companies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: activeTab === "new" ? newName.trim() : importName.trim(),
+          legalAddress: activeTab === "new" ? legalAddress.trim() || null : null,
+          taxId: activeTab === "new" ? vatId.trim() || null : null,
+          sdiCode: activeTab === "new" ? sdiCode.trim() || null : null,
+          registerTeltonika: activeTab === "new" ? registerTeltonika : false,
+          tkCompanyId: activeTab === "import" ? selectedTachoCompany?.id : null,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      setRegisterSuccess("Azienda registrata.");
+      fetchCompanies();
+      clearModalForm();
+      const createdCompanyId = data?.company?.id || null;
+      const createdCompanyName = data?.company?.name || null;
+      if (createdCompanyId) {
+        setUserCompanyId(createdCompanyId);
+        setUserCompanyName(createdCompanyName);
+        setUserModalOpen(true);
+      }
+    } catch (err: any) {
+      setTachoError(err?.message || "Errore durante la registrazione.");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const handleRegisterUser = async () => {
+    if (!userCompanyId) {
+      setUserError("Seleziona una azienda.");
+      return;
+    }
+    if (!userFirstName.trim() || !userLastName.trim() || !userPhone.trim() || !userEmail.trim() || !userPassword) {
+      setUserError("Compila tutti i campi obbligatori.");
+      return;
+    }
+    setUserSubmitting(true);
+    setUserError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL || ""}/api/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          firstName: userFirstName.trim(),
+          lastName: userLastName.trim(),
+          phone: userPhone.trim(),
+          email: userEmail.trim(),
+          password: userPassword,
+          companyId: userCompanyId,
+          role: userRole,
+          privilege: userPrivilege,
+          status: userStatus,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      setUserSuccess("Utente registrato.");
+      fetchCompanies();
+    } catch (err: any) {
+      setUserError(err?.message || "Errore durante la registrazione utente.");
+    } finally {
+      setUserSubmitting(false);
+    }
+  };
 
   const toggleCompany = (id: string) => {
     setExpanded((prev) => {
@@ -1036,13 +1242,27 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
       <div className="rounded-2xl border border-white/10 bg-[#10121a] p-3 sm:p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">Aziende</p>
-          <button
-            type="button"
-            onClick={fetchCompanies}
-            className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-          >
-            {loading ? "Aggiorno..." : "Aggiorna"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setModalOpen(true);
+                setRegisterSuccess(null);
+                setTachoError(null);
+              }}
+              className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+            >
+              <i className="fa fa-plus mr-2" aria-hidden="true" />
+              Registra azienda
+            </button>
+            <button
+              type="button"
+              onClick={fetchCompanies}
+              className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+            >
+              {loading ? "Aggiorno..." : "Aggiorna"}
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-end">
@@ -1245,6 +1465,394 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
           )}
         </div>
       </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10121a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
+                  Registrazione azienda
+                </p>
+                <h3 className="text-lg font-semibold text-white">Nuova azienda</h3>
+                <p className="text-sm text-white/60">
+                  Crea una nuova azienda o importa da Teltonika.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalOpen(false);
+                  resetModal();
+                }}
+                className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/40 transition"
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("new");
+                  setRegisterSuccess(null);
+                  setTachoError(null);
+                }}
+                className={`rounded-full border px-4 py-1.5 text-xs uppercase tracking-[0.18em] transition ${
+                  activeTab === "new"
+                    ? "border-white/40 text-white"
+                    : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+                }`}
+              >
+                Nuova
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("import");
+                  setRegisterSuccess(null);
+                  setTachoError(null);
+                }}
+                className={`rounded-full border px-4 py-1.5 text-xs uppercase tracking-[0.18em] transition ${
+                  activeTab === "import"
+                    ? "border-white/40 text-white"
+                    : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+                }`}
+              >
+                Importa da Teltonika
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {activeTab === "new" ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                      Ragione sociale
+                    </label>
+                    <input
+                      value={newName}
+                      onChange={(e) => {
+                        setNewName(e.target.value);
+                        setTachoError(null);
+                      }}
+                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                      Sede legale
+                    </label>
+                    <input
+                      value={legalAddress}
+                      onChange={(e) => {
+                        setLegalAddress(e.target.value);
+                        setTachoError(null);
+                      }}
+                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                      Partita Iva
+                    </label>
+                    <input
+                      value={vatId}
+                      onChange={(e) => {
+                        setVatId(e.target.value);
+                        setTachoError(null);
+                      }}
+                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                      Codice Univoco
+                    </label>
+                    <input
+                      value={sdiCode}
+                      onChange={(e) => {
+                        setSdiCode(e.target.value);
+                        setTachoError(null);
+                      }}
+                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-white/80 md:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={registerTeltonika}
+                      onChange={(e) => setRegisterTeltonika(e.target.checked)}
+                    />
+                    Registra su Teltonika
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.1em] text-white/60">
+                      Azienda Teltonika
+                    </p>
+                    <button
+                      type="button"
+                      onClick={fetchTachoCompanies}
+                      className="h-7 rounded-full border border-white/15 bg-white/5 px-3 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+                    >
+                      {tachoLoading ? "Aggiorno..." : "Aggiorna"}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      value={tachoQuery}
+                      onChange={(e) => {
+                        setTachoQuery(e.target.value);
+                        setSelectedTachoCompany(null);
+                        setRegisterSuccess(null);
+                        setTachoError(null);
+                      }}
+                      onFocus={() => setTachoDropdownOpen(true)}
+                      onBlur={() => {
+                        window.setTimeout(() => setTachoDropdownOpen(false), 120);
+                      }}
+                      placeholder="Seleziona o cerca..."
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0c12] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    />
+                    {tachoDropdownOpen && (
+                      <div
+                        className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0a0c12] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {filteredTachoCompanies.length === 0 ? (
+                          <div className="px-3 py-2 text-[11px] text-white/50">
+                            Nessuna azienda trovata.
+                          </div>
+                        ) : (
+                          filteredTachoCompanies.map((company) => (
+                            <button
+                              key={company.id}
+                              type="button"
+                              onMouseDown={() => {
+                                setSelectedTachoCompany(company);
+                                setTachoQuery(company.name);
+                                setImportName(company.name);
+                                setRegisterSuccess(null);
+                                setTachoError(null);
+                                setTachoDropdownOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 flex items-center justify-between gap-2"
+                            >
+                              <span
+                                className="truncate"
+                                style={{ paddingLeft: `${Math.max(0, Number(company.depth || 0) * 10)}px` }}
+                              >
+                                {company.name}
+                              </span>
+                              <span className="text-white/40 text-[10px]">{company.id}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                      Nome azienda
+                    </label>
+                    <input
+                      value={importName}
+                      onChange={(e) => {
+                        setImportName(e.target.value);
+                        setRegisterSuccess(null);
+                        setTachoError(null);
+                      }}
+                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {tachoError && <p className="mt-4 text-sm text-red-400">{tachoError}</p>}
+            {registerSuccess && <p className="mt-4 text-sm text-emerald-300">{registerSuccess}</p>}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalOpen(false);
+                  resetModal();
+                }}
+                className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={handleRegisterCompany}
+                disabled={registering}
+                className="rounded-lg bg-white/10 border border-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+              >
+                {registering ? "Salvataggio..." : "Registra"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {userModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10121a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
+                  Registrazione utente
+                </p>
+                <h3 className="text-lg font-semibold text-white">Nuovo utente</h3>
+                <p className="text-sm text-white/60">
+                  Azienda: {userCompanyName || userCompanyId || "N/D"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setUserModalOpen(false);
+                  resetUserModal();
+                }}
+                className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/40 transition"
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Nome
+                </label>
+                <input
+                  value={userFirstName}
+                  onChange={(e) => {
+                    setUserFirstName(e.target.value);
+                    setUserError(null);
+                    setUserSuccess(null);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Cognome
+                </label>
+                <input
+                  value={userLastName}
+                  onChange={(e) => {
+                    setUserLastName(e.target.value);
+                    setUserError(null);
+                    setUserSuccess(null);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Telefono
+                </label>
+                <input
+                  value={userPhone}
+                  onChange={(e) => {
+                    setUserPhone(e.target.value);
+                    setUserError(null);
+                    setUserSuccess(null);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Email
+                </label>
+                <input
+                  value={userEmail}
+                  onChange={(e) => {
+                    setUserEmail(e.target.value);
+                    setUserError(null);
+                    setUserSuccess(null);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={userPassword}
+                  onChange={(e) => {
+                    setUserPassword(e.target.value);
+                    setUserError(null);
+                    setUserSuccess(null);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Ruolo
+                </label>
+                <select
+                  value={userRole}
+                  onChange={(e) => setUserRole(Number(e.target.value))}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                >
+                  <option value={1}>Admin</option>
+                  <option value={2}>Operatore</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+                  Privilegio
+                </label>
+                <select
+                  value={userPrivilege}
+                  onChange={(e) => setUserPrivilege(Number(e.target.value))}
+                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                >
+                  <option value={0}>Admin</option>
+                  <option value={1}>Editor</option>
+                  <option value={2}>Readonly</option>
+                </select>
+              </div>
+            </div>
+
+            {userError && <p className="mt-4 text-sm text-red-400">{userError}</p>}
+            {userSuccess && <p className="mt-4 text-sm text-emerald-300">{userSuccess}</p>}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setUserModalOpen(false);
+                  resetUserModal();
+                }}
+                className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={handleRegisterUser}
+                disabled={userSubmitting}
+                className="rounded-lg bg-white/10 border border-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+              >
+                {userSubmitting ? "Salvataggio..." : "Registra utente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
