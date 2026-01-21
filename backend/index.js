@@ -68,9 +68,8 @@ var expressWs = require('express-ws')(app);
 //   }, 100);
 // });
 
-// === EXPRESS CONFIG ===
-app.use("/assets", express.static(path.join(__dirname, '/views/assets')));
-app.use("/scripts", express.static(path.join(__dirname, '/node_modules')));
+const isProduction = process.env.NODE_ENV === "production";
+const distPath = path.join(__dirname, "dist");
 
 var routes = [
   { location: '/', mw: require('./routes/_home') },
@@ -83,6 +82,16 @@ routes.map((r) => {
   var { location, mw } = r;
   app.use(location, mw);
 });
+
+if (isProduction) {
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
+    if (req.path.startsWith("/api")) {
+      return res.sendStatus(404);
+    }
+    return res.sendFile(path.join(distPath, "index.html"));
+  });
+}
 
 // Avvio server
 startDatabases().then((data, err) => {
