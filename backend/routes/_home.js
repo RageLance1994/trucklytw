@@ -8,18 +8,17 @@ const { _Users } = require('../utils/database');
 const bcrypt = require('bcryptjs');
 const isProduction = process.env.NODE_ENV === "production";
 
-// Login
-router.get('/', (req, res) => {
-  if (isProduction) return res.status(404).end();
-  return res.sendStatus(410);
-});
+if (!isProduction) {
+  // Login
+  router.get('/', (req, res) => {
+    return res.sendStatus(410);
+  });
 
-
-router.get('/preview/:template',async(req,res) => {
-  console.log(req.params)
-  if (isProduction) return res.status(404).end();
-  return res.sendStatus(410);
-})
+  router.get('/preview/:template',async(req,res) => {
+    console.log(req.params)
+    return res.sendStatus(410);
+  })
+}
 
 
 
@@ -29,29 +28,28 @@ router.post('/register', (req, res) => {
 });
 
 
-router.get('/login', (req, res) => {
-  if(req.cookies && req.cookies.auth_token){
-    return(res.redirect('/dashboard'))
-  }
-  if (req.user) return (res.redirect('/dashboard'));
+if (!isProduction) {
+  router.get('/login', (req, res) => {
+    if(req.cookies && req.cookies.auth_token){
+      return(res.redirect('/dashboard'))
+    }
+    if (req.user) return (res.redirect('/dashboard'));
 
-  if (isProduction) return res.status(404).end();
-  return res.sendStatus(410);
-})
-
-
-router.post('/login', express.urlencoded({ extended: true }), async (req, res) => {
-  if (req.user) return (res.redirect('/dashboard'));
-  const { username, password } = req.body;
-  console.log(req.body)
-  var user = await _Users.get(username);
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    if (isProduction) return res.status(404).end();
     return res.sendStatus(410);
-  }
-  user.cookie(res, req);
-  return (res.redirect('/dashboard'))
-})
+  })
+
+  router.post('/login', express.urlencoded({ extended: true }), async (req, res) => {
+    if (req.user) return (res.redirect('/dashboard'));
+    const { username, password } = req.body;
+    console.log(req.body)
+    var user = await _Users.get(username);
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.sendStatus(410);
+    }
+    user.cookie(res, req);
+    return (res.redirect('/dashboard'))
+  })
+}
 
 
 router.get("/logout", auth, (req, res) => {
