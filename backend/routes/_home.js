@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const path = require('path');
 
 const { auth } = require('../utils/users')
 const { _Users } = require('../utils/database');
@@ -12,7 +13,7 @@ const bcrypt = require('bcryptjs');
 router.get('/', (req, res, next) => {
   const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
   if (isProduction) {
-    return next();
+    return res.sendFile(path.join(__dirname, "..", "dist", "index.html"));
   }
   return res.render('index');
 
@@ -38,6 +39,10 @@ router.get('/login', (req, res) => {
   }
   if (req.user) return (res.redirect('/dashboard'));
 
+  const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  if (isProduction) {
+    return res.sendFile(path.join(__dirname, "..", "dist", "index.html"));
+  }
   return (res.render('auth/login'))
 })
 
@@ -48,11 +53,19 @@ router.post('/login', express.urlencoded({ extended: true }), async (req, res) =
   console.log(req.body)
   var user = await _Users.get(username);
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+    if (isProduction) {
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    }
     return res.render('auth/login', {
       rParams: { error: 'Email o password errata, riprova per favore.' }
     });
   }
   user.cookie(res, req);
+  const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  if (isProduction) {
+    return res.status(200).json({ ok: true });
+  }
   return (res.redirect('/dashboard'))
 })
 
