@@ -78,6 +78,10 @@ var routes = [
   { location: '/api', mw: require('./routes/api') },
 ];
 
+if (isProduction) {
+  routes = routes.filter((r) => !['/', '/dashboard'].includes(r.location));
+}
+
 routes.map((r) => {
   var { location, mw } = r;
   app.use(location, mw);
