@@ -10,7 +10,6 @@ const { da, DriverAnalyst } = require('../datainspectors/_drivers');
 const { fa, FuelAnalyst } = require('../datainspectors/_fuel')
 const { decryptJSON, encryptJSON } = require('../utils/encryption');
 const { TachoSync } = require('../utils/tacho')
-const isProduction = process.env.NODE_ENV === "production";
 
 
 const ALLOWED_TANK_UNITS = new Set(['litres', 'gallons']);
@@ -606,24 +605,30 @@ const mapFuelAnalysis = (analysis = {}, metaExtras = {}) => {
 
 
 
-if (!isProduction) {
-  // Login
-  router.get('/', auth, async (req, res) => {
+// Login
+router.get('/', auth, async (req, res) => {
 
-    const privilege = Number.isInteger(req.user?.privilege) ? req.user.privilege : null;
-    const role = Number.isInteger(req.user?.role) ? req.user.role : null;
+  const privilege = Number.isInteger(req.user?.privilege) ? req.user.privilege : null;
+  const role = Number.isInteger(req.user?.role) ? req.user.role : null;
 
-    return res.sendStatus(410);
-  });
+  return (res.render('dashboard/dashboard', {
+    rParams: {
+      user: {
+        privilege,
+        role,
+        effectivePrivilege: getPrivilegeLevel(req.user)
+      }
+    }
+  }));
+});
 
 
-  router.get('/map', auth, async (req, res) => {
+router.get('/map', auth, async (req, res) => {
 
-    var vehicles = await req.user.vehicles.list() || [];
+  var vehicles = await req.user.vehicles.list() || [];
 
-    return res.sendStatus(410);
-  })
-}
+  return (res.render('frames/mapFrame.ejs', { rParams: { vehicles } }))
+})
 
 // JSON vehicles API for the React dashboard.
 // Returns user's vehicles with last known coordinates and fuel calibration.
@@ -1050,221 +1055,226 @@ router.post('/refuelings', auth, async (req, res) => {
   }
 });
 
-if (!isProduction) {
-  router.post('/tooltip/:action?', auth, imeiOwnership, async (req, res) => {
-    const safeNumber = (value) => {
-      const num = Number(value);
-      return Number.isFinite(num) ? num : null;
-    };
+router.post('/tooltip/:action?', auth, imeiOwnership, async (req, res) => {
+  const safeNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
 
-    const { vehicle, device, status, imei, fuelSummary } = req.body || {};
-
-
-    const io = device?.data?.io || {};
+  const { vehicle, device, status, imei, fuelSummary } = req.body || {};
 
 
-    var driver = io.tachoDriverIds ? _Drivers.get(io.tachoDriverIds.driver1) : null;
+  const io = device?.data?.io || {};
+
+
+  var driver = io.tachoDriverIds ? _Drivers.get(io.tachoDriverIds.driver1) : null;
 
 
 
-    var driverEvents = [{ to_state_name: "unlogged", eventflags: ["rest_start"] }];
-    if (driver) {
-      var _hist = await driver.relevanthistory()
-      driverEvents = _hist.length > 0 ? _hist : driverEvents;
-    }
+  var driverEvents = [{ to_state_name: "unlogged", eventflags: ["rest_start"] }];
+  if (driver) {
+    var _hist = await driver.relevanthistory()
+    driverEvents = _hist.length > 0 ? _hist : driverEvents;
+  }
 
 
-    switch (req.params.action) {
-      case 'mainmap':
-        return res.sendStatus(410);
-      default:
-        res.status(400).json({ message: 'Azione tooltip non supportata.' });
-    }
-  });
-}
+  switch (req.params.action) {
+    case 'mainmap':
+      res.render('wrappers/vehicleTooltip.ejs', {
+        vehicle,
+        device,
+        status,
+        fuelSummary,
+        driverEvents,
+
+        formatDate: (d) => new Date(d).toLocaleString('it-IT')
+      });
+      break;
+    default:
+      res.status(400).json({ message: 'Azione tooltip non supportata.' });
+  }
+});
 
 
-if (!isProduction) {
-  router.get('/test/tooltip', auth, async (req, res) => {
-    // Dati mock per testare il rendering
-    const mockVehicle = {
-      imei: '356789123456789',
-      nickname: 'Volvo FH16',
-      plate: { v: 'AB123CD' }
-    };
+router.get('/test/tooltip', auth, async (req, res) => {
+  // Dati mock per testare il rendering
+  const mockVehicle = {
+    imei: '356789123456789',
+    nickname: 'Volvo FH16',
+    plate: { v: 'AB123CD' }
+  };
 
-    const mockDevice = {
-      data: {
-        timestamp: Date.now(),
-        io: { driver1Id: 'I100000569493003', tachoDriverIds: { driver1: "I100000569493003" }, driver1CardPresence: 1, driver1WorkingState: 3 },
-        gps: {
-          Latitude: 15,
-          Longitude: 15,
-          Speed: 400,
-          Location: {
-            City: "Ladispoli",
-            Zip: "80120",
-            Address: "Via Delle Milizie 22",
-            Provence: "RO",
-          }
+  const mockDevice = {
+    data: {
+      timestamp: Date.now(),
+      io: { driver1Id: 'I100000569493003', tachoDriverIds: { driver1: "I100000569493003" }, driver1CardPresence: 1, driver1WorkingState: 3 },
+      gps: {
+        Latitude: 15,
+        Longitude: 15,
+        Speed: 400,
+        Location: {
+          City: "Ladispoli",
+          Zip: "80120",
+          Address: "Via Delle Milizie 22",
+          Provence: "RO",
         }
       }
-    };
+    }
+  };
 
-    const mockStatus = {
-      class: 'success',
-      status: 'In marcia'
-    };
+  const mockStatus = {
+    class: 'success',
+    status: 'In marcia'
+  };
 
-    const mockData = {
-      vehicle: mockVehicle,
-      device: mockDevice,
-      status: mockStatus,
-      fuelSummary: {
-        liters: 612,
-        capacity: 800,
-        percent: 0.765,
-        tank1Capacity: 400,
-        tank2Capacity: 400,
-        unit: 'litri'
+  const mockData = {
+    vehicle: mockVehicle,
+    device: mockDevice,
+    status: mockStatus,
+    fuelSummary: {
+      liters: 612,
+      capacity: 800,
+      percent: 0.765,
+      tank1Capacity: 400,
+      tank2Capacity: 400,
+      unit: 'litri'
+    },
+    timeLeft: '73%',
+    formatDate: (d) => new Date(d).toLocaleString('it-IT'),
+    driverEvents: [
+      {
+        _id: new String("69090522998b18598ea73de8"),
+        timestamp: "2025-10-20T04:14:00.863Z",
+        from_state: 0,
+        to_state: 3,
+        from_state_name: 'resting',
+        to_state_name: 'driving',
+        lat: 43.721905,
+        lng: 10.7719833,
+        eventflags: ['drive_start', 'rest_stop'],
+        elapsed: 7642
       },
-      timeLeft: '73%',
-      formatDate: (d) => new Date(d).toLocaleString('it-IT'),
-      driverEvents: [
-        {
-          _id: new String("69090522998b18598ea73de8"),
-          timestamp: "2025-10-20T04:14:00.863Z",
-          from_state: 0,
-          to_state: 3,
-          from_state_name: 'resting',
-          to_state_name: 'driving',
-          lat: 43.721905,
-          lng: 10.7719833,
-          eventflags: ['drive_start', 'rest_stop'],
-          elapsed: 7642
-        },
-        {
-          _id: new String("69090522998b18598ea73deb"),
-          timestamp: "2025-10-20T04:42:01.001Z",
-          from_state: 3,
-          to_state: 2,
-          from_state_name: 'driving',
-          to_state_name: 'working',
-          lat: 43.6586233,
-          lng: 10.6065316,
-          eventflags: ['drive_stop', 'work_start'],
-          elapsed: 7643
-        },
-        {
-          _id: new String("69090522998b18598ea73ded"),
-          timestamp: "2025-10-20T05:19: 20.187Z",
-          from_state: 2,
-          to_state: 0,
-          from_state_name: 'working',
-          to_state_name: 'resting',
-          lat: 43.6586333,
-          lng: 10.6065116,
-          eventflags: ['work_stop', 'rest_start'],
-          elapsed: 270
-        },
-        {
-          _id: new String("69090522998b18598ea73def"),
-          timestamp: "2025-10-20T05:20:00.188Z",
-          from_state: 0,
-          to_state: 3,
-          from_state_name: 'resting',
-          to_state_name: 'driving',
-          lat: 43.6587266,
-          lng: 10.60687,
-          eventflags: ['drive_start', 'rest_stop'],
-          elapsed: 1642
-        },
-        {
-          _id: new String("69090522998b18598ea73df1"),
-          timestamp: "2025-10-20T05:23:00.202Z",
-          from_state: 3,
-          to_state: 2,
-          from_state_name: 'driving',
-          to_state_name: 'working',
-          lat: 43.6575116,
-          lng: 10.6072033,
-          eventflags: ['drive_stop', 'work_start'],
-          elapsed: 1642
-        },
-        {
-          _id: new String("69090522998b18598ea73df3"),
-          timestamp: "2025-10-20T05:25:00.212Z",
-          from_state: 2,
-          to_state: 3,
-          from_state_name: 'working',
-          to_state_name: 'driving',
-          lat: 43.6575533,
-          lng: 10.6071866,
-          eventflags: ['drive_start', 'work_stop'],
-          elapsed: 2160
-        },
-        {
-          _id: new String("69090522998b18598ea73df5"),
-          timestamp: "2025-10- 20T0800: 46.988Z",
-          from_state: 3,
-          to_state: 0,
-          from_state_name: 'driving',
-          to_state_name: 'resting',
-          lat: 43.6575216,
-          lng: 10.6072233,
-          eventflags: ['drive_stop', 'rest_start'],
-          elapsed: 228
-        },
-        {
-          _id: new String("69090522998b18598ea73df7"),
-          timestamp: "2025-10-20T08:29:00.124Z",
-          from_state: 0,
-          to_state: 3,
-          from_state_name: 'resting',
-          to_state_name: 'driving',
-          lat: 43.6570183,
-          lng: 10.607705,
-          eventflags: ['drive_start', 'rest_stop'],
-          elapsed: 9643
-        },
-        {
-          _id: new String("69090522998b18598ea73df9"),
-          timestamp: "2025-10-20T08:30:00.129Z",
-          from_state: 3,
-          to_state: 2,
-          from_state_name: 'driving',
-          to_state_name: 'working',
-          lat: 43.6570183,
-          lng: 10.6077083,
-          eventflags: ['drive_stop', 'work_start'],
-          elapsed: 9643
-        },
-        {
-          _id: new String("69090522998b18598ea73dfb"),
-          timestamp: "2025-10-20T08: 39:00.173Z",
-          from_state: 2,
-          to_state: 0,
-          from_state_name: 'working',
-          to_state_name: 'resting',
-          lat: 43.6570233,
-          lng: 10.607705,
-          eventflags: ['work_stop', 'rest_start'],
-          elapsed: 643
-        }
-      ]
-    };
+      {
+        _id: new String("69090522998b18598ea73deb"),
+        timestamp: "2025-10-20T04:42:01.001Z",
+        from_state: 3,
+        to_state: 2,
+        from_state_name: 'driving',
+        to_state_name: 'working',
+        lat: 43.6586233,
+        lng: 10.6065316,
+        eventflags: ['drive_stop', 'work_start'],
+        elapsed: 7643
+      },
+      {
+        _id: new String("69090522998b18598ea73ded"),
+        timestamp: "2025-10-20T05:19: 20.187Z",
+        from_state: 2,
+        to_state: 0,
+        from_state_name: 'working',
+        to_state_name: 'resting',
+        lat: 43.6586333,
+        lng: 10.6065116,
+        eventflags: ['work_stop', 'rest_start'],
+        elapsed: 270
+      },
+      {
+        _id: new String("69090522998b18598ea73def"),
+        timestamp: "2025-10-20T05:20:00.188Z",
+        from_state: 0,
+        to_state: 3,
+        from_state_name: 'resting',
+        to_state_name: 'driving',
+        lat: 43.6587266,
+        lng: 10.60687,
+        eventflags: ['drive_start', 'rest_stop'],
+        elapsed: 1642
+      },
+      {
+        _id: new String("69090522998b18598ea73df1"),
+        timestamp: "2025-10-20T05:23:00.202Z",
+        from_state: 3,
+        to_state: 2,
+        from_state_name: 'driving',
+        to_state_name: 'working',
+        lat: 43.6575116,
+        lng: 10.6072033,
+        eventflags: ['drive_stop', 'work_start'],
+        elapsed: 1642
+      },
+      {
+        _id: new String("69090522998b18598ea73df3"),
+        timestamp: "2025-10-20T05:25:00.212Z",
+        from_state: 2,
+        to_state: 3,
+        from_state_name: 'working',
+        to_state_name: 'driving',
+        lat: 43.6575533,
+        lng: 10.6071866,
+        eventflags: ['drive_start', 'work_stop'],
+        elapsed: 2160
+      },
+      {
+        _id: new String("69090522998b18598ea73df5"),
+        timestamp: "2025-10- 20T0800: 46.988Z",
+        from_state: 3,
+        to_state: 0,
+        from_state_name: 'driving',
+        to_state_name: 'resting',
+        lat: 43.6575216,
+        lng: 10.6072233,
+        eventflags: ['drive_stop', 'rest_start'],
+        elapsed: 228
+      },
+      {
+        _id: new String("69090522998b18598ea73df7"),
+        timestamp: "2025-10-20T08:29:00.124Z",
+        from_state: 0,
+        to_state: 3,
+        from_state_name: 'resting',
+        to_state_name: 'driving',
+        lat: 43.6570183,
+        lng: 10.607705,
+        eventflags: ['drive_start', 'rest_stop'],
+        elapsed: 9643
+      },
+      {
+        _id: new String("69090522998b18598ea73df9"),
+        timestamp: "2025-10-20T08:30:00.129Z",
+        from_state: 3,
+        to_state: 2,
+        from_state_name: 'driving',
+        to_state_name: 'working',
+        lat: 43.6570183,
+        lng: 10.6077083,
+        eventflags: ['drive_stop', 'work_start'],
+        elapsed: 9643
+      },
+      {
+        _id: new String("69090522998b18598ea73dfb"),
+        timestamp: "2025-10-20T08: 39:00.173Z",
+        from_state: 2,
+        to_state: 0,
+        from_state_name: 'working',
+        to_state_name: 'resting',
+        lat: 43.6570233,
+        lng: 10.607705,
+        eventflags: ['work_stop', 'rest_start'],
+        elapsed: 643
+      }
+    ]
+  };
 
-    return res.sendStatus(410);
-  });
+  res.render('wrappers/vehicleTooltip', mockData);
+});
 
 
-  router.get('/test/riepilogodriver', auth, async (req, res) => {
+router.get('/test/riepilogodriver', auth, async (req, res) => {
 
-    var { d = "", from, to } = req.query;
-    return res.sendStatus(410);
+  var { d = "", from, to } = req.query;
+  return (res.render('wrappers/riepilogoDriver',))
 
-  })
-}
+})
 
 
 router.post('/fueldump', auth, imeiOwnership, async (req, res) => {

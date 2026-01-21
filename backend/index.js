@@ -68,11 +68,11 @@ var expressWs = require('express-ws')(app);
 //   }, 100);
 // });
 
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
 const distPath = path.join(__dirname, "dist");
 
 var routes = [
-  { location: '/', mw: require('./routes/_home') },
+  { location: '/', mw: !isProduction ? require('./routes/_home') :   (req, res) => {res.sendFile(path.join(__dirname, "dist", "index.html"))}},
   { location: '/dashboard', mw: require('./routes/_dashboard') },
   { location: '/ws', mw: require('./routes/_websockets') },
   { location: '/api', mw: require('./routes/api') },
@@ -81,6 +81,8 @@ var routes = [
 if (isProduction) {
   routes = routes.filter((r) => !['/', '/dashboard'].includes(r.location));
 }
+
+
 
 routes.map((r) => {
   var { location, mw } = r;
