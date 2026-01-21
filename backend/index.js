@@ -79,7 +79,8 @@ var routes = [
 ];
 
 if (isProduction) {
-  routes = routes.filter((r) => !['/', '/dashboard'].includes(r.location));
+  // Keep "/" mounted so auth endpoints like /login still work in prod.
+  routes = routes.filter((r) => !['/dashboard'].includes(r.location));
 }
 
 

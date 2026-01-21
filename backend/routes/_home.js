@@ -8,8 +8,12 @@ const { _Users } = require('../utils/database');
 const bcrypt = require('bcryptjs');
 
 // Login
-router.get('/', (req, res) => {
-  return(res.render('index'))
+router.get('/', (req, res, next) => {
+  const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  if (isProduction) {
+    return next();
+  }
+  return res.render('index');
 });
 
 
