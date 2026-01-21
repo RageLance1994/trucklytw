@@ -52,7 +52,7 @@ const SECTION_STYLES = `
   .truckly-tooltip {
     font-family: "Inter", "Segoe UI", system-ui, sans-serif;
     font-size: 12px;
-    background: #0e0f14;
+    background: #0c0c0d;
     color: #f8fafc;
     border-radius: 18px;
     padding: 16px;

@@ -208,7 +208,7 @@ export function Navbar() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-[#0a0a0d]">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c]">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         <div className="flex items-center gap-3 py-3">
           <img
@@ -352,7 +352,7 @@ export function Navbar() {
                       <i className="fa fa-globe mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "satellite" ? "bg-emerald-400" : "opacity-0"
+                          mapStyle === "satellite" ? "bg-orange-400" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -371,7 +371,7 @@ export function Navbar() {
                       <i className="fa fa-map-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "base" ? "bg-emerald-400" : "opacity-0"
+                          mapStyle === "base" ? "bg-orange-400" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -390,7 +390,7 @@ export function Navbar() {
                       <i className="fa fa-sun-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "light" ? "bg-emerald-400" : "opacity-0"
+                          mapStyle === "light" ? "bg-orange-400" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -409,7 +409,7 @@ export function Navbar() {
                       <i className="fa fa-moon-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "dark" ? "bg-emerald-400" : "opacity-0"
+                          mapStyle === "dark" ? "bg-orange-400" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -448,7 +448,7 @@ export function Navbar() {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "full" ? "bg-emerald-400" : "opacity-0"
+                            markerStyle === "full" ? "bg-orange-400" : "opacity-0"
                           }`}
                           aria-hidden="true"
                         />
@@ -464,7 +464,7 @@ export function Navbar() {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "compact" ? "bg-emerald-400" : "opacity-0"
+                            markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
                           }`}
                           aria-hidden="true"
                         />
@@ -480,7 +480,7 @@ export function Navbar() {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "plate" ? "bg-emerald-400" : "opacity-0"
+                            markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
                           }`}
                           aria-hidden="true"
                         />
@@ -496,7 +496,7 @@ export function Navbar() {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "name" ? "bg-emerald-400" : "opacity-0"
+                            markerStyle === "name" ? "bg-orange-400" : "opacity-0"
                           }`}
                           aria-hidden="true"
                         />
@@ -512,7 +512,7 @@ export function Navbar() {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "direction" ? "bg-emerald-400" : "opacity-0"
+                            markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
                           }`}
                           aria-hidden="true"
                         />
@@ -626,7 +626,7 @@ export function Navbar() {
       )}
       <aside
         id="mobile-menu"
-        className={`fixed top-0 bottom-0 right-0 z-50 w-[86vw] max-w-sm border-l border-border bg-[#0a0a0d] text-foreground flex flex-col pt-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${
+        className={`fixed top-0 bottom-0 right-0 z-50 w-[86vw] max-w-sm border-l border-border bg-[#0b0b0c] text-foreground flex flex-col pt-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${
           isMenuOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!isMenuOpen}
@@ -638,9 +638,10 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setIsMenuOpen(false)}
-            className="h-8 px-3 rounded-full border border-white/20 text-xs text-white/70 hover:text-white hover:border-white/50 transition"
+            className="h-8 w-8 rounded-full border border-white/20 text-xs text-white/70 hover:text-white hover:border-white/50 transition inline-flex items-center justify-center"
+            aria-label="Chiudi"
           >
-            Chiudi
+            <i className="fa fa-close" aria-hidden="true" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 text-white">
@@ -760,7 +761,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "base" ? "bg-emerald-400" : "opacity-0"
+                    mapStyle === "base" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -778,7 +779,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "satellite" ? "bg-emerald-400" : "opacity-0"
+                    mapStyle === "satellite" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -796,7 +797,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "light" ? "bg-emerald-400" : "opacity-0"
+                    mapStyle === "light" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -814,7 +815,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "dark" ? "bg-emerald-400" : "opacity-0"
+                    mapStyle === "dark" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -831,7 +832,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "full" ? "bg-emerald-400" : "opacity-0"
+                    markerStyle === "full" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -844,7 +845,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "compact" ? "bg-emerald-400" : "opacity-0"
+                    markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -857,7 +858,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "plate" ? "bg-emerald-400" : "opacity-0"
+                    markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -870,7 +871,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "name" ? "bg-emerald-400" : "opacity-0"
+                    markerStyle === "name" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -883,7 +884,7 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "direction" ? "bg-emerald-400" : "opacity-0"
+                    markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
@@ -934,3 +935,4 @@ export function Navbar() {
     </header>
   );
 }
+

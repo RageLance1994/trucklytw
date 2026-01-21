@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,7 +16,7 @@
   }
 
   body {
-    @apply bg-[#09090b] text-zinc-100 antialiased;
+    @apply bg-[#0a0a0a] text-zinc-100 antialiased;
   }
 
   input,
@@ -25,9 +27,9 @@
 
 /* Ensure dropdown menus are opaque and readable */
 [data-slot="dropdown-menu-content"] {
-  background-color: #111827; /* zinc-900 */
-  color: #e5e7eb; /* zinc-200 */
-  border-color: #27272a; /* zinc-800 */
+  background-color: #0f0f10;
+  color: #e5e5e5;
+  border-color: #1f1f1f;
 }
 
 /* Transparent horizontal scrollbar track */
@@ -48,6 +50,537 @@
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
   padding: 0;
+}
+
+.truckly-home {
+  font-family: "Space Grotesk", "Manrope", sans-serif;
+}
+
+.truckly-home__glow {
+  position: absolute;
+  inset: -40% -20% auto -20%;
+  height: 120%;
+  background: radial-gradient(circle at 20% 30%, rgba(255, 122, 26, 0.2), transparent 55%),
+    radial-gradient(circle at 70% 20%, rgba(255, 180, 120, 0.12), transparent 60%),
+    radial-gradient(circle at 80% 70%, rgba(255, 122, 26, 0.08), transparent 70%);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.truckly-home__grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 120px 120px;
+  mask-image: radial-gradient(circle at 30% 20%, rgba(0, 0, 0, 0.8), transparent 70%);
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.truckly-pill-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 122, 26, 0.12);
+  border: 1px solid rgba(255, 122, 26, 0.35);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(255, 220, 200, 0.9);
+}
+
+.truckly-hero-title {
+  font-size: clamp(2.4rem, 4vw, 3.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.truckly-panel {
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(20, 20, 22, 0.92), rgba(11, 11, 12, 0.98));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  padding: 20px;
+}
+
+.truckly-panel--secondary {
+  position: absolute;
+  right: -6%;
+  bottom: -10%;
+  width: min(320px, 80%);
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(25, 18, 14, 0.92), rgba(12, 10, 8, 0.96));
+  border-color: rgba(255, 140, 60, 0.25);
+}
+
+.truckly-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.truckly-panel__metric {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.truckly-panel__list {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.truckly-panel__footer {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.truckly-agent {
+  position: relative;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(16, 16, 16, 0.96), rgba(6, 6, 6, 0.98));
+  padding: 26px;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.5);
+  display: grid;
+  gap: 14px;
+}
+
+.truckly-agent__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: rgba(255, 180, 130, 0.9);
+  background: rgba(255, 122, 26, 0.12);
+  border: 1px solid rgba(255, 122, 26, 0.35);
+  padding: 6px 12px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.truckly-agent__title {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.truckly-agent__text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.truckly-agent__bubble {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.truckly-agent__bubble--accent {
+  border-color: rgba(255, 140, 60, 0.35);
+  background: rgba(255, 122, 26, 0.12);
+  color: rgba(255, 220, 200, 0.9);
+}
+
+.truckly-agent__label {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.truckly-agent-phrase {
+  margin-top: 0;
+  display: flex;
+  padding:0px !important;
+  flex-direction: column;
+  gap: 6px;
+  font-size: clamp(1.8rem, 3.6vw, 2.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.9);
+  align-items: center;
+  text-align: center;
+  min-height: 120px;
+  width: 100%;
+  height:100%;
+  justify-content: center;
+  position:relative;
+  padding-top: 12px;
+}
+
+.truckly-agent-copy {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.truckly-agent-phrase-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.truckly-agent-phrase span {
+  opacity: 0;
+  animation-duration: 0.9s;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
+}
+
+.truckly-agent-phrase__lead {
+  position:absolute;
+  top: calc(50% - 45px);
+  left:25%;
+  transform: translateY(-20px);  
+  animation-name: truckly-phrase-in-left;
+  animation-delay: 0.05s;
+  z-index: 9;
+}
+
+.truckly-agent-phrase__accent {
+  color: rgba(255, 140, 60, 0.95);
+  text-shadow: 0 8px 22px rgba(255, 120, 30, 0.2);
+  transform: translateX(0);
+  animation-name: truckly-phrase-in-right;
+  animation-delay: 0.35s;
+  margin-top: 0;
+  left:35.5%;
+  top:calc(50% - 25px);
+  z-index: 8;
+  position:absolute;
+}
+
+@keyframes truckly-phrase-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes truckly-phrase-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .truckly-agent-phrase span {
+    animation: none;
+    opacity: 1;
+  }
+}
+.truckly-hero-art {
+  position: relative;
+  min-height: 360px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: radial-gradient(circle at 30% 20%, rgba(255, 122, 26, 0.2), transparent 55%),
+    radial-gradient(circle at 70% 35%, rgba(255, 210, 180, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(15, 15, 16, 0.96), rgba(6, 6, 6, 0.98));
+  overflow: hidden;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+}
+
+.truckly-hero-art__glow {
+  position: absolute;
+  inset: 18% 14% auto 12%;
+  height: 140px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 170, 120, 0.45), transparent 70%);
+  filter: blur(6px);
+  opacity: 0.8;
+}
+
+.truckly-hero-art__orbit {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.truckly-hero-art__orbit--one {
+  width: 240px;
+  height: 240px;
+  top: 40px;
+  left: 40px;
+}
+
+.truckly-hero-art__orbit--two {
+  width: 320px;
+  height: 320px;
+  top: 80px;
+  right: -20px;
+}
+
+.truckly-hero-art__ring {
+  position: absolute;
+  height: 1px;
+  left: 12%;
+  right: 18%;
+  top: 52%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+}
+
+.truckly-hero-art__ring--alt {
+  top: 70%;
+  left: 20%;
+  right: 12%;
+  background: linear-gradient(90deg, transparent, rgba(255, 160, 90, 0.35), transparent);
+}
+
+.truckly-hero-art__satellite {
+  position: absolute;
+  right: 40px;
+  top: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 10, 10, 0.65);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.truckly-hero-art__satellite-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 140, 60, 0.8);
+  box-shadow: 0 0 10px rgba(255, 140, 60, 0.6);
+}
+
+.truckly-hero-art__satellite-label {
+  line-height: 1;
+}
+
+.truckly-ai-art {
+  position: relative;
+  min-height: 360px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: radial-gradient(circle at 20% 20%, rgba(255, 122, 26, 0.18), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(255, 190, 140, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(16, 16, 16, 0.96), rgba(6, 6, 6, 0.98));
+  overflow: hidden;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+}
+
+.truckly-ai-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(0.2px);
+  opacity: 0.9;
+}
+
+.truckly-ai-orb--one {
+  width: 160px;
+  height: 160px;
+  top: 50px;
+  left: 40px;
+  background: radial-gradient(circle, rgba(255, 140, 60, 0.75), rgba(255, 120, 30, 0.2));
+}
+
+.truckly-ai-orb--two {
+  width: 220px;
+  height: 220px;
+  top: 140px;
+  right: 30px;
+  background: radial-gradient(circle, rgba(255, 210, 180, 0.4), rgba(255, 150, 80, 0.1));
+}
+
+.truckly-ai-orb--three {
+  width: 120px;
+  height: 120px;
+  bottom: 40px;
+  left: 55%;
+  background: radial-gradient(circle, rgba(255, 120, 30, 0.5), rgba(255, 120, 30, 0.1));
+}
+
+.truckly-ai-line {
+  position: absolute;
+  height: 1px;
+  left: 10%;
+  right: 10%;
+  top: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+}
+
+.truckly-ai-line--alt {
+  top: 62%;
+  left: 20%;
+  right: 15%;
+  background: linear-gradient(90deg, transparent, rgba(255, 160, 90, 0.35), transparent);
+}
+
+.truckly-ai-caption {
+  position: absolute;
+  bottom: 28px;
+  left: 28px;
+  right: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(10, 10, 10, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 12px 16px;
+  backdrop-filter: blur(12px);
+}
+
+.truckly-ai-caption__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.truckly-ai-caption__text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.truckly-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.truckly-dot--accent {
+  background: rgba(255, 122, 26, 0.75);
+  box-shadow: 0 0 14px rgba(255, 122, 26, 0.5);
+}
+
+.truckly-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.truckly-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 122, 26, 0.9);
+  box-shadow: 0 0 12px rgba(255, 122, 26, 0.65);
+}
+
+.truckly-card {
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 22px;
+  background: linear-gradient(180deg, rgba(18, 18, 18, 0.95), rgba(10, 10, 10, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 40px rgba(0, 0, 0, 0.5);
+  display: grid;
+  gap: 10px;
+}
+
+.truckly-card__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.truckly-card--accent {
+  background: linear-gradient(180deg, rgba(23, 17, 13, 0.95), rgba(12, 10, 8, 0.96));
+  border-color: rgba(255, 140, 60, 0.25);
+}
+
+.truckly-slab {
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 28px;
+  background: linear-gradient(180deg, rgba(15, 15, 16, 0.96), rgba(8, 8, 8, 0.96));
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+}
+
+.truckly-mini-card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.truckly-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.truckly-fade-up {
+  animation: truckly-fade-up 0.8s ease both;
+}
+
+.truckly-float {
+  animation: truckly-float 6s ease-in-out infinite;
+}
+
+@keyframes truckly-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes truckly-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
 }
 
 /* Map marker styles (ported from Next globals.css, kept outside Tailwind layers) */
@@ -360,3 +893,4 @@
 .chart-surface text {
   fill: #f8fafc;
 }
+

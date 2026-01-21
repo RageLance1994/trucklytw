@@ -102,7 +102,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
     return (
       <div
         key={`${vehicle.imei}-${label}`}
-        className="rounded-xl border border-white/10 bg-[#10121a] shadow-[0_10px_20px_rgba(0,0,0,0.35)] cursor-pointer"
+        className="rounded-xl border border-white/10 bg-[#121212] shadow-[0_10px_20px_rgba(0,0,0,0.35)] cursor-pointer"
         onClick={() => (window as any).trucklyFlyToVehicle?.(vehicle)}
       >
         <div className="flex items-start justify-between gap-2 px-3 py-3">
@@ -178,7 +178,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
 
   return (
     <aside
-      className={`fixed top-0 bottom-0 left-0 z-40 w-[92vw] max-w-[440px] border-r border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed top-0 bottom-0 left-0 z-40 w-[92vw] max-w-[440px] border-r border-white/10 bg-[#0c0c0d] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-x-0" : "-translate-x-full pointer-events-none opacity-0"
       }`}
       aria-hidden={!isOpen}
@@ -191,9 +191,10 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
         {onClose && (
           <button
             onClick={onClose}
-            className="text-xs h-8 rounded-full border border-white/20 px-3 text-white/75 hover:text-white hover:border-white/50 transition"
+            className="text-xs h-8 w-8 rounded-full border border-white/20 text-white/75 hover:text-white hover:border-white/50 transition inline-flex items-center justify-center"
+            aria-label="Chiudi"
           >
-            Chiudi
+            <i className="fa fa-close" aria-hidden="true" />
           </button>
         )}
       </div>
@@ -263,7 +264,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
               </div>
 
               {listTab === "all" && (
-                <div className="rounded-2xl border border-white/10 bg-[#0c0f16] p-3 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">
@@ -279,7 +280,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
               )}
 
               {listTab === "companies" && (
-                <div className="rounded-2xl border border-white/10 bg-[#0c0f16] p-3 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">
@@ -302,7 +303,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
                       <details
                         key={company.label}
                         open={companiesExpanded}
-                        className="rounded-xl border border-white/10 bg-[#10121a] px-3 py-2"
+                        className="rounded-xl border border-white/10 bg-[#121212] px-3 py-2"
                       >
                         <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-semibold text-white">
                           <span className="truncate">{company.label}</span>
@@ -318,7 +319,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
               )}
 
               {listTab === "groups" && (
-                <div className="rounded-2xl border border-white/10 bg-[#0c0f16] p-3 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">
@@ -333,7 +334,7 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
                     {groupedByTag.map((tag) => (
                       <details
                         key={tag.label}
-                        className="rounded-xl border border-white/10 bg-[#10121a] px-3 py-2"
+                        className="rounded-xl border border-white/10 bg-[#121212] px-3 py-2"
                       >
                         <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-semibold text-white">
                           <span className="truncate">{tag.label}</span>
@@ -347,12 +348,12 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
               )}
             </div>
           ) : (
-            <div className="rounded-xl border border-white/10 bg-[#0c0f16] px-4 py-4 text-sm text-white/60">
+            <div className="rounded-xl border border-white/10 bg-[#0d0d0f] px-4 py-4 text-sm text-white/60">
               Nessun veicolo disponibile.
             </div>
           )
         ) : (
-          <div className="rounded-xl border border-white/10 bg-[#0c0f16] px-4 py-4 text-sm text-white/60">
+          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] px-4 py-4 text-sm text-white/60">
             Elenco autisti disponibile a breve.
           </div>
         )}
@@ -360,3 +361,4 @@ export function QuickSidebar({ isOpen, onClose, vehicles }: QuickSidebarProps) {
     </aside>
   );
 }
+

@@ -11,10 +11,11 @@ import {
 import "./style.css";
 import { MapContainer } from "./MapContainer";
 import { Button } from "./components/ui/button";
-import { Navbar } from "./components/navbar";
+import { HomeNavbar } from "./components/home-navbar";
 import { DriverSidebar } from "./components/driver-sidebar";
 import { QuickSidebar } from "./components/quick-sidebar";
 import { DriverBottomBar } from "./components/driver-bottom-bar";
+import { HomePage } from "./pages/HomePage";
 import {
   API_BASE_URL,
   LOGIN_PATH,
@@ -135,54 +136,57 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#09090b] text-[#f4f4f5]">
-      <div className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900/70 p-8 shadow-xl">
-        <div className="mb-6 flex justify-center">
-          <img
-            src="/assets/images/logo_white.png"
-            alt="Truckly"
-            className="h-9 w-auto"
-            loading="lazy"
-          />
+    <div className="min-h-screen w-full bg-[#0a0a0a] text-[#f4f4f5]">
+      <HomeNavbar compact />
+      <div className="flex items-center justify-center px-4 py-16">
+        <div className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900/70 p-8 shadow-xl">
+          <div className="mb-6 flex justify-center">
+            <img
+              src="/assets/images/logo_white.png"
+              alt="Truckly"
+              className="h-9 w-auto"
+              loading="lazy"
+            />
+          </div>
+
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm text-zinc-300" htmlFor="email">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm text-zinc-300" htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {error && <div className="text-sm text-red-400">{error}</div>}
+
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Signing in..." : "Sign in"}
+            </Button>
+          </form>
         </div>
-
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-zinc-300" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-zinc-300" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            />
-          </div>
-
-          {error && <div className="text-sm text-red-400">{error}</div>}
-
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
       </div>
     </div>
   );
@@ -393,10 +397,9 @@ function DashboardPage() {
   }, [bottomBarState.open]);
 
   return (
-    <div className="w-full h-screen flex flex-col bg-[#09090b] text-[#f4f4f5]">
-      <Navbar />
+    <div className="w-full h-screen flex flex-col bg-[#0a0a0a] text-[#f4f4f5]">
       {loading ? (
-        <div className="p-6 text-sm text-zinc-300">Loading vehicles…</div>
+        <div className="p-6 text-sm text-zinc-300">Loading vehicles...</div>
       ) : error ? (
         <div className="p-6 text-red-400 text-sm">
           {error}. Make sure you are authenticated.
@@ -430,7 +433,7 @@ function DashboardPage() {
             <button
               type="button"
               onClick={() => setIsQuickSidebarOpen(true)}
-              className="fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#10121a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur hover:text-white hover:border-white/40 transition"
+              className="fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#121212]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur hover:text-white hover:border-white/40 transition"
             >
               Vista rapida
             </button>
@@ -447,7 +450,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<HomePage />} />
       </Routes>
     </BrowserRouter>
   );
@@ -456,3 +459,4 @@ function App() {
 ReactDOM.createRoot(document.getElementById("app") as HTMLElement).render(
   <App />,
 );
+

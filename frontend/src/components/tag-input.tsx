@@ -123,7 +123,7 @@ export function TagInput({
 
   return (
     <div className="relative">
-      <div className="flex flex-wrap gap-2 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80">
+      <div className="flex flex-wrap gap-2 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80">
         {value.map((tag) => (
           <span
             key={tag}
@@ -153,7 +153,7 @@ export function TagInput({
         />
       </div>
       {showSuggestions && (
-        <ul className="absolute left-0 right-0 z-30 mt-2 max-h-44 overflow-y-auto rounded-lg border border-white/10 bg-[#10121a] text-xs text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)]">
+        <ul className="absolute left-0 right-0 z-30 mt-2 max-h-44 overflow-y-auto rounded-lg border border-white/10 bg-[#121212] text-xs text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)]">
           {matches.map((tag, index) => (
             <li key={tag}>
               <button
@@ -172,3 +172,4 @@ export function TagInput({
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { API_BASE_URL } from "../config";
 import { dataManager } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
@@ -822,7 +822,7 @@ function RoutesSidebar({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
             Intervallo percorsi
@@ -838,7 +838,7 @@ function RoutesSidebar({
               type="datetime-local"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -847,7 +847,7 @@ function RoutesSidebar({
               type="datetime-local"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <button
@@ -861,7 +861,7 @@ function RoutesSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between text-sm text-white/70">
           <span>Rewind</span>
           <span>{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
@@ -884,7 +884,7 @@ function RoutesSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between text-sm text-white/70">
           <span>Eventi</span>
           <span>{events.length}</span>
@@ -898,7 +898,7 @@ function RoutesSidebar({
             events.map((evt: any) => (
               <div
                 key={evt.eventId}
-                className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80"
+                className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80"
               >
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">{formatEventLabel(evt)}</span>
@@ -1239,7 +1239,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-3 sm:p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-3 sm:p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">Aziende</p>
           <div className="flex items-center gap-2">
@@ -1270,7 +1270,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca azienda..."
-            className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
+            className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
           />
         </div>
 
@@ -1302,7 +1302,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
           </div>
 
           {sortedCompanies.length === 0 && !loading ? (
-            <div className="rounded-xl border border-white/10 bg-[#0c0f16] px-3 py-3 text-xs text-white/60">
+            <div className="rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-3 text-xs text-white/60">
               Nessuna azienda trovata.
             </div>
           ) : (
@@ -1331,7 +1331,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
               return (
                 <div
                   key={company.id}
-                  className="rounded-xl border border-white/10 bg-[#0c0f16] px-3 py-3 text-xs text-white/80"
+                  className="rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-3 text-xs text-white/80"
                 >
                   <div className={`${companyGrid}`}>
                     <button
@@ -1377,7 +1377,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                             }))
                           }
                           placeholder="Cerca utenti..."
-                          className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
+                          className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
                         />
                       </div>
 
@@ -1422,14 +1422,14 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                       </div>
 
                       {sortedUsers.length === 0 ? (
-                        <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/60">
+                        <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/60">
                           Nessun utente trovato.
                         </div>
                       ) : (
                         sortedUsers.map((user) => (
                           <div
                             key={user.id}
-                            className={`${userGrid} rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-[10px] sm:text-[11px] text-white/80`}
+                            className={`${userGrid} rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-[10px] sm:text-[11px] text-white/80`}
                           >
                             <div className="min-w-0 truncate">
                               {`${user.firstName} ${user.lastName}`.trim() || user.email}
@@ -1468,7 +1468,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10121a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
@@ -1485,9 +1485,10 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                   setModalOpen(false);
                   resetModal();
                 }}
-                className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/40 transition"
+                className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                aria-label="Chiudi"
               >
-                Chiudi
+                <i className="fa fa-close" aria-hidden="true" />
               </button>
             </div>
 
@@ -1537,7 +1538,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                         setNewName(e.target.value);
                         setTachoError(null);
                       }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                     />
                   </div>
                   <div className="space-y-2 md:col-span-2">
@@ -1550,7 +1551,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                         setLegalAddress(e.target.value);
                         setTachoError(null);
                       }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1563,7 +1564,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                         setVatId(e.target.value);
                         setTachoError(null);
                       }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1576,7 +1577,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                         setSdiCode(e.target.value);
                         setTachoError(null);
                       }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                     />
                   </div>
                   <label className="flex items-center gap-2 text-sm text-white/80 md:col-span-2">
@@ -1616,11 +1617,11 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                         window.setTimeout(() => setTachoDropdownOpen(false), 120);
                       }}
                       placeholder="Seleziona o cerca..."
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0c12] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      className="w-full rounded-lg border border-white/10 bg-[#0b0b0d] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                     />
                     {tachoDropdownOpen && (
                       <div
-                        className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0a0c12] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+                        className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0b0b0d] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
                         onMouseDown={(e) => e.preventDefault()}
                       >
                         {filteredTachoCompanies.length === 0 ? (
@@ -1667,7 +1668,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                         setRegisterSuccess(null);
                         setTachoError(null);
                       }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                     />
                   </div>
                 </div>
@@ -1692,7 +1693,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                 type="button"
                 onClick={handleRegisterCompany}
                 disabled={registering}
-                className="rounded-lg bg-white/10 border border-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+                className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
               >
                 {registering ? "Salvataggio..." : "Registra"}
               </button>
@@ -1703,7 +1704,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
 
       {userModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10121a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
@@ -1720,9 +1721,10 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                   setUserModalOpen(false);
                   resetUserModal();
                 }}
-                className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/40 transition"
+                className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                aria-label="Chiudi"
               >
-                Chiudi
+                <i className="fa fa-close" aria-hidden="true" />
               </button>
             </div>
 
@@ -1738,7 +1740,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                     setUserError(null);
                     setUserSuccess(null);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 />
               </div>
               <div className="space-y-2">
@@ -1752,7 +1754,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                     setUserError(null);
                     setUserSuccess(null);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 />
               </div>
               <div className="space-y-2">
@@ -1766,7 +1768,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                     setUserError(null);
                     setUserSuccess(null);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 />
               </div>
               <div className="space-y-2">
@@ -1780,7 +1782,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                     setUserError(null);
                     setUserSuccess(null);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
@@ -1795,7 +1797,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                     setUserError(null);
                     setUserSuccess(null);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 />
               </div>
               <div className="space-y-2">
@@ -1805,7 +1807,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                 <select
                   value={userRole}
                   onChange={(e) => setUserRole(Number(e.target.value))}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
                   <option value={1}>Admin</option>
                   <option value={2}>Operatore</option>
@@ -1818,7 +1820,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                 <select
                   value={userPrivilege}
                   onChange={(e) => setUserPrivilege(Number(e.target.value))}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
                   <option value={0}>Admin</option>
                   <option value={1}>Editor</option>
@@ -1845,7 +1847,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                 type="button"
                 onClick={handleRegisterUser}
                 disabled={userSubmitting}
-                className="rounded-lg bg-white/10 border border-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+                className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
               >
                 {userSubmitting ? "Salvataggio..." : "Registra utente"}
               </button>
@@ -1923,7 +1925,7 @@ export function DriverSidebar({
 
   return (
     <aside
-      className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0c0c0d] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-x-0" : "hidden-right"
       } ${isAdminMode ? "w-full max-w-none sm:w-full lg:w-[40vw] lg:min-w-[40vw] lg:max-w-none" : ""}`}
       aria-hidden={!isOpen}
@@ -1959,14 +1961,15 @@ export function DriverSidebar({
         {onClose && (
           <button
             onClick={onClose}
-            className="text-xs h-8 rounded-full border border-white/20 px-3 text-white/75 hover:text-white hover:border-white/50 transition"
+            className="text-xs h-8 w-8 rounded-full border border-white/20 text-white/75 hover:text-white hover:border-white/50 transition inline-flex items-center justify-center"
+            aria-label="Chiudi"
           >
-            Chiudi
+            <i className="fa fa-close" aria-hidden="true" />
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0e0f14]">
+      <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0c0c0d]">
         {isGeofenceMode ? (
           <GeofenceSidebar geofenceDraft={geofenceDraft} />
         ) : isRoutesMode ? (
@@ -1987,7 +1990,7 @@ export function DriverSidebar({
             />
             {hasDriver1 ? (
               <>
-                <div className="rounded-2xl border border-white/10 bg-[#10121a] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+                <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
                   <div className="px-4 pt-4 pb-2">
                     <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Stato guida</p>
                   </div>
@@ -2294,7 +2297,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
             Dati veicolo
@@ -2309,7 +2312,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <input
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -2317,7 +2320,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <input
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -2325,7 +2328,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <input
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -2333,13 +2336,13 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">SIM & dispositivo</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
@@ -2347,7 +2350,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <select
               value={simPrefix}
               onChange={(e) => setSimPrefix(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="+39">+39</option>
             </select>
@@ -2357,7 +2360,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <input
               value={simNumber}
               onChange={(e) => setSimNumber(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1 col-span-2">
@@ -2365,7 +2368,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <input
               value={simIccid}
               onChange={(e) => setSimIccid(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -2373,7 +2376,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <select
               value={deviceModel}
               onChange={(e) => setDeviceModel(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="FMC150">FMC150</option>
               <option value="FMC920">FMC920</option>
@@ -2386,7 +2389,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             <select
               value={codec}
               onChange={(e) => setCodec(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="8 Ext">8 Ext</option>
               <option value="8">8</option>
@@ -2399,7 +2402,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
               value={imei}
               onChange={(e) => setImei(e.target.value)}
               className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
-                imei && !imeiValid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0c0f16]"
+                imei && !imeiValid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
               }`}
               placeholder="15 cifre"
             />
@@ -2418,7 +2421,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Serbatoi</p>
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-3 items-center">
@@ -2430,7 +2433,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
                 value={tank1Capacity}
                 onChange={(e) => setTank1Capacity(e.target.value)}
                 className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
-                  tank1Capacity && !tank1Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0c0f16]"
+                  tank1Capacity && !tank1Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
                 }`}
               />
             </div>
@@ -2439,7 +2442,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
               <select
                 value={tank1Unit}
                 onChange={(e) => setTank1Unit(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               >
                 <option value="litres">Litri</option>
                 <option value="gallons">Galloni</option>
@@ -2464,7 +2467,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
                   value={tank2Capacity}
                   onChange={(e) => setTank2Capacity(e.target.value)}
                   className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
-                    tank2Capacity && !tank2Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0c0f16]"
+                    tank2Capacity && !tank2Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
                   }`}
                 />
               </div>
@@ -2473,7 +2476,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
                 <select
                   value={tank2Unit}
                   onChange={(e) => setTank2Unit(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
                   <option value="litres">Litri</option>
                   <option value="gallons">Galloni</option>
@@ -2484,7 +2487,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Tags</p>
         <TagInput
           value={tags}
@@ -2494,7 +2497,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
         />
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         {error && <p className="text-xs text-red-400">{error}</p>}
         {success && <p className="text-xs text-emerald-300">{success}</p>}
         <button
@@ -2555,7 +2558,7 @@ function GeofenceSidebar({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
             Dettagli geofence
@@ -2570,7 +2573,7 @@ function GeofenceSidebar({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               required
             />
           </div>
@@ -2580,14 +2583,14 @@ function GeofenceSidebar({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               required
             />
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
           Posizione e raggio
         </p>
@@ -2597,7 +2600,7 @@ function GeofenceSidebar({
             <input
               value={centerLat}
               onChange={(e) => setCenterLat(e.target.value === "" ? "" : Number(e.target.value))}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -2605,7 +2608,7 @@ function GeofenceSidebar({
             <input
               value={centerLng}
               onChange={(e) => setCenterLng(e.target.value === "" ? "" : Number(e.target.value))}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
         </div>
@@ -2619,12 +2622,12 @@ function GeofenceSidebar({
             step={0.05}
             value={radiusKm}
             onChange={(e) => setRadiusKm(Number(e.target.value))}
-            className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
           />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Trigger</p>
         <label className="flex items-center gap-2 text-sm text-white/80">
           <input
@@ -2652,7 +2655,7 @@ function GeofenceSidebar({
         </label>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between text-xs text-white/50 mb-3">
           <span>Target</span>
           <span>{geofenceDraft?.imei || "-"}</span>
@@ -2687,12 +2690,12 @@ function GeofenceSidebar({
 
 function Section({ title, body }: SectionProps) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#10121a] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
       <div className="px-4 pt-4 pb-2">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">{title}</p>
       </div>
       <div className="px-4 pb-4">
-        <div className="rounded-xl border border-white/8 bg-[#0c0f16] px-3.5 py-3 text-sm text-white/85 shadow-inner shadow-black/40">
+        <div className="rounded-xl border border-white/8 bg-[#0d0d0f] px-3.5 py-3 text-sm text-white/85 shadow-inner shadow-black/40">
           {body}
         </div>
       </div>
@@ -2726,5 +2729,6 @@ function CounterBar({
     </div>
   );
 }
+
 
 

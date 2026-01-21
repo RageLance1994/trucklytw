@@ -455,7 +455,7 @@ export function DriverBottomBar({
 
   return (
     <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0e0f14] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0c0c0d] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-y-0" : "hidden-bottom"
       }`}
       aria-hidden={!isOpen}
@@ -471,14 +471,15 @@ export function DriverBottomBar({
         {onClose && (
           <button
             onClick={onClose}
-            className="text-xs h-8 rounded-full border border-white/20 px-3 text-white/75 hover:text-white hover:border-white/50 transition"
+            className="text-xs h-8 w-8 rounded-full border border-white/20 text-white/75 hover:text-white hover:border-white/50 transition inline-flex items-center justify-center"
+            aria-label="Chiudi"
           >
-            Chiudi
+            <i className="fa fa-close" aria-hidden="true" />
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0e0f14]">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0c0c0d]">
         {mode === "fuel" ? (
           <FuelDashboard
             isOpen={isOpen}
@@ -536,7 +537,7 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -560,13 +561,13 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtra per nome file..."
-            className="w-full sm:w-56 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
+            className="w-full sm:w-56 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
           />
         </div>
 
         {error && <p className="text-xs text-red-400">{error}</p>}
 
-        <div className="rounded-xl border border-white/10 bg-[#0c0f16] overflow-hidden">
+        <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
           <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
             <span>File</span>
             <span>Origine</span>
@@ -695,7 +696,7 @@ function DriverDashboard({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -716,7 +717,7 @@ function DriverDashboard({
               value={driverId}
               onChange={(e) => setDriverId(e.target.value)}
               placeholder="UUID autista (es. da /api/drivers)"
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-2">
@@ -727,7 +728,7 @@ function DriverDashboard({
               type="datetime-local"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-2">
@@ -738,7 +739,7 @@ function DriverDashboard({
               type="datetime-local"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
         </div>
@@ -775,7 +776,7 @@ function DriverDashboard({
               return (
                 <div
                   key={dayKey}
-                  className="rounded-xl border border-white/10 bg-[#0c0f16] p-3 space-y-3"
+                  className="rounded-xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3"
                 >
                   <div
                     className="relative rounded-lg border border-white/10 bg-[#0b0d14] p-3 hover:border-white/30 transition overflow-visible"
@@ -800,7 +801,7 @@ function DriverDashboard({
                     )}
                     {isHovered && (
                       <div
-                        className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0e0f14] text-[#f8fafc] shadow-xl pointer-events-none"
+                        className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0c0c0d] text-[#f8fafc] shadow-xl pointer-events-none"
                         style={{ left, top }}
                       >
                         <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2 text-sm">
@@ -1144,7 +1145,7 @@ function FuelDashboard({
   return (
     <>
       <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -1161,7 +1162,7 @@ function FuelDashboard({
                 type="datetime-local"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-1">
@@ -1170,7 +1171,7 @@ function FuelDashboard({
                 type="datetime-local"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <button
@@ -1186,7 +1187,7 @@ function FuelDashboard({
         {error && <p className="text-sm text-red-400">{error}</p>}
 
         {!error && (
-          <div className="rounded-xl border border-white/10 bg-[#0c0f16] p-4 overflow-hidden">
+          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] p-4 overflow-hidden">
             {loading ? (
               <div className="flex h-[420px] items-center justify-center text-sm text-white/60">
                 Caricamento carburante...
@@ -1203,7 +1204,7 @@ function FuelDashboard({
         )}
       </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -1228,11 +1229,11 @@ function FuelDashboard({
 
         <div className="mt-4 overflow-x-auto">
           {loading ? (
-            <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
+            <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-4 text-sm text-white/60">
               Caricamento eventi carburante...
             </div>
           ) : tableRows.length === 0 ? (
-            <div className="rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-4 text-sm text-white/60">
+            <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-4 text-sm text-white/60">
               Nessun evento disponibile per questo intervallo.
             </div>
           ) : (
@@ -1399,7 +1400,7 @@ function RefuelModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#10121a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
@@ -1413,9 +1414,10 @@ function RefuelModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white hover:border-white/40 transition"
+            className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+            aria-label="Chiudi"
           >
-            Chiudi
+            <i className="fa fa-close" aria-hidden="true" />
           </button>
         </div>
 
@@ -1426,7 +1428,7 @@ function RefuelModal({
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as "refuel" | "withdrawal")}
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               >
                 <option value="refuel">Rifornimento</option>
                 <option value="withdrawal">Prelievo</option>
@@ -1438,7 +1440,7 @@ function RefuelModal({
                 value={litersInput}
                 onChange={(e) => setLitersInput(e.target.value)}
                 placeholder="Es. 120"
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
           </div>
@@ -1450,7 +1452,7 @@ function RefuelModal({
                 type="datetime-local"
                 value={startInput}
                 onChange={(e) => setStartInput(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-2">
@@ -1459,7 +1461,7 @@ function RefuelModal({
                 type="datetime-local"
                 value={endInput}
                 onChange={(e) => setEndInput(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
           </div>
@@ -1471,7 +1473,7 @@ function RefuelModal({
                 value={station}
                 onChange={(e) => setStation(e.target.value)}
                 placeholder="Nome distributore"
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-2">
@@ -1480,7 +1482,7 @@ function RefuelModal({
                 value={invoiceRef}
                 onChange={(e) => setInvoiceRef(e.target.value)}
                 placeholder="Es. FT-2026-001"
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
           </div>
@@ -1492,7 +1494,7 @@ function RefuelModal({
                 value={priceInput}
                 onChange={(e) => setPriceInput(e.target.value)}
                 placeholder="Es. 1.75"
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-2">
@@ -1501,7 +1503,7 @@ function RefuelModal({
                 value={tankPrimaryInput}
                 onChange={(e) => setTankPrimaryInput(e.target.value)}
                 placeholder="Litri"
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-2">
@@ -1510,7 +1512,7 @@ function RefuelModal({
                 value={tankSecondaryInput}
                 onChange={(e) => setTankSecondaryInput(e.target.value)}
                 placeholder="Litri"
-                className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
           </div>
@@ -1522,7 +1524,7 @@ function RefuelModal({
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Note aggiuntive sull'evento"
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
 
@@ -1532,7 +1534,7 @@ function RefuelModal({
               type="file"
               multiple
               onChange={(e) => setAttachments(Array.from(e.target.files || []))}
-              className="w-full rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-xs text-white/70 file:mr-3 file:rounded file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:text-white/80 hover:file:bg-white/20"
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/70 file:mr-3 file:rounded file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:text-white/80 hover:file:bg-white/20"
             />
             {attachments.length > 0 && (
               <p className="text-xs text-white/60">{attachments.length} file selezionati</p>
@@ -1552,7 +1554,7 @@ function RefuelModal({
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-emerald-500/20 border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100 hover:bg-emerald-500/30 transition disabled:opacity-50"
+              className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
             >
               {loading ? "Salvataggio..." : "Salva"}
             </button>
@@ -1813,7 +1815,7 @@ function TableCard({
   rows: Array<[string, string]>;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#10121a] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
       <div className="space-y-1">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">{title}</p>
         <p className="text-sm text-white/60">{subtitle}</p>
@@ -1822,7 +1824,7 @@ function TableCard({
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0c0f16] px-3 py-2 text-sm text-white/80 min-w-0"
+            className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/80 min-w-0"
           >
             <span className="truncate">{label}</span>
             <span className="text-white/60 whitespace-nowrap">{value}</span>
@@ -1832,3 +1834,4 @@ function TableCard({
     </div>
   );
 }
+
