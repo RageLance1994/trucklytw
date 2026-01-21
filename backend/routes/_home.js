@@ -60,7 +60,16 @@ router.post('/login', express.urlencoded({ extended: true }), async (req, res) =
 router.get("/logout", auth, (req, res) => {
   try {
     console.log(req.user)
-    req.user.uncookie(res, req);
+    if (req.user?.uncookie) {
+      req.user.uncookie(res, req);
+    } else {
+      res.clearCookie('auth_token', {
+        httpOnly: true,
+        secure: !!(req?.secure || req?.headers?.['x-forwarded-proto'] === 'https'),
+        sameSite: 'lax',
+        path: '/'
+      });
+    }
     return res.redirect("/login");
   } catch (err) {
     console.error("Errore logout:", err);

@@ -1,5 +1,6 @@
 // routes/authRoutes.js
 const fs = require('fs');
+const path = require('path');
 const Models = require('../Models/Schemes')
 const express = require('express');
 const router = express.Router();
@@ -607,6 +608,11 @@ const mapFuelAnalysis = (analysis = {}, metaExtras = {}) => {
 
 // Login
 router.get('/', auth, async (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  if (isProduction) {
+    const distPath = path.join(__dirname, "..", "dist", "index.html");
+    return res.sendFile(distPath);
+  }
 
   const privilege = Number.isInteger(req.user?.privilege) ? req.user.privilege : null;
   const role = Number.isInteger(req.user?.role) ? req.user.role : null;
@@ -624,6 +630,11 @@ router.get('/', auth, async (req, res) => {
 
 
 router.get('/map', auth, async (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  if (isProduction) {
+    const distPath = path.join(__dirname, "..", "dist", "index.html");
+    return res.sendFile(distPath);
+  }
 
   var vehicles = await req.user.vehicles.list() || [];
 

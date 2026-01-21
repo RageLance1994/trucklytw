@@ -78,13 +78,6 @@ var routes = [
   { location: '/api', mw: require('./routes/api') },
 ];
 
-if (isProduction) {
-  // Keep "/" mounted so auth endpoints like /login still work in prod.
-  routes = routes.filter((r) => !['/dashboard'].includes(r.location));
-}
-
-
-
 routes.map((r) => {
   var { location, mw } = r;
   app.use(location, mw);
