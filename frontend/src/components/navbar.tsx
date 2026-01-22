@@ -211,12 +211,14 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c]">
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         <div className="flex items-center gap-3 py-3">
-          <img
-            src="/assets/images/logo_white.png"
-            alt="Truckly"
-            className="h-6 w-auto"
-            loading="lazy"
-          />
+          <a href="/" className="inline-flex items-center">
+            <img
+              src="/assets/images/logo_white.png"
+              alt="Truckly"
+              className="h-6 w-auto"
+              loading="lazy"
+            />
+          </a>
 
           <div className="flex flex-1 items-center justify-center gap-6">
             <div className="flex w-full items-center md:w-auto">
