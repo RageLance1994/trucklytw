@@ -17,7 +17,7 @@ export function HomeNavbar({ compact = false }: HomeNavbarProps) {
   };
 
   return (
-    <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+    <header className="relative z-[1000] mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
       <a href="/" className="flex items-center gap-3">
         <img
           src="/assets/images/logo_white.png"
@@ -59,7 +59,7 @@ export function HomeNavbar({ compact = false }: HomeNavbarProps) {
         </button>
       </div>
       {menuOpen && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-[2000]">
           <button
             type="button"
             aria-label="Chiudi menu"
@@ -68,7 +68,7 @@ export function HomeNavbar({ compact = false }: HomeNavbarProps) {
           />
           <div
             id="home-menu"
-            className="absolute right-0 top-0 flex h-full w-80 max-w-[85vw] flex-col gap-8 bg-[#0b1220] px-8 py-8 text-white shadow-2xl"
+            className="absolute right-0 top-0 flex h-full w-80 max-w-[85vw] flex-col gap-8 bg-[#0a0a0a] px-8 py-8 text-white shadow-2xl"
           >
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase tracking-[0.32em] text-white/60">
