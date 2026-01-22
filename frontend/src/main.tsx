@@ -205,6 +205,14 @@ function DashboardPage() {
     open: boolean;
     mode: "driver" | "fuel" | "tacho";
   }>({ open: false, mode: "driver" });
+  const [mobileMarkerPanel, setMobileMarkerPanel] = React.useState<{
+    open: boolean;
+    html: string;
+    vehicle: Vehicle | null;
+    device: any | null;
+    imei: string | null;
+  }>({ open: false, html: "", vehicle: null, device: null, imei: null });
+  const [mobileMarkerMenuOpen, setMobileMarkerMenuOpen] = React.useState(false);
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
@@ -227,6 +235,102 @@ function DashboardPage() {
   React.useEffect(() => {
     selectedFuelImeiRef.current = selectedFuelImei;
   }, [selectedFuelImei]);
+
+  React.useEffect(() => {
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const html = typeof detail.html === "string" ? detail.html : "";
+      const vehicle = detail?.vehicle || null;
+      const device = detail?.device || null;
+      const imei = detail?.vehicle?.imei || detail?.imei || null;
+      setMobileMarkerPanel({ open: true, html, vehicle, device, imei });
+      setMobileMarkerMenuOpen(false);
+    };
+    const handleUpdate = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const html = typeof detail.html === "string" ? detail.html : "";
+      const imei = detail?.imei || null;
+      if (!imei || imei !== mobileMarkerPanel.imei) return;
+      setMobileMarkerPanel((prev) => ({
+        ...prev,
+        html: html || prev.html,
+        device: detail?.device ?? prev.device,
+        vehicle: detail?.vehicle ?? prev.vehicle,
+      }));
+    };
+    const handleClose = () => {
+      setMobileMarkerPanel((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:mobile-marker-open", handleOpen as EventListener);
+    window.addEventListener("truckly:mobile-marker-update", handleUpdate as EventListener);
+    window.addEventListener("truckly:mobile-marker-close", handleClose as EventListener);
+    return () => {
+      window.removeEventListener("truckly:mobile-marker-open", handleOpen as EventListener);
+      window.removeEventListener("truckly:mobile-marker-update", handleUpdate as EventListener);
+      window.removeEventListener("truckly:mobile-marker-close", handleClose as EventListener);
+    };
+  }, [mobileMarkerPanel.imei]);
+
+  React.useEffect(() => {
+    if (bottomBarState.open || isDriverSidebarOpen || isQuickSidebarOpen) {
+      setMobileMarkerPanel((prev) => ({ ...prev, open: false }));
+    }
+  }, [bottomBarState.open, isDriverSidebarOpen, isQuickSidebarOpen]);
+
+  const cycleMobileVehicle = (direction: "prev" | "next") => {
+    if (!vehicles.length) return;
+    const currentImei = mobileMarkerPanel.imei;
+    const currentIndex = currentImei
+      ? vehicles.findIndex((vehicle) => vehicle.imei === currentImei)
+      : -1;
+    const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+    const delta = direction === "prev" ? -1 : 1;
+    const nextIndex = (baseIndex + delta + vehicles.length) % vehicles.length;
+    const nextVehicle = vehicles[nextIndex];
+    if (!nextVehicle?.imei) return;
+    setMobileMarkerPanel((prev) => ({
+      ...prev,
+      open: true,
+      vehicle: nextVehicle,
+      imei: nextVehicle.imei,
+      html: "",
+      device: null,
+    }));
+    setMobileMarkerMenuOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("truckly:mobile-marker-focus", {
+        detail: { imei: nextVehicle.imei },
+      }),
+    );
+  };
+
+  const handleMobileMarkerAction = (action: string) => {
+    const imei = mobileMarkerPanel.vehicle?.imei || null;
+    const device = mobileMarkerPanel.device || null;
+    if (!action || !imei) return;
+    if (action === "driver") {
+      window.dispatchEvent(
+        new CustomEvent("truckly:driver-open", {
+          detail: { imei, device },
+        }),
+      );
+    } else if (action === "fuel") {
+      window.dispatchEvent(
+        new CustomEvent("truckly:bottom-bar-toggle", {
+          detail: { mode: "fuel", imei },
+        }),
+      );
+    } else if (action === "routes") {
+      window.dispatchEvent(
+        new CustomEvent("truckly:routes-open", {
+          detail: { imei },
+        }),
+      );
+    } else if (action === "geofence") {
+      (window as any).trucklyStartGeofence?.(imei);
+    }
+    setMobileMarkerMenuOpen(false);
+  };
 
   React.useEffect(() => {
     const fetchVehicles = async () => {
@@ -432,6 +536,105 @@ function DashboardPage() {
             selectedVehicleImei={selectedFuelImei}
             selectedVehicle={selectedFuelVehicle}
           />
+          {mobileMarkerPanel.open && (
+            <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
+              <div className="truckly-mobile-panel flex h-[calc((100dvh-64px)*0.618)] flex-col border-t border-white/10 bg-[#0b0b0c] shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
+                <div className="relative flex items-center justify-between border-b border-white/10 px-4 py-3">
+                  <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                    {mobileMarkerPanel.vehicle?.nickname
+                      || mobileMarkerPanel.vehicle?.plate
+                      || "Veicolo"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => cycleMobileVehicle("prev")}
+                      className="h-8 w-8 rounded-full border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                      aria-label="Veicolo precedente"
+                    >
+                      <i className="fa fa-chevron-left" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cycleMobileVehicle("next")}
+                      className="h-8 w-8 rounded-full border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                      aria-label="Veicolo successivo"
+                    >
+                      <i className="fa fa-chevron-right" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMobileMarkerMenuOpen((prev) => !prev)}
+                      className="h-8 w-8 rounded-full border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                      aria-label="Apri menu"
+                      aria-expanded={mobileMarkerMenuOpen}
+                    >
+                      <i className="fa fa-bars" aria-hidden="true" />
+                    </button>
+                  </div>
+                  {mobileMarkerMenuOpen && (
+                    <div className="absolute right-4 top-full z-10 mt-2 w-56 rounded-2xl border border-white/10 bg-[#0a0a0a] p-2 shadow-[0_16px_30px_rgba(0,0,0,0.45)]">
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleMobileMarkerAction("routes")}
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                        >
+                          <i className="fa fa-road text-sm" aria-hidden="true" />
+                          Percorsi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMobileMarkerAction("fuel")}
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                        >
+                          <i className="fa fa-tint text-sm" aria-hidden="true" />
+                          Carburante
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMobileMarkerAction("driver")}
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                        >
+                          <i className="fa fa-user text-sm" aria-hidden="true" />
+                          Autista
+                        </button>
+                        <button
+                          type="button"
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                        >
+                          <i className="fa fa-bell text-sm" aria-hidden="true" />
+                          Alert
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMobileMarkerAction("geofence")}
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                        >
+                          <i className="fa fa-bullseye text-sm" aria-hidden="true" />
+                          GeoFence
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMobileMarkerPanel((prev) => ({ ...prev, open: false }))}
+                        className="mt-2 w-full rounded-xl border border-[var(--tv-red,#ef4444)] bg-[rgba(239,68,68,0.2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white hover:bg-[rgba(239,68,68,0.3)] transition inline-flex items-center justify-center gap-2"
+                      >
+                        <i className="fa fa-close" aria-hidden="true" />
+                        Chiudi pannello
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="truckly-mobile-scrollbar flex-1 overflow-y-auto px-4 py-3 text-sm text-white/90">
+                  <div
+                    className="max-w-full"
+                    dangerouslySetInnerHTML={{ __html: mobileMarkerPanel.html }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
           {!isQuickSidebarOpen && !isDriverSidebarOpen && (
             <button
               type="button"
@@ -442,10 +645,10 @@ function DashboardPage() {
                   : "hover:text-white hover:border-white/40"
               }`}
             >
-              <span className="sm:hidden" aria-hidden="true">
+              <span className="lg:hidden" aria-hidden="true">
                 <i className="fa fa-eye" />
               </span>
-              <span className="hidden sm:inline">Vista rapida</span>
+              <span className="hidden lg:inline">Vista rapida</span>
             </button>
           )}
         </div>

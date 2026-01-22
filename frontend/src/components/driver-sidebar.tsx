@@ -1925,7 +1925,7 @@ export function DriverSidebar({
 
   return (
     <aside
-      className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-none sm:max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen ? "translate-x-0" : "hidden-right"
       } ${isAdminMode ? "w-full max-w-none sm:w-full lg:w-[40vw] lg:min-w-[40vw] lg:max-w-none" : ""}`}
       aria-hidden={!isOpen}

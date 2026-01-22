@@ -157,6 +157,8 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   const fuelCalibrationRef = useRef<Map<string, number>>(new Map());
   const avlCacheRef = useRef<Map<string, any>>(new Map());
   const previewMarkersRef = useRef<Set<string>>(new Set());
+  const [isMobileView, setIsMobileView] = useState(false);
+  const isMobileViewRef = useRef(false);
   const [markerStyle, setMarkerStyle] = useState<
     "full" | "compact" | "plate" | "name" | "direction"
   >("full");
@@ -165,6 +167,97 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   useEffect(() => {
     markerStyleRef.current = markerStyle;
   }, [markerStyle]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const widthQuery = window.matchMedia("(max-width: 1023px)");
+    const pointerQuery = window.matchMedia("(pointer: coarse)");
+    const anyPointerQuery = window.matchMedia("(any-pointer: coarse)");
+
+    const update = () => {
+      const next = widthQuery.matches || pointerQuery.matches || anyPointerQuery.matches;
+      setIsMobileView(next);
+      isMobileViewRef.current = next;
+    };
+
+    update();
+    const handleChange = () => update();
+    if (typeof widthQuery.addEventListener === "function") {
+      widthQuery.addEventListener("change", handleChange);
+      pointerQuery.addEventListener("change", handleChange);
+      anyPointerQuery.addEventListener("change", handleChange);
+      return () => {
+        widthQuery.removeEventListener("change", handleChange);
+        pointerQuery.removeEventListener("change", handleChange);
+        anyPointerQuery.removeEventListener("change", handleChange);
+      };
+    }
+
+    widthQuery.addListener(handleChange);
+    pointerQuery.addListener(handleChange);
+    anyPointerQuery.addListener(handleChange);
+    return () => {
+      widthQuery.removeListener(handleChange);
+      pointerQuery.removeListener(handleChange);
+      anyPointerQuery.removeListener(handleChange);
+    };
+  }, []);
+
+  const buildTooltipHtml = useCallback((vehicle: any, device: any) => {
+    const data = device?.data || device || {};
+    const gps = data?.gps || data?.data?.gps || data?.data || data || {};
+    const io = data?.io || data?.data?.io || {};
+    const calibratedCapacity = fuelCalibrationRef.current.get(vehicle?.imei) ?? null;
+    const statusInfo = data ? deriveMovementStatus({ gps, io }) : deriveStatusInfo(vehicle?.status);
+    const fuelSummary = computeFuelSummary(io, vehicle, calibratedCapacity);
+    return renderVehicleTooltip({
+      vehicle,
+      device: data ? { data } : undefined,
+      status: statusInfo,
+      fuelSummary,
+      driverEvents: data?.driverEvents,
+      formatDate: formatTooltipDate,
+    });
+  }, []);
+
+  const flyToMobileMarker = useCallback((marker: any) => {
+    const map = mapInstanceRef.current?.map;
+    const lngLat = marker?.getLngLat?.();
+    if (!map || !lngLat) return;
+    const navHeight = 64;
+    const availableHeight = Math.max(0, window.innerHeight - navHeight);
+    const panelHeight = availableHeight * 0.618;
+    const offsetY = -(panelHeight / 2);
+    const currentZoom = map.getZoom?.();
+    map.flyTo({
+      center: lngLat,
+      zoom: Math.max(Number.isFinite(currentZoom) ? currentZoom : 12, 12.5),
+      speed: 1.2,
+      curve: 1.4,
+      offset: [0, offsetY],
+    });
+  }, []);
+
+  const handleMobileFocus = useCallback(
+    (event: Event) => {
+      if (!isMobileViewRef.current) return;
+      const detail = (event as CustomEvent)?.detail || {};
+      const imei = detail?.imei;
+      if (!imei) return;
+      const marker = mapInstanceRef.current?.markers.get(imei);
+      if (!marker) return;
+      flyToMobileMarker(marker);
+      const vehicle = marker?.vehicle || vehiclesRef.current.find((v) => v.imei === imei);
+      const device = avlCacheRef.current.get(imei)?.data || avlCacheRef.current.get(imei) || null;
+      const tooltipHtml = buildTooltipHtml(vehicle, device);
+      window.dispatchEvent(
+        new CustomEvent("truckly:mobile-marker-open", {
+          detail: { imei, vehicle, device, html: tooltipHtml },
+        }),
+      );
+    },
+    [buildTooltipHtml, flyToMobileMarker],
+  );
 
   const buildMarkerHtml = (vehicle: any, status?: string, styleOverride?: typeof markerStyle) => {
     const variant = styleOverride || markerStyleRef.current;
@@ -229,7 +322,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         angle: gps?.angle ?? gps?.Angle ?? vehicle?.angle,
         html: buildMarkerHtml(vehicle, markerStatus, styleOverride),
         tooltip: tooltipHtml,
-        hasPopup: true,
+        hasPopup: !isMobileViewRef.current,
       });
 
       const markerEl = (marker as any).getElement?.() ?? (marker as any)._element;
@@ -298,7 +391,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         angle: vehicle.angle,
         html: markerHtml,
         tooltip: tooltipHtml,
-        hasPopup: true,
+        hasPopup: !isMobileViewRef.current,
       });
     });
 
@@ -331,16 +424,37 @@ export function MapContainer({ vehicles }: MapContainerProps) {
               detail: { vehicle: marker.vehicle, device: marker.device },
             }),
           );
+          if (isMobileViewRef.current) {
+            flyToMobileMarker(marker);
+            const tooltipHtml = buildTooltipHtml(marker.vehicle, marker.device);
+            window.dispatchEvent(
+              new CustomEvent("truckly:mobile-marker-open", {
+                detail: {
+                  imei: marker.vehicle?.imei,
+                  vehicle: marker.vehicle,
+                  device: marker.device,
+                  html: tooltipHtml,
+                },
+              }),
+            );
+          }
         },
       });
       mapInstanceRef.current = instance;
+      instance.map.on("click", (event: any) => {
+        if (!isMobileViewRef.current) return;
+        const target = event?.originalEvent?.target as HTMLElement | null;
+        if (target?.closest?.(".custom-marker")) return;
+        window.dispatchEvent(new CustomEvent("truckly:mobile-marker-close"));
+      });
+      window.addEventListener("truckly:mobile-marker-focus", handleMobileFocus as EventListener);
 
       (window as any).trucklyFlyToVehicle = (vehicle: any) => {
         if (!vehicle || !vehicle.imei || !mapInstanceRef.current) return false;
         const marker = mapInstanceRef.current.markers.get(vehicle.imei);
         if (!marker) return false;
         return mapInstanceRef.current.focusMarker(marker as any, {
-          openPopup: true,
+          openPopup: !isMobileViewRef.current,
           offset: true,
         });
       };
@@ -479,7 +593,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
           angle: heading,
           html: buildMarkerHtml(vehicle, statusInfo.class),
           tooltip: tooltipHtml,
-          hasPopup: true,
+          hasPopup: !isMobileViewRef.current,
         });
         mapInstanceRef.current?.updateRouteMarker(imei, point, heading, statusClass);
       };
@@ -574,7 +688,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             angle: gps?.angle ?? gps?.Angle,
             html: markerHtml,
             tooltip: tooltipHtml,
-            hasPopup: true,
+            hasPopup: !isMobileViewRef.current,
           });
         });
       };
@@ -630,6 +744,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
     return () => {
       cancelled = true;
       window.removeEventListener("truckly:marker-style", handleMarkerStyle as EventListener);
+      window.removeEventListener("truckly:mobile-marker-focus", handleMobileFocus as EventListener);
       delete (window as any).trucklyRefreshMarkers;
       delete (window as any).trucklyForceMarkerClass;
       mapInstanceRef.current?.destroy();
@@ -703,13 +818,13 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         angle: gps?.angle ?? gps?.Angle,
         html: markerHtml,
         tooltip: tooltipHtml,
-        hasPopup: true,
+        hasPopup: !isMobileViewRef.current,
         classlist: "custom-marker preview-marker",
       });
 
       previewMarkersRef.current.add(previewId);
       if (isNew && marker) {
-        map.focusMarker(marker as any, { openPopup: true, offset: true });
+        map.focusMarker(marker as any, { openPopup: !isMobileViewRef.current, offset: true });
       }
     };
 
@@ -910,8 +1025,15 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             angle: gps?.angle ?? gps?.Angle,
             html: markerHtml,
             tooltip: tooltipHtml,
-            hasPopup: true,
+            hasPopup: !isMobileViewRef.current,
           });
+          if (isMobileViewRef.current) {
+            window.dispatchEvent(
+              new CustomEvent("truckly:mobile-marker-update", {
+                detail: { imei, html: tooltipHtml, vehicle, device: data },
+              }),
+            );
+          }
         },
       );
     } else {
@@ -1033,7 +1155,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
   }, [vehicles]);
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" data-mobile-view={isMobileView ? "true" : "false"}>
       <div ref={mapRef} id="truckly-map" className="w-full h-full" />
     </div>
   );

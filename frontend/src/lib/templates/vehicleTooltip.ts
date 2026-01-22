@@ -55,11 +55,11 @@ const SECTION_STYLES = `
     background: #0a0a0a;
     color: #f8fafc;
     border-radius: 18px;
-    padding: 16px;
+    padding: 0;
     min-width: min(380px, 75vw);
     max-width: min(380px, 75vw);
     box-shadow: 0 25px 60px rgba(0,0,0,0.35);
-    border: 1px solid rgba(248,250,252,0.08);
+    border: none;
   }
   .truckly-tooltip__header {
     display: flex;
@@ -123,6 +123,10 @@ const SECTION_STYLES = `
     border: 1px solid rgba(248,250,252,0.08);
     border-radius: 12px;
     padding: 10px 12px;
+  }
+  .truckly-card--tight {
+    display: grid;
+    gap: 4px;
   }
   .truckly-card h2 {
     font-size: 10px;
@@ -282,7 +286,7 @@ export function renderVehicleTooltip({
           <h2>Targa</h2>
           <strong>${escapeHtml(plate)}</strong>
         </div>
-        <div class="truckly-card">
+        <div class="truckly-card truckly-card--tight">
           <h2>Serbatoio</h2>
           <div class="truckly-row" style="justify-content:space-between;">
             <strong>${escapeHtml(String(fuelLiters))}</strong>

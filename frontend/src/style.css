@@ -894,3 +894,35 @@
   fill: #f8fafc;
 }
 
+.truckly-mobile-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.truckly-mobile-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.truckly-mobile-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.truckly-mobile-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.truckly-mobile-panel .truckly-actions {
+  display: none;
+}
+
+.truckly-mobile-panel .truckly-tooltip {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.truckly-mobile-panel .truckly-tooltip__header {
+  display: none;
+}
+
