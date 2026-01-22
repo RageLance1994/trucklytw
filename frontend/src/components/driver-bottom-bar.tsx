@@ -455,7 +455,7 @@ export function DriverBottomBar({
 
   return (
     <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[75vh] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-64px)] min-h-[calc(100vh-64px)] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[75vh] ${
         isOpen ? "translate-y-0" : "hidden-bottom"
       }`}
       aria-hidden={!isOpen}
@@ -914,6 +914,7 @@ function FuelDashboard({
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
   const [activeRow, setActiveRow] = React.useState<FuelTableRow | null>(null);
+  const [chartFullscreen, setChartFullscreen] = React.useState(false);
 
   React.useEffect(() => {
     setHistoryRaw([]);
@@ -1000,6 +1001,61 @@ function FuelDashboard({
     if (!isOpen) return;
     void fetchFuelHistory();
   }, [isOpen, fetchFuelHistory]);
+
+  const openFullscreenChart = React.useCallback(async () => {
+    setChartFullscreen(true);
+    const docEl = document.documentElement as any;
+    if (docEl?.requestFullscreen) {
+      try {
+        await docEl.requestFullscreen();
+      } catch (err) {
+        // Ignore fullscreen errors and keep modal open.
+      }
+    }
+    const orientation = (window.screen as any)?.orientation;
+    if (orientation?.lock) {
+      try {
+        await orientation.lock("landscape");
+      } catch (err) {
+        // Some browsers/devices block orientation lock without user gesture.
+      }
+    }
+  }, []);
+
+  const closeFullscreenChart = React.useCallback(async () => {
+    setChartFullscreen(false);
+    const orientation = (window.screen as any)?.orientation;
+    if (orientation?.unlock) {
+      try {
+        orientation.unlock();
+      } catch (err) {
+        // Ignore unlock errors.
+      }
+    }
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch (err) {
+        // Ignore exit errors.
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isOpen && chartFullscreen) {
+      void closeFullscreenChart();
+    }
+  }, [isOpen, chartFullscreen, closeFullscreenChart]);
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && chartFullscreen) {
+        setChartFullscreen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [chartFullscreen]);
 
   const tableRows = React.useMemo(() => {
     const rows: FuelTableRow[] = [];
@@ -1146,38 +1202,44 @@ function FuelDashboard({
     <>
       <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
               Grafico carburante
             </p>
-            <p className="text-sm text-white/60">
-              Livello carburante con rifornimenti evidenziati in verde.
-            </p>
+
+            <button
+              type="button"
+              onClick={openFullscreenChart}
+              className="relative mt-3 flex w-full items-center justify-center rounded-lg border border-orange-400/50 bg-orange-500/20 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-orange-100 transition hover:bg-orange-500/30 sm:hidden"
+            >
+              <i className="fa fa-chart-bar absolute left-3" aria-hidden="true" />
+              Mostra grafico
+            </button>
           </div>
-          <div className="flex items-end gap-3">
-            <div className="space-y-1">
+          <div className="hidden w-full gap-3 sm:grid sm:w-auto sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] sm:items-end">
+            <div className="space-y-1 min-w-0">
               <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
               <input
                 type="datetime-local"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
               <input
                 type="datetime-local"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full min-w-[190px] rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <button
               onClick={fetchFuelHistory}
               disabled={loading}
-              className="self-end h-9 rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+              className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50 sm:w-auto"
             >
               {loading ? "Carico" : "Aggiorna"}
             </button>
@@ -1187,26 +1249,35 @@ function FuelDashboard({
         {error && <p className="text-sm text-red-400">{error}</p>}
 
         {!error && (
-          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] p-4 overflow-hidden">
+          <div className="hidden rounded-xl border border-white/10 bg-[#0d0d0f] p-4 overflow-hidden relative sm:block">
             {loading ? (
-              <div className="flex h-[420px] items-center justify-center text-sm text-white/60">
+              <div className="flex h-64 items-center justify-center text-sm text-white/60 sm:h-80 lg:h-[420px]">
                 Caricamento carburante...
               </div>
             ) : (
-              <FuelEChart
-                key={selectedVehicleImei || "no-vehicle"}
-                historyRaw={historyRaw}
-                events={events}
-                tankCapacity={getTankCapacity(selectedVehicle)}
-              />
+              <>
+                <button
+                  type="button"
+                  onClick={openFullscreenChart}
+                  className="absolute right-3 top-3 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/80 backdrop-blur hover:text-white hover:border-white/40 transition"
+                >
+                  Mostra a tutto schermo
+                </button>
+                <FuelEChart
+                  key={selectedVehicleImei || "no-vehicle"}
+                  historyRaw={historyRaw}
+                  events={events}
+                  tankCapacity={getTankCapacity(selectedVehicle)}
+                />
+              </>
             )}
           </div>
         )}
       </div>
 
         <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1 min-w-0">
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
               Eventi rifornimento / prelievo
             </p>
@@ -1217,7 +1288,7 @@ function FuelDashboard({
           <button
             type="button"
             onClick={openNewModal}
-            className="h-9 rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition"
+            className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition sm:w-auto"
           >
             Nuovo evento
           </button>
@@ -1291,6 +1362,75 @@ function FuelDashboard({
         </div>
       </div>
       </div>
+      {chartFullscreen && (
+        <div className="fixed inset-0 z-50 bg-black/95 text-white">
+          <div className="flex h-full w-full flex-col">
+            <div className="border-b border-white/10 bg-black/70 px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-white/60">
+                    Grafico carburante
+                  </p>
+                  <p className="text-xs text-white/60">
+                    Modalita schermo intero. Ruota il dispositivo per avere piu spazio.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeFullscreenChart}
+                  className="rounded-full border border-white/20 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/80 hover:text-white hover:border-white/50 transition"
+                >
+                  Chiudi
+                </button>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] sm:items-end">
+                <div className="space-y-1 min-w-0">
+                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
+                  <input
+                    type="datetime-local"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
+                  <input
+                    type="datetime-local"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  />
+                </div>
+                <button
+                  onClick={fetchFuelHistory}
+                  disabled={loading}
+                  className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50 sm:w-auto"
+                >
+                  {loading ? "Carico" : "Aggiorna"}
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 p-3">
+              <div className="h-full w-full rounded-xl border border-white/10 bg-[#0d0d0f] p-3">
+                {loading ? (
+                  <div className="flex h-full items-center justify-center text-sm text-white/60">
+                    Caricamento carburante...
+                  </div>
+                ) : (
+                  <FuelEChart
+                    key={`${selectedVehicleImei || "no-vehicle"}-fullscreen`}
+                    historyRaw={historyRaw}
+                    events={events}
+                    tankCapacity={getTankCapacity(selectedVehicle)}
+                    isFullscreen
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <RefuelModal
         open={modalOpen}
         loading={modalLoading}
@@ -1399,8 +1539,8 @@ function RefuelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/90 px-4 py-4 backdrop-blur-sm sm:items-center sm:bg-black/70 sm:py-8">
+      <div className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)] sm:max-h-none sm:overflow-visible">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
@@ -1569,10 +1709,14 @@ function FuelEChart({
   historyRaw,
   events,
   tankCapacity,
+  className,
+  isFullscreen = false,
 }: {
   historyRaw: any[];
   events: FuelEvent[];
   tankCapacity?: number | null;
+  className?: string;
+  isFullscreen?: boolean;
 }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<any>(null);
@@ -1794,15 +1938,26 @@ function FuelEChart({
   }, []);
 
   const samples = extractSamples({ raw: historyRaw });
+  const sizeClasses = isFullscreen
+    ? "h-full w-full"
+    : "h-64 w-full sm:h-80 lg:h-[420px]";
+
   if (samples.length < 10) {
     return (
-      <div className="flex h-[360px] items-center justify-center text-sm text-white/60">
+      <div
+        className={`flex items-center justify-center text-sm text-white/60 ${sizeClasses} ${className || ""}`}
+      >
         Dati non disponibili, verifica o installa la sonda carburante.
       </div>
     );
   }
 
-  return <div ref={hostRef} className="h-[420px] w-full min-w-0 overflow-hidden" />;
+  return (
+    <div
+      ref={hostRef}
+      className={`min-w-0 overflow-hidden ${sizeClasses} ${className || ""}`}
+    />
+  );
 }
 
 function TableCard({

@@ -200,7 +200,7 @@ function DashboardPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [isDriverSidebarOpen, setIsDriverSidebarOpen] = React.useState(false);
-  const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(true);
+  const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(false);
   const [bottomBarState, setBottomBarState] = React.useState<{
     open: boolean;
     mode: "driver" | "fuel" | "tacho";
@@ -436,9 +436,16 @@ function DashboardPage() {
             <button
               type="button"
               onClick={() => setIsQuickSidebarOpen(true)}
-              className="fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur hover:text-white hover:border-white/40 transition"
+              className={`fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition ${
+                bottomBarState.open
+                  ? "pointer-events-none opacity-0"
+                  : "hover:text-white hover:border-white/40"
+              }`}
             >
-              Vista rapida
+              <span className="sm:hidden" aria-hidden="true">
+                <i className="fa fa-eye" />
+              </span>
+              <span className="hidden sm:inline">Vista rapida</span>
             </button>
           )}
         </div>
