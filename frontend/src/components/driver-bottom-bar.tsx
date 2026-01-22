@@ -1197,8 +1197,8 @@ function FuelDashboard({
 
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr] min-w-0">
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] min-w-0">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -1272,7 +1272,7 @@ function FuelDashboard({
         )}
       </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col">
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col min-w-0 overflow-x-hidden">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1 min-w-0">
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -1295,7 +1295,7 @@ function FuelDashboard({
           <p className="mt-3 text-sm text-red-400">{refuelingsError}</p>
         )}
 
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 max-w-full min-w-0 overflow-x-hidden">
           {loading ? (
             <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-4 text-sm text-white/60">
               Caricamento eventi carburante...
@@ -1305,56 +1305,58 @@ function FuelDashboard({
               Nessun evento disponibile per questo intervallo.
             </div>
           ) : (
-            <table className="min-w-[760px] w-full border-separate border-spacing-0 text-sm text-white/80">
-              <thead>
-                <tr className="text-xs uppercase tracking-[0.14em] text-white/45">
-                  <th className="text-left px-3 py-2">Tipo</th>
-                  <th className="text-left px-3 py-2">Inizio</th>
-                  <th className="text-left px-3 py-2">Fine</th>
-                  <th className="text-left px-3 py-2">Litri</th>
-                  <th className="text-left px-3 py-2">Origine</th>
-                  <th className="text-left px-3 py-2">Documenti</th>
-                  <th className="text-right px-3 py-2">Azioni</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.map((row) => {
-                  const label = row.type === "withdrawal" ? "Prelievo" : "Rifornimento";
-                  const tone = row.type === "withdrawal" ? "text-red-300" : "text-emerald-300";
-                  const docs = row.refuelDoc?.attachments?.length || 0;
-                  return (
-                    <tr key={row.eventId} className="border-t border-white/5">
-                      <td className={`px-3 py-2 font-semibold ${tone}`}>{label}</td>
-                      <td className="px-3 py-2">{formatShortDateTime(row.start)}</td>
-                      <td className="px-3 py-2">{formatShortDateTime(row.end)}</td>
-                      <td className="px-3 py-2">{formatLiters(row.liters)}</td>
-                      <td className="px-3 py-2">
-                        {row.source === "manual" ? "Manuale" : "Rilevato"}
-                      </td>
-                      <td className="px-3 py-2">{docs ? `${docs} file` : "--"}</td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(row)}
-                            className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/80 hover:text-white hover:border-white/40 transition"
-                          >
-                            Dettagli
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleHideRow(row)}
-                            className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/60 hover:text-white hover:border-white/30 transition"
-                          >
-                            {row.source === "manual" ? "Elimina" : "Nascondi"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="block w-full max-w-full min-w-0 overflow-x-auto">
+              <table className="min-w-[760px] w-full border-separate border-spacing-0 text-sm text-white/80">
+                <thead>
+                  <tr className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    <th className="text-left px-3 py-2">Tipo</th>
+                    <th className="text-left px-3 py-2">Inizio</th>
+                    <th className="text-left px-3 py-2">Fine</th>
+                    <th className="text-left px-3 py-2">Litri</th>
+                    <th className="text-left px-3 py-2">Origine</th>
+                    <th className="text-left px-3 py-2">Documenti</th>
+                    <th className="text-right px-3 py-2">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((row) => {
+                    const label = row.type === "withdrawal" ? "Prelievo" : "Rifornimento";
+                    const tone = row.type === "withdrawal" ? "text-red-300" : "text-emerald-300";
+                    const docs = row.refuelDoc?.attachments?.length || 0;
+                    return (
+                      <tr key={row.eventId} className="border-t border-white/5">
+                        <td className={`px-3 py-2 font-semibold ${tone}`}>{label}</td>
+                        <td className="px-3 py-2">{formatShortDateTime(row.start)}</td>
+                        <td className="px-3 py-2">{formatShortDateTime(row.end)}</td>
+                        <td className="px-3 py-2">{formatLiters(row.liters)}</td>
+                        <td className="px-3 py-2">
+                          {row.source === "manual" ? "Manuale" : "Rilevato"}
+                        </td>
+                        <td className="px-3 py-2">{docs ? `${docs} file` : "--"}</td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(row)}
+                              className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/80 hover:text-white hover:border-white/40 transition"
+                            >
+                              Dettagli
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleHideRow(row)}
+                              className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/60 hover:text-white hover:border-white/30 transition"
+                            >
+                              {row.source === "manual" ? "Elimina" : "Nascondi"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
