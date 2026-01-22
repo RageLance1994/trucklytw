@@ -933,6 +933,7 @@
   width: 100%;
   max-width: none;
   min-width: 0;
+  padding: 0;
 }
 
 .truckly-mobile-panel .truckly-tooltip__header {
@@ -964,4 +965,3 @@
 .truckly-modal-scrollbar:hover::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.45);
 }
-

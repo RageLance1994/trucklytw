@@ -55,7 +55,7 @@ const SECTION_STYLES = `
     background: #0a0a0a;
     color: #f8fafc;
     border-radius: 18px;
-    padding: 0;
+    padding: 12px;
     min-width: min(380px, 75vw);
     max-width: min(380px, 75vw);
     box-shadow: 0 25px 60px rgba(0,0,0,0.35);
