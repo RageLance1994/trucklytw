@@ -926,3 +926,29 @@
   display: none;
 }
 
+.truckly-modal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.truckly-modal-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.truckly-modal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.truckly-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.truckly-modal-scrollbar:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.truckly-modal-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+}
+

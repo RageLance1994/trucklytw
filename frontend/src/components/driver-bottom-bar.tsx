@@ -446,7 +446,7 @@ export function DriverBottomBar({
         : "Attivita autista + tabelle";
   const subtitle =
     mode === "fuel"
-      ? `Intervallo carburante. Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
+      ? `Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
       : mode === "tacho"
         ? "Elenco file .ddd disponibili dal servizio Teltonika."
         : `Tabella autisti e report attivita. Selezione attuale: ${
@@ -455,16 +455,13 @@ export function DriverBottomBar({
 
   return (
     <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-64px)] min-h-[calc(100vh-64px)] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[75vh] ${
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-64px)] min-h-[calc(100vh-64px)] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-[env(safe-area-inset-top)] shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[75vh] ${
         isOpen ? "translate-y-0" : "hidden-bottom"
       }`}
       aria-hidden={!isOpen}
     >
       <div className="flex items-start justify-between px-6 py-4 border-b border-white/10">
         <div className="space-y-1.5">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">
-            Pannello inferiore
-          </p>
           <h2 className="text-lg font-semibold leading-tight text-white">{title}</h2>
           <p className="text-sm text-white/70">{subtitle}</p>
         </div>
@@ -1365,8 +1362,8 @@ function FuelDashboard({
       {chartFullscreen && (
         <div className="fixed inset-0 z-50 bg-black/95 text-white">
           <div className="flex h-full w-full flex-col">
-            <div className="border-b border-white/10 bg-black/70 px-4 py-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="border-b border-white/10 bg-black/70 px-4 py-3 pt-[env(safe-area-inset-top)]">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.2em] text-white/60">
                     Grafico carburante
@@ -1383,7 +1380,7 @@ function FuelDashboard({
                   Chiudi
                 </button>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] sm:items-end">
+              <div className="mt-3 grid gap-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto] md:items-end">
                 <div className="space-y-1 min-w-0">
                   <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
                   <input
@@ -1539,8 +1536,8 @@ function RefuelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/90 px-4 py-4 backdrop-blur-sm sm:items-center sm:bg-black/70 sm:py-8">
-      <div className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)] sm:max-h-none sm:overflow-visible">
+    <div className="fixed inset-0 z-50 flex h-[100svh] max-h-[100vh] items-stretch justify-center bg-black/90 px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-sm">
+      <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#121212] p-6 pb-0 shadow-[0_24px_60px_rgba(0,0,0,0.55)] max-h-[75%]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
@@ -1561,7 +1558,12 @@ function RefuelModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <form
+          id="refuel-form"
+          onSubmit={onSubmit}
+          className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1 truckly-modal-scrollbar"
+        >
+          <div className="space-y-4 pb-6">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-xs uppercase tracking-[0.1em] text-white/60">Tipo</label>
@@ -1683,6 +1685,9 @@ function RefuelModal({
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 
+          </div>
+        </form>
+        <div className="-mx-6 mt-auto border-t border-white/10 bg-[#121212] px-6 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
@@ -1693,13 +1698,14 @@ function RefuelModal({
             </button>
             <button
               type="submit"
+              form="refuel-form"
               disabled={loading}
               className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
             >
               {loading ? "Salvataggio..." : "Salva"}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -1720,6 +1726,7 @@ function FuelEChart({
 }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<any>(null);
+  const [hostSize, setHostSize] = React.useState({ width: 0, height: 0 });
 
   const renderChart = React.useCallback(async () => {
     const host = hostRef.current;
@@ -1783,11 +1790,19 @@ function FuelEChart({
         ];
       });
 
+    const compact =
+      hostSize.height > 0
+        ? hostSize.height < (isFullscreen ? 420 : 320) || hostSize.width < 560
+        : false;
+    const gridTop = compact ? 56 : 84;
+    const gridBottom = compact ? 32 : 48;
+    const showSlider = !compact;
+
     chartRef.current.setOption(
       {
         backgroundColor: "transparent",
         animation: true,
-        grid: { left: 64, right: 40, top: 84, bottom: 48, containLabel: true },
+        grid: { left: 56, right: 36, top: gridTop, bottom: gridBottom, containLabel: true },
         tooltip: {
           trigger: "axis",
           confine: true,
@@ -1816,7 +1831,7 @@ function FuelEChart({
         xAxis: {
           type: "time",
           axisLine: { lineStyle: { color: "#666" } },
-          axisLabel: { color: "#9ca3af" },
+          axisLabel: { color: "#9ca3af", fontSize: compact ? 10 : 12 },
           axisTick: { show: false },
           splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
         },
@@ -1827,11 +1842,16 @@ function FuelEChart({
             min: Number.isFinite(fuelMin) ? (fuelMin as number) : "dataMin",
             max: maxCapacity ?? "dataMax",
             nameLocation: "end",
-            nameGap: 18,
-            nameTextStyle: { color: "#fbbf24", fontSize: 12, padding: [0, 0, 8, 0] },
+            nameGap: compact ? 10 : 18,
+            nameTextStyle: {
+              color: "#fbbf24",
+              fontSize: compact ? 10 : 12,
+              padding: [0, 0, compact ? 4 : 8, 0],
+            },
             axisLine: { lineStyle: { color: "#fbbf24" } },
             axisLabel: {
               color: "#fbbf24",
+              fontSize: compact ? 10 : 12,
               formatter: (value: number) => Math.round(value),
             },
             splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
@@ -1841,34 +1861,37 @@ function FuelEChart({
             name: "Velocita (km/h)",
             position: "right",
             axisLine: { lineStyle: { color: "#60a5fa" } },
-            axisLabel: { color: "#60a5fa" },
+            axisLabel: { color: "#60a5fa", fontSize: compact ? 10 : 12 },
             splitLine: { show: false },
           },
         ],
-        dataZoom: [
-          { type: "inside", xAxisIndex: 0 },
-          {
-            type: "slider",
-            xAxisIndex: 0,
-            height: 16,
-            bottom: 10,
-            backgroundColor: "rgba(255,255,255,0.06)",
-            fillerColor: "rgba(251,191,36,0.15)",
-            borderColor: "rgba(255,255,255,0.1)",
-            handleIcon:
-              "M8.7,11.8v-7.6h2.6v7.6zM13,11.8v-7.6h2.6v7.6z",
-            handleSize: "120%",
-            handleStyle: { color: "#fbbf24" },
-            textStyle: { color: "#cbd5f5" },
-          },
-        ],
+        dataZoom: showSlider
+          ? [
+              { type: "inside", xAxisIndex: 0 },
+              {
+                type: "slider",
+                xAxisIndex: 0,
+                height: 16,
+                bottom: 10,
+                backgroundColor: "rgba(255,255,255,0.06)",
+                fillerColor: "rgba(251,191,36,0.15)",
+                borderColor: "rgba(255,255,255,0.1)",
+                handleIcon:
+                  "M8.7,11.8v-7.6h2.6v7.6zM13,11.8v-7.6h2.6v7.6z",
+                handleSize: "120%",
+                handleStyle: { color: "#fbbf24" },
+                textStyle: { color: "#cbd5f5" },
+              },
+            ]
+          : [{ type: "inside", xAxisIndex: 0 }],
         legend: {
+          type: "scroll",
           data: ["Livello carburante", "Serbatoio 1", "Serbatoio 2", "Velocita"],
           top: 8,
           left: "center",
-          textStyle: { color: "#e5e7eb" },
-          itemWidth: 16,
-          itemHeight: 8,
+          textStyle: { color: "#e5e7eb", fontSize: compact ? 10 : 12 },
+          itemWidth: compact ? 12 : 16,
+          itemHeight: compact ? 6 : 8,
           inactiveColor: "rgba(229,231,235,0.35)",
         },
         series: [
@@ -1914,7 +1937,7 @@ function FuelEChart({
       },
       true,
     );
-  }, [historyRaw, events, tankCapacity]);
+  }, [historyRaw, events, tankCapacity, hostSize, isFullscreen]);
 
   React.useEffect(() => {
     renderChart();
@@ -1922,8 +1945,21 @@ function FuelEChart({
 
   React.useEffect(() => {
     const host = hostRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      setHostSize({ width: rect.width, height: rect.height });
+    }
+  }, [isFullscreen]);
+
+  React.useEffect(() => {
+    const host = hostRef.current;
     if (!host || !window.ResizeObserver) return;
     const observer = new ResizeObserver(() => {
+      const rect = host.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        setHostSize({ width: rect.width, height: rect.height });
+      }
       chartRef.current?.resize?.();
     });
     observer.observe(host);
