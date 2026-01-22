@@ -538,7 +538,7 @@ function DashboardPage() {
           />
           {mobileMarkerPanel.open && (
             <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
-              <div className="truckly-mobile-panel flex h-[calc((100dvh-64px)*0.618)] flex-col border-t border-white/10 bg-[#0b0b0c] shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
+              <div className="truckly-mobile-panel flex h-[calc((100dvh-var(--truckly-nav-height,64px))*0.618)] flex-col border-t border-white/10 bg-[#0b0b0c] shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
                 <div className="relative flex items-center justify-between border-b border-white/10 px-4 py-3">
                   <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
                     {mobileMarkerPanel.vehicle?.nickname

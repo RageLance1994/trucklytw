@@ -142,6 +142,15 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const getNavHeight = () => {
+  if (typeof window === "undefined") return 64;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(
+    "--truckly-nav-height",
+  );
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 64;
+};
+
 const isValidCoordinate = (lat: number | null, lon: number | null) => {
   if (lat === null || lon === null) return false;
   if (lat === 0 && lon === 0) return false;
@@ -224,7 +233,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
     const map = mapInstanceRef.current?.map;
     const lngLat = marker?.getLngLat?.();
     if (!map || !lngLat) return;
-    const navHeight = 64;
+    const navHeight = getNavHeight();
     const availableHeight = Math.max(0, window.innerHeight - navHeight);
     const panelHeight = availableHeight * 0.618;
     const offsetY = -(panelHeight / 2);

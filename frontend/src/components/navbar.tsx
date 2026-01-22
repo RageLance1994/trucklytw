@@ -18,6 +18,7 @@ export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [companyName, setCompanyName] = React.useState("Account");
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
+  const headerRef = React.useRef<HTMLElement | null>(null);
   const [mobileSection, setMobileSection] = React.useState<
     "flotta" | "analisi" | "mappe" | "impostazioni" | null
   >(null);
@@ -207,8 +208,38 @@ export function Navbar() {
     return () => document.removeEventListener("click", handler);
   }, []);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const header = headerRef.current;
+    if (!header) return;
+
+    const root = document.documentElement;
+    const update = () => {
+      const rect = header.getBoundingClientRect();
+      const height = Math.round(rect.height);
+      if (height > 0) {
+        root.style.setProperty("--truckly-nav-height", `${height}px`);
+      }
+    };
+
+    update();
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => update());
+      observer.observe(header);
+    }
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      observer?.disconnect();
+    };
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c]">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c]"
+    >
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         <div className="flex items-center gap-3 py-3">
           <a href="/" className="inline-flex items-center">

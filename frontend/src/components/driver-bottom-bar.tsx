@@ -455,7 +455,7 @@ export function DriverBottomBar({
 
   return (
     <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-64px)] min-h-[calc(100vh-64px)] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-[env(safe-area-inset-top)] shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[75vh] ${
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-var(--truckly-nav-height,64px))] min-h-[calc(100vh-var(--truckly-nav-height,64px))] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-[env(safe-area-inset-top)] shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[75vh] ${
         isOpen ? "translate-y-0" : "hidden-bottom"
       }`}
       aria-hidden={!isOpen}

@@ -7,6 +7,7 @@
 @layer base {
   :root {
     color-scheme: dark;
+    --truckly-nav-height: 64px;
   }
 
   html,
@@ -22,6 +23,18 @@
   input,
   button {
     font-family: inherit;
+  }
+
+  input[type="datetime-local"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
   }
 }
 
