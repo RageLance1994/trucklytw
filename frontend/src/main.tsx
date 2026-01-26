@@ -212,7 +212,34 @@ function DashboardPage() {
     device: any | null;
     imei: string | null;
   }>({ open: false, html: "", vehicle: null, device: null, imei: null });
+  const [assistantOpen, setAssistantOpen] = React.useState(false);
   const [mobileMarkerMenuOpen, setMobileMarkerMenuOpen] = React.useState(false);
+  const [mapStyle, setMapStyle] = React.useState<
+    "base" | "light" | "dark" | "satellite"
+  >("base");
+  const [assistantInput, setAssistantInput] = React.useState("");
+  const [assistantMessages, setAssistantMessages] = React.useState<
+    {
+      id: string;
+      role: "user" | "assistant";
+      text: string;
+      fullText?: string;
+      isTyping?: boolean;
+    }[]
+  >([]);
+  const [assistantChats, setAssistantChats] = React.useState<
+    {
+      id: string;
+      topicKeywords: string[];
+      title: string | null;
+      updatedAt: string | null;
+    }[]
+  >([]);
+  const [assistantChatId, setAssistantChatId] = React.useState<string | null>(null);
+  const [assistantChatsLoading, setAssistantChatsLoading] = React.useState(false);
+  const [assistantChatLoading, setAssistantChatLoading] = React.useState(false);
+  const [assistantSending, setAssistantSending] = React.useState(false);
+  const [assistantError, setAssistantError] = React.useState<string | null>(null);
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
@@ -502,6 +529,170 @@ function DashboardPage() {
     }
   }, [bottomBarState.open]);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem("truckly:map-style");
+      if (saved === "base" || saved === "light" || saved === "dark" || saved === "satellite") {
+        setMapStyle(saved);
+      }
+    } catch {}
+
+    const handleMapStyle = (event: Event) => {
+      const next = (event as CustomEvent)?.detail?.style;
+      if (next === "base" || next === "light" || next === "dark" || next === "satellite") {
+        setMapStyle(next);
+      }
+    };
+
+    window.addEventListener("truckly:map-style", handleMapStyle as EventListener);
+    return () => window.removeEventListener("truckly:map-style", handleMapStyle as EventListener);
+  }, []);
+
+  React.useEffect(() => {
+    if (isQuickSidebarOpen || isDriverSidebarOpen || bottomBarState.open) {
+      setAssistantOpen(false);
+    }
+  }, [bottomBarState.open, isDriverSidebarOpen, isQuickSidebarOpen]);
+
+  const loadAssistantChats = React.useCallback(async () => {
+    setAssistantChatsLoading(true);
+    setAssistantError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/_agents/chats`, { credentials: "include" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data?.chats) ? data.chats : [];
+      setAssistantChats(
+        list.map((chat: any) => ({
+          id: String(chat._id || chat.id),
+          topicKeywords: Array.isArray(chat.topicKeywords) ? chat.topicKeywords : [],
+          title: chat.title ? String(chat.title) : null,
+          updatedAt: chat.updatedAt ? String(chat.updatedAt) : null,
+        })),
+      );
+    } catch (err: any) {
+      setAssistantError(err?.message || "Errore durante il caricamento chat.");
+    } finally {
+      setAssistantChatsLoading(false);
+    }
+  }, []);
+
+  const loadAssistantChat = React.useCallback(async (chatId: string) => {
+    setAssistantChatLoading(true);
+    setAssistantError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/_agents/chats/${chatId}`, { credentials: "include" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const chat = data?.chat;
+      const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+      setAssistantMessages(
+        messages.map((msg: any, index: number) => ({
+          id: String(msg._id || msg.createdAt || `${chatId}-${index}`),
+          role: msg.role === "assistant" ? "assistant" : "user",
+          text: String(msg.content || ""),
+        })),
+      );
+      setAssistantChatId(chatId);
+    } catch (err: any) {
+      setAssistantError(err?.message || "Errore durante il caricamento chat.");
+    } finally {
+      setAssistantChatLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!assistantOpen) return;
+    setAssistantMessages([]);
+    setAssistantChatId(null);
+    setAssistantInput("");
+    void loadAssistantChats();
+  }, [assistantOpen, loadAssistantChats]);
+
+  const handleAssistantSend = async () => {
+    const text = assistantInput.trim();
+    if (!text || assistantSending) return;
+    setAssistantSending(true);
+    setAssistantError(null);
+    const userMessage = {
+      id: `${Date.now()}-user`,
+      role: "user" as const,
+      text,
+    };
+    setAssistantMessages((prev) => [...prev, userMessage]);
+    setAssistantInput("");
+    const starters = [
+      "Ok, dammi un minuto... ",
+      "Ti dico subito... ",
+      "Ok! Ci sto lavorando... ",
+    ];
+    const starter = starters[Math.floor(Math.random() * starters.length)];
+    try {
+      const res = await fetch(`${API_BASE_URL}/_agents/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          chatId: assistantChatId,
+          message: { content: text },
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const reply = data?.reply?.content ? String(data.reply.content) : "";
+      const nextChatId = data?.chatId ? String(data.chatId) : assistantChatId;
+      if (nextChatId && nextChatId !== assistantChatId) {
+        setAssistantChatId(nextChatId);
+      }
+      setAssistantMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-assistant`,
+          role: "assistant" as const,
+          text: "",
+          fullText: `${starter}${reply}`,
+          isTyping: true,
+        },
+      ]);
+      void loadAssistantChats();
+    } catch (err: any) {
+      setAssistantError(err?.message || "Errore durante l'invio.");
+    } finally {
+      setAssistantSending(false);
+    }
+  };
+
+  React.useEffect(() => {
+    const typingMessage = assistantMessages.find((msg) => msg.isTyping);
+    if (!typingMessage || !typingMessage.fullText) return;
+    const interval = window.setInterval(() => {
+      setAssistantMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== typingMessage.id || !msg.fullText) return msg;
+          const nextLength = Math.min((msg.text?.length || 0) + 1, msg.fullText.length);
+          const nextText = msg.fullText.slice(0, nextLength);
+          const done = nextLength >= msg.fullText.length;
+          return {
+            ...msg,
+            text: nextText,
+            isTyping: done ? false : msg.isTyping,
+          };
+        })
+      );
+    }, 28);
+    return () => window.clearInterval(interval);
+  }, [assistantMessages]);
+
   return (
     <div className="w-full h-screen flex flex-col bg-[#0a0a0a] text-[#f4f4f5]">
       <Navbar />
@@ -536,6 +727,208 @@ function DashboardPage() {
             selectedVehicleImei={selectedFuelImei}
             selectedVehicle={selectedFuelVehicle}
           />
+          {assistantOpen && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]">
+              <div className="w-full max-w-4xl rounded-[28px] border border-white/10 bg-[#111111] px-6 py-6 shadow-[0_30px_80px_rgba(0,0,0,0.6)] h-[75vh] flex">
+                <div className="w-60 border-r border-white/10 pr-4 flex flex-col">
+                  <div className="flex items-center justify-between pb-3">
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-white/50">
+                      Chat
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssistantChatId(null);
+                        setAssistantMessages([]);
+                      }}
+                      className="text-xs text-white/60 hover:text-white transition"
+                    >
+                      Nuova
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    {assistantChatsLoading ? (
+                      <div className="text-xs text-white/50">Caricamento...</div>
+                    ) : assistantChats.length === 0 ? (
+                      <div className="text-xs text-white/50">Nessuna chat.</div>
+                    ) : (
+                      assistantChats.map((chat) => {
+                        const title = chat.title
+                          ? chat.title
+                          : chat.topicKeywords && chat.topicKeywords.length > 0
+                            ? chat.topicKeywords.slice(0, 4).join(" · ")
+                            : "Nuova chat";
+                        return (
+                          <div
+                            key={chat.id}
+                            className={`w-full rounded-xl border px-3 py-2 text-left text-[12px] transition ${
+                              assistantChatId === chat.id
+                                ? "border-white/30 bg-white/10 text-white"
+                                : "border-white/10 bg-white/5 text-white/70 hover:text-white hover:border-white/30"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => loadAssistantChat(chat.id)}
+                              className="w-full text-left"
+                            >
+                              <div className="line-clamp-2">{title}</div>
+                            </button>
+                            <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-white/40">
+                              <span>{chat.updatedAt ? "Aggiornata" : ""}</span>
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await fetch(`${API_BASE_URL}/_agents/chats/${chat.id}`, {
+                                      method: "DELETE",
+                                      credentials: "include",
+                                    });
+                                    if (!res.ok) {
+                                      const text = await res.text().catch(() => "");
+                                      throw new Error(text || `HTTP ${res.status}`);
+                                    }
+                                    if (assistantChatId === chat.id) {
+                                      setAssistantChatId(null);
+                                      setAssistantMessages([]);
+                                    }
+                                    void loadAssistantChats();
+                                  } catch (err: any) {
+                                    setAssistantError(err?.message || "Errore durante l'eliminazione.");
+                                  }
+                                }}
+                                className="text-white/50 hover:text-white transition"
+                                aria-label="Elimina chat"
+                              >
+                                <i className="fa fa-trash" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                <div className="relative flex-1 pl-6 flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setAssistantOpen(false)}
+                    className="absolute right-0 top-0 rounded-full border border-white/15 h-9 w-9 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                    aria-label="Chiudi"
+                  >
+                    <i className="fa fa-close" aria-hidden="true" />
+                  </button>
+
+                  {assistantMessages.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-8">
+                      <div className="w-full text-center space-y-2">
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                          Assistente AI
+                        </p>
+                        <h3 className="text-2xl font-semibold text-white">
+                          Quando vuoi.
+                        </h3>
+                      </div>
+                      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#1b1b1b] px-5 py-4">
+                        <div>
+                          <input
+                            placeholder="Fai una domanda"
+                            value={assistantInput}
+                            onChange={(e) => setAssistantInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleAssistantSend();
+                            }}
+                            className="w-full bg-transparent text-base text-white/90 placeholder:text-white/50 outline-none"
+                          />
+                        </div>
+                        <div className="mt-4 flex items-center justify-end gap-4">
+                          <button
+                            type="button"
+                            onClick={handleAssistantSend}
+                            disabled={assistantSending}
+                            className="h-10 w-10 rounded-full bg-white text-zinc-500 shadow-[0_12px_24px_rgba(0,0,0,0.35)] inline-flex items-center justify-center hover:text-zinc-600 transition disabled:opacity-60"
+                            aria-label="Invia"
+                          >
+                            <i className="fa fa-arrow-up" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                      {assistantError && (
+                        <div className="text-xs text-red-400">{assistantError}</div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative mt-2">
+                        <div className="w-full text-center space-y-2">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                            Assistente AI
+                          </p>
+                          <h3 className="text-2xl font-semibold text-white">
+                            Quando vuoi.
+                          </h3>
+                        </div>
+                      </div>
+                      <div className="mt-6 flex-1 flex flex-col gap-4 min-h-0">
+                        <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                          {assistantChatLoading ? (
+                            <div className="text-xs text-white/50">Caricamento chat...</div>
+                          ) : (
+                            assistantMessages.map((message) => (
+                              <div
+                                key={message.id}
+                                className={`flex ${
+                                  message.role === "user" ? "justify-end" : "justify-start"
+                                }`}
+                              >
+                                <div
+                                  className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                                    message.role === "user"
+                                      ? "bg-[#1f1f1f] text-white"
+                                      : "bg-[#141414] text-white/80 border border-white/10"
+                                  }`}
+                                >
+                                  {message.text}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-[#1b1b1b] px-5 py-4 transition-all">
+                          <div>
+                            <input
+                              placeholder="Fai una domanda"
+                              value={assistantInput}
+                              onChange={(e) => setAssistantInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleAssistantSend();
+                              }}
+                              className="w-full bg-transparent text-base text-white/90 placeholder:text-white/50 outline-none"
+                            />
+                          </div>
+                          <div className="mt-4 flex items-center justify-end gap-4">
+                            <button
+                              type="button"
+                              onClick={handleAssistantSend}
+                              disabled={assistantSending}
+                              className="h-10 w-10 rounded-full bg-white text-zinc-500 shadow-[0_12px_24px_rgba(0,0,0,0.35)] inline-flex items-center justify-center hover:text-zinc-600 transition disabled:opacity-60"
+                              aria-label="Invia"
+                            >
+                              <i className="fa fa-arrow-up" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+                        {assistantError && (
+                          <div className="text-xs text-red-400">{assistantError}</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           {mobileMarkerPanel.open && (
             <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
               <div className="truckly-mobile-panel flex h-[calc((100dvh-var(--truckly-nav-height,64px))*0.618)] flex-col border-t border-white/10 bg-[#0b0b0c] shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
@@ -649,6 +1042,35 @@ function DashboardPage() {
                 <i className="fa fa-eye" />
               </span>
               <span className="hidden lg:inline">Vista rapida</span>
+            </button>
+          )}
+          {!isQuickSidebarOpen && !isDriverSidebarOpen && !bottomBarState.open && !assistantOpen && (
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className={`fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full border ${
+                mapStyle === "dark"
+                  ? "border-black/10 bg-white text-orange-500 hover:text-orange-400"
+                  : "border-white/10 bg-[#0a0a0a] text-orange-400 hover:text-orange-300"
+              } shadow-[0_18px_36px_rgba(0,0,0,0.55)] transition inline-flex items-center justify-center`}
+              aria-label="Apri assistente AI"
+            >
+              <span className="relative flex h-6 w-6 items-center justify-center">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 3l1.6 3.6L17 8l-3.6 1.6L12 13l-1.6-3.4L7 8l3.4-1.4L12 3z" />
+                  <path d="M6 14l.9 2L9 17l-2.1.9L6 20l-.9-2.1L3 17l2.1-.9L6 14z" />
+                  <path d="M17 14l.7 1.6L20 16l-1.6.7L17 19l-.7-1.6L14 16l1.6-.7L17 14z" />
+                </svg>
+              </span>
             </button>
           )}
         </div>

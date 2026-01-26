@@ -98,6 +98,23 @@ const UserSchema = new mongoose.Schema({
   lastSessionEnc: { type: String, default: null },    // JSON criptato
 }, { timestamps: true });
 
+const UserChatSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "Users", required: true, index: true },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", default: null, index: true },
+  title: { type: String, default: null, trim: true },
+  messages: {
+    type: [
+      {
+        role: { type: String, enum: ["user", "assistant", "system"], required: true },
+        content: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now }
+      }
+    ],
+    default: []
+  },
+  topicKeywords: { type: [String], default: [] },
+  topicUpdatedAt: { type: Date, default: null }
+}, { timestamps: true });
 
 const fuelEventSchema = new mongoose.Schema({
   eventId: { type: String, required: true, unique: true, index: true },
@@ -162,6 +179,7 @@ const authorizedIMEISchema = new mongoose.Schema({
 
 const AuthorizedIMEIS = mongoose.model('AuthorizedIMEIS', authorizedIMEISchema, 'AuthorizedIMEIS');
 const UserModel = mongoose.model('Users', UserSchema, 'Users');
+const UserChatsModel = mongoose.model('UserChats', UserChatSchema, 'UserChats');
 const Companies = mongoose.model("Company", CompanySchema, "Company");
 const Vehicles = mongoose.model("Vehicle", VehicleSchema, "Vehicle");
 const Drivers = mongoose.model("Drivers", DriverSchema, "Drivers");
@@ -208,6 +226,7 @@ module.exports = {
   Sims, SimSchema,
   Companies, CompanySchema,
   UserModel,
+  UserChatsModel,
   RefuelingSchema,
   driverEventSchema,fuelEventSchema
 }
