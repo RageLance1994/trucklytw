@@ -45,6 +45,7 @@
         "nouislider": "^15.8.1",
         "openai": "^5.15.0",
         "paypal-rest-sdk": "^1.8.1",
+        "pdf-parse": "^1.1.1",
         "ssh2-sftp-client": "^9.1.0",
         "umap-js": "^1.4.0",
         "uplot": "^1.6.32",

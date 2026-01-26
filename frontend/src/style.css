@@ -975,3 +975,37 @@
 .truckly-modal-scrollbar:hover::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.45);
 }
+
+@keyframes truckly-chat-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.truckly-chat-modal {
+  animation: truckly-chat-in 220ms ease-out both;
+}
+
+.truckly-typing-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  animation: truckly-typing-blink 0.9s ease-in-out infinite;
+}
+
+@keyframes truckly-typing-blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}

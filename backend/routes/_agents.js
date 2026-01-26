@@ -1,20 +1,356 @@
 const express = require("express");
-const { run, Agent } = require("@openai/agents");
+const { run, Agent, tool } = require("@openai/agents");
+const { z } = require("zod");
+const pdfParse = require("pdf-parse");
 const mongoose = require("mongoose");
 const { auth } = require("../utils/users");
-const { UserChatsModel } = require("../Models/Schemes");
+const { UserChatsModel, Vehicles, UserModel, Companies, getModel, avlSchema } = require("../Models/Schemes");
+const { _Users } = require("../utils/database");
+const { decryptString, decryptJSON } = require("../utils/encryption");
 
 const router = express.Router();
 
-const chatAgent = Agent.create({
-  name: "Truckly Assistant",
-  apiKey: process.env.OPENAI_API_KEY,
-  instructions: `
+const getPrivilegeLevel = (user) => {
+  if (!user) return 2;
+  if (Number.isInteger(user.role)) return user.role;
+  if (Number.isInteger(user.privilege)) return user.privilege;
+  return 2;
+};
+
+const decorateVehicle = (raw) => {
+  if (!raw || typeof raw !== "object") return raw;
+  const v = { ...raw };
+  try {
+    if (v.plateEnc) v.plate = decryptString(v.plateEnc);
+    if (v.brandEnc) v.brand = decryptString(v.brandEnc);
+    if (v.modelEnc) v.model = decryptString(v.modelEnc);
+    if (v.detailsEnc) v.details = decryptJSON(v.detailsEnc);
+  } catch (err) {
+    console.warn("[agents] vehicle decrypt error:", err?.message || err);
+  }
+  if (v.plate && typeof v.plate === "object" && v.plate.v) {
+    v.plate = v.plate.v;
+  }
+  return v;
+};
+
+const parseJson = (value) => {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const createTools = (req) => {
+  const privilege = getPrivilegeLevel(req.user);
+  const userCompanyId = req.user?.companyId?.toString?.() || null;
+
+  const dbFind = tool({
+    name: "db_find",
+    description: "Query allow-listed collections (Vehicles, Users, Company). Returns limited results.",
+    parameters: z.object({
+      collection: z.enum(["Vehicles", "Users", "Company"]),
+      filterJson: z.string().nullable(),
+      projectionJson: z.string().nullable(),
+      limit: z.number().int().min(1).max(50).nullable()
+    }),
+    execute: async ({ collection, filterJson, projectionJson, limit }) => {
+      const safeLimit = limit ?? 20;
+      if (collection === "Vehicles") {
+        if (privilege === 0) {
+          const filter = parseJson(filterJson) || {};
+          const projection = parseJson(projectionJson) || {};
+          const textFilters = ["nickname", "plate", "model", "brand"];
+          const hasTextFilter = textFilters.some((key) => filter[key]);
+          const mongoFilter = { ...filter };
+          if (hasTextFilter) {
+            textFilters.forEach((key) => delete mongoFilter[key]);
+          }
+          const rows = await Vehicles.find(mongoFilter, projection)
+            .limit(hasTextFilter ? 200 : safeLimit)
+            .lean();
+          return rows
+            .map(decorateVehicle)
+            .filter((row) => (hasTextFilter ? matchVehicle(row, filter) : true))
+            .slice(0, safeLimit);
+        }
+        const list = await req.user.vehicles.list();
+        const filter = parseJson(filterJson) || {};
+        return list
+          .map(decorateVehicle)
+          .filter((vehicle) => matchVehicle(vehicle, filter))
+          .slice(0, safeLimit);
+      }
+
+      if (collection === "Users") {
+        if (privilege > 1) return [];
+        const filter = parseJson(filterJson) || {};
+        if (privilege === 1 && userCompanyId) {
+          filter.companyId = new mongoose.Types.ObjectId(userCompanyId);
+        }
+        const projection = parseJson(projectionJson) || {
+          firstName: 1,
+          lastName: 1,
+          email: 1,
+          role: 1,
+          privilege: 1,
+          companyId: 1,
+          status: 1,
+          createdAt: 1
+        };
+        return await UserModel.find(filter, projection).limit(safeLimit).lean();
+      }
+
+      if (collection === "Company") {
+        if (privilege > 1) return [];
+        const filter = parseJson(filterJson) || {};
+        const projection = parseJson(projectionJson) || { name: 1, status: 1, createdAt: 1 };
+        return await Companies.find(filter, projection).limit(safeLimit).lean();
+      }
+
+      return [];
+    }
+  });
+
+  const vehicleCreate = tool({
+    name: "vehicle_create",
+    description: "Create a vehicle for a company (super admin only).",
+    parameters: z.object({
+      companyId: z.string(),
+      nickname: z.string(),
+      plate: z.string(),
+      brand: z.string(),
+      model: z.string(),
+      imei: z.string(),
+      deviceModel: z.string().nullable(),
+      codec: z.string().nullable(),
+      tags: z.array(z.string()).nullable(),
+      detailsJson: z.string().nullable()
+    }),
+    execute: async (payload) => {
+      if (privilege !== 0) return "PERMISSION_DENIED";
+      const companyId = payload.companyId?.trim();
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+        return "Invalid companyId.";
+      }
+      const owners = await UserModel.find({ companyId }, { _id: 1 }).lean();
+      const ownerIds = owners.map((owner) => owner._id);
+      if (!ownerIds.length) return "Company has no users.";
+      const details = parseJson(payload.detailsJson) || {};
+      const vehicle = await req.user.vehicles.create({
+        nickname: payload.nickname,
+        plate: payload.plate,
+        brand: payload.brand,
+        model: payload.model,
+        imei: payload.imei,
+        deviceModel: payload.deviceModel || "FMC150",
+        codec: payload.codec || "8 Ext",
+        tags: payload.tags || [],
+        details,
+        ownerIds
+      });
+      return {
+        id: vehicle?._id?.toString?.() || vehicle?.id || null,
+        imei: vehicle?.imei || null,
+        nickname: vehicle?.nickname || null
+      };
+    }
+  });
+
+  const vehicleUpdate = tool({
+    name: "vehicle_update",
+    description: "Update vehicle metadata (super admin only).",
+    parameters: z.object({
+      vehicleId: z.string(),
+      nickname: z.string().nullable(),
+      tags: z.array(z.string()).nullable()
+    }),
+    execute: async ({ vehicleId, nickname, tags }) => {
+      if (privilege !== 0) return "PERMISSION_DENIED";
+      if (!mongoose.Types.ObjectId.isValid(vehicleId)) return "Invalid vehicleId.";
+      const update = {};
+      if (typeof nickname === "string" && nickname.trim()) update.nickname = nickname.trim();
+      if (Array.isArray(tags)) update.tags = tags.map((t) => String(t).trim()).filter(Boolean);
+      if (!Object.keys(update).length) return "Nothing to update.";
+      await Vehicles.updateOne({ _id: vehicleId }, { $set: update });
+      return "Vehicle updated.";
+    }
+  });
+
+  const vehicleDelete = tool({
+    name: "vehicle_delete",
+    description: "Delete a vehicle (super admin only, requires confirm='DELETE').",
+    parameters: z.object({
+      vehicleId: z.string(),
+      confirm: z.string()
+    }),
+    execute: async ({ vehicleId, confirm }) => {
+      if (privilege !== 0) return "PERMISSION_DENIED";
+      if (confirm !== "DELETE") return "Confirmation required.";
+      if (!mongoose.Types.ObjectId.isValid(vehicleId)) return "Invalid vehicleId.";
+      await Vehicles.deleteOne({ _id: vehicleId });
+      return "Vehicle deleted.";
+    }
+  });
+
+  const userCreate = tool({
+    name: "user_create",
+    description: "Create a user. Super admin can create any role; admin can only create readonly users for their company.",
+    parameters: z.object({
+      firstName: z.string(),
+      lastName: z.string(),
+      phone: z.string(),
+      email: z.string(),
+      password: z.string(),
+      role: z.number().int().nullable(),
+      companyId: z.string().nullable()
+    }),
+    execute: async ({ firstName, lastName, phone, email, password, role, companyId }) => {
+      if (privilege > 1) return "PERMISSION_DENIED";
+      const resolvedRole = privilege === 0 && Number.isInteger(role) ? role : 3;
+      const resolvedCompanyId = privilege === 0
+        ? companyId
+        : userCompanyId;
+      if (!resolvedCompanyId) return "Missing companyId.";
+      const user = await _Users.new(
+        String(firstName),
+        String(lastName),
+        String(phone),
+        String(email),
+        String(password),
+        resolvedCompanyId,
+        resolvedRole,
+        0,
+        resolvedRole,
+        [],
+        "include",
+        [],
+        "include"
+      );
+      return {
+        id: user?._id?.toString?.() || user?.id || null,
+        email: user?.email || null,
+        role: user?.role ?? null
+      };
+    }
+  });
+
+  const userUpdateRestrictions = tool({
+    name: "user_update_restrictions",
+    description: "Update vehicle visibility restrictions for readonly users.",
+    parameters: z.object({
+      userId: z.string(),
+      allowedVehicleIds: z.array(z.string()).nullable(),
+      allowedVehicleIdsMode: z.enum(["include", "exclude"]).nullable(),
+      allowedVehicleTags: z.array(z.string()).nullable(),
+      allowedVehicleTagsMode: z.enum(["include", "exclude"]).nullable()
+    }),
+    execute: async ({ userId, allowedVehicleIds, allowedVehicleIdsMode, allowedVehicleTags, allowedVehicleTagsMode }) => {
+      if (privilege > 1) return "PERMISSION_DENIED";
+      if (!mongoose.Types.ObjectId.isValid(userId)) return "Invalid userId.";
+      const user = await UserModel.findById(userId);
+      if (!user) return "User not found.";
+      if (privilege === 1 && userCompanyId && String(user.companyId) !== userCompanyId) {
+        return "FORBIDDEN";
+      }
+      if (Number(user.role) !== 3) return "Target user is not readonly.";
+      const update = {
+        allowedVehicleIds: Array.isArray(allowedVehicleIds) ? allowedVehicleIds : user.allowedVehicleIds,
+        allowedVehicleIdsMode: allowedVehicleIdsMode || user.allowedVehicleIdsMode || "include",
+        allowedVehicleTags: Array.isArray(allowedVehicleTags) ? allowedVehicleTags : user.allowedVehicleTags,
+        allowedVehicleTagsMode: allowedVehicleTagsMode || user.allowedVehicleTagsMode || "include",
+      };
+      await UserModel.updateOne({ _id: userId }, { $set: update });
+      return "Restrictions updated.";
+    }
+  });
+
+  return [
+    dbFind,
+    vehicleCreate,
+    vehicleUpdate,
+    vehicleDelete,
+    userCreate,
+    userUpdateRestrictions
+  ];
+};
+
+const resolveVehicleByQuery = async (req, query) => {
+  const list = await req.user.vehicles.list();
+  if (!query) return null;
+  const q = String(query).toLowerCase().trim();
+  const exact = list.find((v) => String(v.imei || "") === q);
+  if (exact) return exact;
+  const match = list.find((v) => {
+    const hay = `${v.nickname || ""} ${v.plate || ""} ${v.imei || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+  return match || null;
+};
+
+const vehicleLocation = (req) =>
+  tool({
+    name: "vehicle_location",
+    description: "Fetch latest monitoring GPS for a vehicle by imei, nickname, or plate.",
+    parameters: z.object({
+      query: z.string()
+    }),
+    execute: async ({ query }) => {
+      const vehicle = await resolveVehicleByQuery(req, query);
+      if (!vehicle?.imei) {
+        return "Vehicle not found.";
+      }
+      const Model = getModel(`${vehicle.imei}_monitoring`, avlSchema);
+      const latest = await Model.findOne().sort({ timestamp: -1 }).lean();
+      if (!latest) return "No monitoring data available.";
+      const gps = latest.gps || latest.data?.gps || latest;
+      const toNumber = (val) => {
+        const num = Number(val);
+        return Number.isFinite(num) ? num : null;
+      };
+      const lat = toNumber(
+        gps?.lat ||
+        gps?.latitude ||
+        gps?.Latitude ||
+        gps?.position?.lat ||
+        gps?.position?.Latitude
+      );
+      const lon = toNumber(
+        gps?.lon ||
+        gps?.lng ||
+        gps?.longitude ||
+        gps?.Longitude ||
+        gps?.position?.lon ||
+        gps?.position?.Longitude
+      );
+      return {
+        imei: vehicle.imei,
+        nickname: vehicle.nickname || null,
+        plate: vehicle.plate || null,
+        lat,
+        lon,
+        timestamp: latest.timestamp || latest.time || null
+      };
+    }
+  });
+
+const buildChatAgent = (req) =>
+  Agent.create({
+    name: "Truckly Assistant",
+    apiKey: process.env.OPENAI_API_KEY,
+    instructions: `
 You are a helpful assistant for a fleet management platform.
 Keep replies concise and in Italian.
-If the user asks to do actions, acknowledge and explain what info you need next.
-`
-});
+You can use tools to query the database and manage vehicles/users only when permitted.
+When the user asks about vehicles, plates, users, or companies you MUST use tools (db_find or specific tools) to answer.
+Ask for missing information before running tools.
+Today's date is ${new Date().toISOString()}.
+`,
+    tools: [...createTools(req), vehicleLocation(req)],
+  });
 
 const topicAgent = Agent.create({
   name: "Topic Extractor",
@@ -50,6 +386,105 @@ const buildHistory = (messages) => {
   });
 };
 
+const stopwords = new Set([
+  "che",
+  "targa",
+  "ha",
+  "il",
+  "lo",
+  "la",
+  "le",
+  "i",
+  "gli",
+  "del",
+  "della",
+  "dei",
+  "delle",
+  "di",
+  "un",
+  "una",
+  "per",
+  "su",
+  "veicolo",
+  "mezzo",
+  "truck",
+  "camion",
+  "oggi",
+  "ieri",
+  "ora",
+  "adesso"
+]);
+
+const extractQueryTokens = (text) =>
+  String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9àèéìòù\s]/gi, " ")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 2 && !stopwords.has(t));
+
+const matchVehicle = (vehicle, filter) => {
+  const norm = (val) => String(val || "").toLowerCase();
+  const matchesText = (val, target) =>
+    !target ? true : norm(val).includes(norm(target));
+  if (filter.imei && String(vehicle.imei || "") !== String(filter.imei)) return false;
+  if (!matchesText(vehicle.nickname, filter.nickname)) return false;
+  if (!matchesText(vehicle.plate, filter.plate)) return false;
+  if (!matchesText(vehicle.model, filter.model)) return false;
+  if (!matchesText(vehicle.brand, filter.brand)) return false;
+  if (filter.tags && Array.isArray(vehicle.tags)) {
+    const tagList = Array.isArray(filter.tags) ? filter.tags : [filter.tags];
+    const hasTag = tagList.every((tag) =>
+      vehicle.tags.map((t) => String(t).toLowerCase()).includes(String(tag).toLowerCase())
+    );
+    if (!hasTag) return false;
+  }
+  return true;
+};
+
+const prefetchVehicleContext = async (req, message) => {
+  const text = String(message || "").toLowerCase();
+  if (!text.includes("targa") && !text.includes("veicolo")) return null;
+  const tokens = extractQueryTokens(message);
+  const vehicles = await req.user.vehicles.list();
+  const scored = vehicles
+    .map((v) => {
+      const haystack = `${v.nickname || ""} ${v.plate || ""} ${v.imei || ""}`.toLowerCase();
+      const score = tokens.reduce((acc, t) => (haystack.includes(t) ? acc + 1 : acc), 0);
+      return { score, v };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((entry) => ({
+      nickname: entry.v.nickname || null,
+      plate: entry.v.plate || null,
+      imei: entry.v.imei || null
+    }));
+  if (!scored.length) return "Nessun veicolo trovato con i criteri forniti.";
+  return `Veicoli trovati:\n${scored
+    .map((v) => `- ${v.nickname || "Senza nome"} (targa: ${v.plate || "N/D"}, imei: ${v.imei || "N/D"})`)
+    .join("\n")}`;
+};
+
+const extractTextFromFile = async (file) => {
+  if (!file || !file.data) return null;
+  const mime = file.mimetype || "";
+  if (mime === "application/pdf" || file.name?.toLowerCase().endsWith(".pdf")) {
+    const parsed = await pdfParse(file.data);
+    return parsed?.text || "";
+  }
+  if (mime.startsWith("text/") || file.name?.match(/\.(txt|csv|md)$/i)) {
+    return file.data.toString("utf8");
+  }
+  return null;
+};
+
+const isImageFile = (file) => {
+  const mime = file?.mimetype || "";
+  return mime.startsWith("image/");
+};
+
 const normalizeKeywords = (value) => {
   if (!value) return [];
   try {
@@ -67,9 +502,11 @@ const normalizeKeywords = (value) => {
 
 router.post("/chat", auth, async (req, res) => {
   try {
-    const { chatId, message } = req.body || {};
-    if (!message || !message.content || typeof message.content !== "string") {
-      return res.status(400).json({ error: "BAD_REQUEST", message: "Missing message.content" });
+    const { chatId } = req.body || {};
+    const rawMessage = req.body?.message || req.body?.content || "";
+    const message = typeof rawMessage === "string" ? rawMessage : rawMessage?.content;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "BAD_REQUEST", message: "Missing message content" });
     }
 
     const userId = req.user?.id || req.user?._id;
@@ -90,13 +527,65 @@ router.post("/chat", auth, async (req, res) => {
       });
     }
 
+    let attachmentsNote = "";
+    let extractedText = "";
+    const imageBlocks = [];
+    if (req.files) {
+      const files = Array.isArray(req.files.files)
+        ? req.files.files
+        : req.files.files
+          ? [req.files.files]
+          : [];
+      if (files.length) {
+        const names = files.map((file) => file.name).filter(Boolean);
+        if (names.length) {
+          attachmentsNote = `\n\n[Allegati: ${names.join(", ")}]`;
+        }
+        for (const file of files) {
+          try {
+            if (isImageFile(file)) {
+              const mime = file.mimetype || "image/png";
+              const base64 = Buffer.from(file.data).toString("base64");
+              imageBlocks.push({
+                type: "input_image",
+                image_url: `data:${mime};base64,${base64}`,
+              });
+            } else {
+              const text = await extractTextFromFile(file);
+              if (text) {
+                extractedText += `\n\n[File: ${file.name}]\n${text.slice(0, 6000)}`;
+              }
+            }
+          } catch (err) {
+            console.warn("[agents/chat] file parse error:", err?.message || err);
+          }
+        }
+      }
+    }
+
     await UserChatsModel.updateOne(
       { _id: chat._id },
-      { $push: { messages: { role: "user", content: message.content } } }
+      { $push: { messages: { role: "user", content: `${message}${attachmentsNote}` } } }
     );
 
     const refreshed = await UserChatsModel.findById(chat._id).lean();
     const history = buildHistory(refreshed.messages);
+    const prefetched = await prefetchVehicleContext(req, message);
+    if (prefetched) {
+      history.push({
+        role: "system",
+        content: [{ type: "input_text", text: `Contesto veicoli:\n${prefetched}` }]
+      });
+    }
+    const userContentBlocks = [
+      {
+        type: "input_text",
+        text: `${message}${attachmentsNote}${extractedText}`,
+      },
+      ...imageBlocks,
+    ];
+    history.push({ role: "user", content: userContentBlocks });
+    const chatAgent = buildChatAgent(req);
     const result = await run(chatAgent, history);
 
     const assistantReply = result.finalOutput || "";

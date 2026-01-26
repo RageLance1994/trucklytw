@@ -240,6 +240,10 @@ function DashboardPage() {
   const [assistantChatLoading, setAssistantChatLoading] = React.useState(false);
   const [assistantSending, setAssistantSending] = React.useState(false);
   const [assistantError, setAssistantError] = React.useState<string | null>(null);
+  const [assistantAttachments, setAssistantAttachments] = React.useState<File[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const assistantScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [deleteChatId, setDeleteChatId] = React.useState<string | null>(null);
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
@@ -555,6 +559,17 @@ function DashboardPage() {
     }
   }, [bottomBarState.open, isDriverSidebarOpen, isQuickSidebarOpen]);
 
+  React.useEffect(() => {
+    if (!assistantOpen) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAssistantOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [assistantOpen]);
+
   const loadAssistantChats = React.useCallback(async () => {
     setAssistantChatsLoading(true);
     setAssistantError(null);
@@ -618,9 +633,17 @@ function DashboardPage() {
 
   const handleAssistantSend = async () => {
     const text = assistantInput.trim();
-    if (!text || assistantSending) return;
+    if ((!text && assistantAttachments.length === 0) || assistantSending) return;
     setAssistantSending(true);
     setAssistantError(null);
+    setAssistantMessages((prev) =>
+      prev.map((msg) =>
+        msg.isTyping && msg.fullText
+          ? { ...msg, text: msg.fullText, isTyping: false }
+          : msg
+      )
+    );
+    const typingId = `${Date.now()}-assistant-typing`;
     const userMessage = {
       id: `${Date.now()}-user`,
       role: "user" as const,
@@ -628,21 +651,19 @@ function DashboardPage() {
     };
     setAssistantMessages((prev) => [...prev, userMessage]);
     setAssistantInput("");
-    const starters = [
-      "Ok, dammi un minuto... ",
-      "Ti dico subito... ",
-      "Ok! Ci sto lavorando... ",
-    ];
-    const starter = starters[Math.floor(Math.random() * starters.length)];
+    setAssistantMessages((prev) => [
+      ...prev,
+      { id: typingId, role: "assistant" as const, text: "", isTyping: true },
+    ]);
     try {
+      const form = new FormData();
+      if (assistantChatId) form.append("chatId", assistantChatId);
+      form.append("message", text);
+      assistantAttachments.forEach((file) => form.append("files", file));
       const res = await fetch(`${API_BASE_URL}/_agents/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          chatId: assistantChatId,
-          message: { content: text },
-        }),
+        body: form,
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
@@ -654,18 +675,23 @@ function DashboardPage() {
       if (nextChatId && nextChatId !== assistantChatId) {
         setAssistantChatId(nextChatId);
       }
-      setAssistantMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-assistant`,
-          role: "assistant" as const,
-          text: "",
-          fullText: `${starter}${reply}`,
-          isTyping: true,
-        },
-      ]);
+      setAssistantMessages((prev) => {
+        const next = prev.filter((msg) => msg.id !== typingId);
+        return [
+          ...next,
+          {
+            id: `${Date.now()}-assistant`,
+            role: "assistant" as const,
+            text: "",
+            fullText: reply,
+            isTyping: true,
+          },
+        ];
+      });
+      setAssistantAttachments([]);
       void loadAssistantChats();
     } catch (err: any) {
+      setAssistantMessages((prev) => prev.filter((msg) => msg.id !== typingId));
       setAssistantError(err?.message || "Errore durante l'invio.");
     } finally {
       setAssistantSending(false);
@@ -689,9 +715,19 @@ function DashboardPage() {
           };
         })
       );
-    }, 28);
+    }, 14);
     return () => window.clearInterval(interval);
   }, [assistantMessages]);
+
+  React.useEffect(() => {
+    if (!assistantOpen || assistantMessages.length === 0) return;
+    const node = assistantScrollRef.current;
+    if (!node) return;
+    const raf = window.requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [assistantMessages, assistantOpen]);
 
   return (
     <div className="w-full h-screen flex flex-col bg-[#0a0a0a] text-[#f4f4f5]">
@@ -728,9 +764,9 @@ function DashboardPage() {
             selectedVehicle={selectedFuelVehicle}
           />
           {assistantOpen && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]">
-              <div className="w-full max-w-4xl rounded-[28px] border border-white/10 bg-[#111111] px-6 py-6 shadow-[0_30px_80px_rgba(0,0,0,0.6)] h-[75vh] flex">
-                <div className="w-60 border-r border-white/10 pr-4 flex flex-col">
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px] truckly-chat-overlay">
+              <div className="w-full max-w-4xl rounded-[28px] border border-white/10 bg-[#111111] px-6 py-6 shadow-[0_30px_80px_rgba(0,0,0,0.6)] h-[75vh] flex truckly-chat-modal">
+                <div className="w-60 border-r border-white/10 pr-4 flex flex-col min-w-0">
                   <div className="flex items-center justify-between pb-3">
                     <span className="text-[11px] uppercase tracking-[0.2em] text-white/50">
                       Chat
@@ -778,25 +814,9 @@ function DashboardPage() {
                               <span>{chat.updatedAt ? "Aggiornata" : ""}</span>
                               <button
                                 type="button"
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  try {
-                                    const res = await fetch(`${API_BASE_URL}/_agents/chats/${chat.id}`, {
-                                      method: "DELETE",
-                                      credentials: "include",
-                                    });
-                                    if (!res.ok) {
-                                      const text = await res.text().catch(() => "");
-                                      throw new Error(text || `HTTP ${res.status}`);
-                                    }
-                                    if (assistantChatId === chat.id) {
-                                      setAssistantChatId(null);
-                                      setAssistantMessages([]);
-                                    }
-                                    void loadAssistantChats();
-                                  } catch (err: any) {
-                                    setAssistantError(err?.message || "Errore durante l'eliminazione.");
-                                  }
+                                  setDeleteChatId(chat.id);
                                 }}
                                 className="text-white/50 hover:text-white transition"
                                 aria-label="Elimina chat"
@@ -810,11 +830,11 @@ function DashboardPage() {
                     )}
                   </div>
                 </div>
-                <div className="relative flex-1 pl-6 flex flex-col">
+                <div className="relative flex-1 pl-6 flex flex-col min-w-0">
                   <button
                     type="button"
                     onClick={() => setAssistantOpen(false)}
-                    className="absolute right-0 top-0 rounded-full border border-white/15 h-9 w-9 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                    className="absolute right-0 top-0 z-10 rounded-full border border-white/15 h-9 w-9 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
                     aria-label="Chiudi"
                   >
                     <i className="fa fa-close" aria-hidden="true" />
@@ -830,11 +850,47 @@ function DashboardPage() {
                           Quando vuoi.
                         </h3>
                       </div>
-                      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#1b1b1b] px-5 py-4">
-                        <div>
-                          <input
-                            placeholder="Fai una domanda"
-                            value={assistantInput}
+                      <div
+                        className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#1b1b1b] px-4 py-3"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const files = Array.from(e.dataTransfer.files || []);
+                          if (files.length) {
+                            setAssistantAttachments(files);
+                          }
+                        }}
+                      >
+                      {assistantAttachments.length > 0 && (
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {assistantAttachments.map((file) => (
+                            <span
+                              key={`${file.name}-${file.size}-${file.lastModified}`}
+                              className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/70"
+                            >
+                              <span className="max-w-[160px] truncate">{file.name}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setAssistantAttachments((prev) =>
+                                    prev.filter((f) => f !== file),
+                                  )
+                                }
+                                className="text-white/40 opacity-0 transition group-hover:opacity-100 hover:text-white"
+                                aria-label={`Rimuovi ${file.name}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div>
+                        <input
+                          placeholder="Fai una domanda"
+                          value={assistantInput}
                             onChange={(e) => setAssistantInput(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleAssistantSend();
@@ -842,7 +898,32 @@ function DashboardPage() {
                             className="w-full bg-transparent text-base text-white/90 placeholder:text-white/50 outline-none"
                           />
                         </div>
-                        <div className="mt-4 flex items-center justify-end gap-4">
+                        <div className="mt-4 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              multiple
+                              accept="image/*,.pdf,.csv,.txt"
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                setAssistantAttachments(files);
+                              }}
+                              className="hidden"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-xs text-white/60 hover:text-white transition"
+                            >
+                              Allegati
+                            </button>
+                          {assistantAttachments.length > 0 && (
+                            <span className="text-[10px] text-white/40">
+                              {assistantAttachments.length} file
+                            </span>
+                          )}
+                          </div>
                           <button
                             type="button"
                             onClick={handleAssistantSend}
@@ -860,7 +941,7 @@ function DashboardPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="relative mt-2">
+                      <div className="relative mt-2 transition-opacity duration-300 opacity-0 pointer-events-none">
                         <div className="w-full text-center space-y-2">
                           <p className="text-[11px] uppercase tracking-[0.22em] text-white/45">
                             Assistente AI
@@ -871,25 +952,34 @@ function DashboardPage() {
                         </div>
                       </div>
                       <div className="mt-6 flex-1 flex flex-col gap-4 min-h-0">
-                        <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                        <div
+                          ref={assistantScrollRef}
+                          className="flex-1 overflow-y-auto pr-2 space-y-3 overflow-x-hidden min-w-0"
+                        >
                           {assistantChatLoading ? (
                             <div className="text-xs text-white/50">Caricamento chat...</div>
                           ) : (
                             assistantMessages.map((message) => (
                               <div
                                 key={message.id}
-                                className={`flex ${
+                                className={`flex min-w-0 ${
                                   message.role === "user" ? "justify-end" : "justify-start"
                                 }`}
                               >
                                 <div
-                                  className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                                    message.role === "user"
-                                      ? "bg-[#1f1f1f] text-white"
-                                      : "bg-[#141414] text-white/80 border border-white/10"
+                                  className={`max-w-[60%] w-fit rounded-2xl px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap overflow-x-auto ${
+                                    message.isTyping && !message.fullText
+                                      ? "text-white/80"
+                                      : message.role === "user"
+                                        ? "bg-[#1f1f1f] text-white"
+                                        : "bg-[#141414] text-white/80 border border-white/10"
                                   }`}
                                 >
-                                  {message.text}
+                                  {message.isTyping && !message.fullText ? (
+                                    <span className="truckly-typing-dot" aria-hidden="true" />
+                                  ) : (
+                                    message.text
+                                  )}
                                 </div>
                               </div>
                             ))
@@ -907,11 +997,36 @@ function DashboardPage() {
                               className="w-full bg-transparent text-base text-white/90 placeholder:text-white/50 outline-none"
                             />
                           </div>
-                          <div className="mt-4 flex items-center justify-end gap-4">
+                        <div className="mt-4 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              multiple
+                              accept="image/*,.pdf,.csv,.txt"
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                setAssistantAttachments(files);
+                              }}
+                              className="hidden"
+                            />
                             <button
                               type="button"
-                              onClick={handleAssistantSend}
-                              disabled={assistantSending}
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-xs text-white/60 hover:text-white transition"
+                            >
+                              Allegati
+                            </button>
+                            {assistantAttachments.length > 0 && (
+                              <span className="text-[10px] text-white/40">
+                                {assistantAttachments.length} file
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAssistantSend}
+                            disabled={assistantSending}
                               className="h-10 w-10 rounded-full bg-white text-zinc-500 shadow-[0_12px_24px_rgba(0,0,0,0.35)] inline-flex items-center justify-center hover:text-zinc-600 transition disabled:opacity-60"
                               aria-label="Invia"
                             >
@@ -925,6 +1040,52 @@ function DashboardPage() {
                       </div>
                     </>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+          {deleteChatId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+              <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111111] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+                <h4 className="text-sm font-semibold text-white">Eliminare chat?</h4>
+                <p className="mt-2 text-xs text-white/60">
+                  Questa azione e permanente. Vuoi continuare?
+                </p>
+                <div className="mt-5 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteChatId(null)}
+                    className="rounded-lg border border-white/15 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const target = deleteChatId;
+                      setDeleteChatId(null);
+                      try {
+                        const res = await fetch(`${API_BASE_URL}/_agents/chats/${target}`, {
+                          method: "DELETE",
+                          credentials: "include",
+                        });
+                        if (!res.ok) {
+                          const text = await res.text().catch(() => "");
+                          throw new Error(text || `HTTP ${res.status}`);
+                        }
+                        if (assistantChatId === target) {
+                          setAssistantChatId(null);
+                          setAssistantMessages([]);
+                        }
+                        void loadAssistantChats();
+                      } catch (err: any) {
+                        setAssistantError(err?.message || "Errore durante l'eliminazione.");
+                      }
+                    }}
+                    className="rounded-lg bg-red-500/20 border border-red-400/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-100 hover:bg-red-500/30 transition"
+                  >
+                    Elimina
+                  </button>
                 </div>
               </div>
             </div>
