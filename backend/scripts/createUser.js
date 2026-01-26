@@ -24,7 +24,7 @@ const missing = required.filter((field) => !args[field]);
 if (missing.length) {
   console.error('Missing required fields:', missing.join(', '));
   console.error('Usage: node scripts/createUser.js --firstName Alice --lastName Doe --phone +391234567890 --email alice@example.com --password secret --companyId 65f... ');
-  console.error('Optional: --role 1 --status 0 --privilege 2 --allowedVehicleTags tagA,tagB');
+  console.error('Optional: --role 1 --status 0 --privilege 2 --allowedVehicleTags tagA,tagB --allowedVehicleTagsMode include');
   process.exit(1);
 }
 
@@ -34,6 +34,7 @@ const privilege = Number.isFinite(Number(args.privilege)) ? Number(args.privileg
 const allowedVehicleTags = typeof args.allowedVehicleTags === 'string' && args.allowedVehicleTags.trim()
   ? args.allowedVehicleTags.split(',').map((tag) => tag.trim()).filter(Boolean)
   : [];
+const allowedVehicleTagsMode = args.allowedVehicleTagsMode === 'exclude' ? 'exclude' : 'include';
 
 (async () => {
   await startDatabases();
@@ -48,7 +49,8 @@ const allowedVehicleTags = typeof args.allowedVehicleTags === 'string' && args.a
     role,
     status,
     privilege,
-    allowedVehicleTags
+    allowedVehicleTags,
+    allowedVehicleTagsMode
   );
 
   console.log('User created with id:', user._id?.toString?.() || user.id);

@@ -1,5 +1,5 @@
 import React from "react";
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL, VEHICLES_PATH } from "../config";
 import { dataManager } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
 import {
@@ -69,6 +69,7 @@ type AdminCompany = {
 };
 
 type AdminVehicleSummary = {
+  id?: string | null;
   imei?: string | null;
   nickname?: string | null;
   plate?: string | null;
@@ -84,7 +85,7 @@ type TachoCompany = {
 
 type SortDir = "asc" | "desc";
 type CompanySortField = "name" | "userCount" | "createdAt";
-type UserSortField = "name" | "email" | "role" | "privilege" | "createdAt";
+type UserSortField = "name" | "email" | "role" | "createdAt";
 
 const MS_MIN = 60 * 1000;
 const MS_HOUR = 60 * MS_MIN;
@@ -1018,8 +1019,27 @@ function AdminSidebar({
   const [userSuccess, setUserSuccess] = React.useState<string | null>(null);
   const [vehicleInventory, setVehicleInventory] = React.useState<AdminVehicleSummary[]>([]);
   const [vehicleTags, setVehicleTags] = React.useState<string[]>([]);
+  const [selectedVehicleIds, setSelectedVehicleIds] = React.useState<string[]>([]);
   const [allowedVehicleTags, setAllowedVehicleTags] = React.useState<string[]>([]);
+  const [restrictionsEnabled, setRestrictionsEnabled] = React.useState(false);
+  const [restrictionMode, setRestrictionMode] = React.useState<"include" | "exclude">("include");
+  const [restrictionSearch, setRestrictionSearch] = React.useState("");
+  const [restrictionFilterOpen, setRestrictionFilterOpen] = React.useState(false);
   const [vehicleLoading, setVehicleLoading] = React.useState(false);
+  const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [editUserId, setEditUserId] = React.useState<string | null>(null);
+  const [editUserName, setEditUserName] = React.useState<string | null>(null);
+  const [editUserRole, setEditUserRole] = React.useState<number | null>(null);
+  const [editRestrictionMode, setEditRestrictionMode] =
+    React.useState<"include" | "exclude">("include");
+  const [editRestrictionSearch, setEditRestrictionSearch] = React.useState("");
+  const [editRestrictionFilterOpen, setEditRestrictionFilterOpen] = React.useState(false);
+  const [editAllowedVehicleTags, setEditAllowedVehicleTags] = React.useState<string[]>([]);
+  const [editSelectedVehicleIds, setEditSelectedVehicleIds] = React.useState<string[]>([]);
+  const [editLoading, setEditLoading] = React.useState(false);
+  const [editSaving, setEditSaving] = React.useState(false);
+  const [editError, setEditError] = React.useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
 
   const fetchCompanies = React.useCallback(async () => {
     const query = new URLSearchParams();
@@ -1067,7 +1087,7 @@ function AdminSidebar({
   const fetchVehicles = React.useCallback(async () => {
     setVehicleLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL || ""}/dashboard/vehicles`, {
+      const res = await fetch(`${API_BASE_URL || ""}${VEHICLES_PATH}`, {
         credentials: "include",
       });
       if (!res.ok) {
@@ -1080,10 +1100,14 @@ function AdminSidebar({
       const normalized = vehicles.map((vehicle: any) => {
         const rawPlate = vehicle?.plate;
         const plate = typeof rawPlate === "string" ? rawPlate : rawPlate?.v || null;
-        const tags = Array.isArray(vehicle?.tags)
-          ? vehicle.tags.map((tag: any) => String(tag).trim()).filter(Boolean)
-          : [];
+        const rawTags = Array.isArray(vehicle?.tags)
+          ? vehicle.tags
+          : Array.isArray(vehicle?.details?.tags)
+            ? vehicle.details.tags
+            : [];
+        const tags = rawTags.map((tag: any) => String(tag).trim()).filter(Boolean);
         return {
+          id: vehicle?._id ? String(vehicle._id) : vehicle?.id ? String(vehicle.id) : null,
           imei: vehicle?.imei ?? null,
           nickname: vehicle?.nickname ?? null,
           plate,
@@ -1125,13 +1149,18 @@ function AdminSidebar({
     setUserPhone("");
     setUserEmail("");
     setUserPassword("");
-    setUserRole(isSuperAdmin ? 1 : 2);
-    setUserPrivilege(isSuperAdmin ? 2 : 3);
+    setUserPrivilege(isSuperAdmin ? 1 : 3);
+    setUserRole(isSuperAdmin ? 1 : 3);
     setUserStatus(0);
     setUserSubmitting(false);
     setUserError(null);
     setUserSuccess(null);
     setAllowedVehicleTags([]);
+    setSelectedVehicleIds([]);
+    setRestrictionsEnabled(false);
+    setRestrictionMode("include");
+    setRestrictionSearch("");
+    setRestrictionFilterOpen(false);
   };
 
   React.useEffect(() => {
@@ -1141,6 +1170,17 @@ function AdminSidebar({
       setUserCompanyName(sessionCompanyName);
     }
   }, [canManageUsers, isSuperAdmin, sessionCompanyId, sessionCompanyName]);
+
+  React.useEffect(() => {
+    setUserRole(userPrivilege);
+  }, [userPrivilege]);
+
+  React.useEffect(() => {
+    if (userPrivilege !== 3) {
+      setRestrictionsEnabled(false);
+      setSelectedVehicleIds([]);
+    }
+  }, [userPrivilege]);
 
   const clearModalForm = () => {
     setNewName("");
@@ -1169,6 +1209,46 @@ function AdminSidebar({
     if (!userModalOpen) return;
     fetchVehicles();
   }, [userModalOpen, fetchVehicles]);
+
+  React.useEffect(() => {
+    if (!editModalOpen || !editUserId) return;
+    fetchVehicles();
+    const loadUser = async () => {
+      setEditLoading(true);
+      setEditError(null);
+      try {
+        const res = await fetch(`${API_BASE_URL || ""}/api/admin/users/${editUserId}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json().catch(() => ({}));
+        const user = data?.user || {};
+        setEditUserRole(Number.isInteger(user.role) ? user.role : null);
+        setEditRestrictionMode(user.allowedVehicleIdsMode === "exclude" ? "exclude" : "include");
+        setEditAllowedVehicleTags(Array.isArray(user.allowedVehicleTags) ? user.allowedVehicleTags : []);
+        setEditSelectedVehicleIds(Array.isArray(user.allowedVehicleIds) ? user.allowedVehicleIds : []);
+      } catch (err: any) {
+        setEditError(err?.message || "Errore durante il caricamento.");
+      } finally {
+        setEditLoading(false);
+      }
+    };
+    void loadUser();
+  }, [editModalOpen, editUserId, fetchVehicles]);
+
+  React.useEffect(() => {
+    if (!userModalOpen) return;
+    setUserPrivilege(isSuperAdmin ? 1 : 3);
+    setUserRole(isSuperAdmin ? 1 : 3);
+    setRestrictionsEnabled(false);
+    setSelectedVehicleIds([]);
+    setAllowedVehicleTags([]);
+    setRestrictionMode("include");
+    setRestrictionSearch("");
+  }, [userModalOpen, isSuperAdmin]);
 
   const sortedCompanies = React.useMemo(() => {
     return sortWithDir(companies, companySort.dir, (company) => {
@@ -1269,10 +1349,15 @@ function AdminSidebar({
           email: userEmail.trim(),
           password: userPassword,
           companyId: userCompanyId,
-          role: userRole,
+          role: userPrivilege,
           privilege: userPrivilege,
           status: userStatus,
-          allowedVehicleTags: userPrivilege === 3 ? allowedVehicleTags : [],
+          allowedVehicleIds: userPrivilege === 3 && restrictionsEnabled ? selectedVehicleIds : [],
+          allowedVehicleIdsMode:
+            userPrivilege === 3 && restrictionsEnabled ? restrictionMode : "include",
+          allowedVehicleTags: userPrivilege === 3 && restrictionsEnabled ? allowedVehicleTags : [],
+          allowedVehicleTagsMode:
+            userPrivilege === 3 && restrictionsEnabled ? restrictionMode : "include",
         }),
       });
       if (!res.ok) {
@@ -1285,6 +1370,56 @@ function AdminSidebar({
       setUserError(err?.message || "Errore durante la registrazione utente.");
     } finally {
       setUserSubmitting(false);
+    }
+  };
+
+  const openEditRestrictions = (user: AdminUser) => {
+    setEditUserId(user.id);
+    setEditUserName(`${user.firstName} ${user.lastName}`.trim() || user.email);
+    setEditModalOpen(true);
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const resetEditModal = () => {
+    setEditUserId(null);
+    setEditUserName(null);
+    setEditUserRole(null);
+    setEditRestrictionMode("include");
+    setEditRestrictionSearch("");
+    setEditRestrictionFilterOpen(false);
+    setEditAllowedVehicleTags([]);
+    setEditSelectedVehicleIds([]);
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const handleSaveRestrictions = async () => {
+    if (!editUserId) return;
+    setEditSaving(true);
+    setEditError(null);
+    setEditSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE_URL || ""}/api/admin/users/${editUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          allowedVehicleIds: editSelectedVehicleIds,
+          allowedVehicleIdsMode: editRestrictionMode,
+          allowedVehicleTags: editAllowedVehicleTags,
+          allowedVehicleTagsMode: editRestrictionMode,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      setEditSuccess("Restrizioni aggiornate.");
+    } catch (err: any) {
+      setEditError(err?.message || "Errore durante il salvataggio.");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -1317,14 +1452,35 @@ function AdminSidebar({
   const companyGrid =
     "grid min-w-0 grid-cols-[minmax(0,2.2fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
   const userGrid =
-    "grid min-w-0 grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
+    "grid min-w-0 grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
   const filteredVehicles = React.useMemo(() => {
-    if (!allowedVehicleTags.length) return [];
-    const allowed = new Set(allowedVehicleTags);
-    return vehicleInventory.filter((vehicle) =>
-      Array.isArray(vehicle.tags) && vehicle.tags.some((tag) => allowed.has(tag)),
-    );
-  }, [allowedVehicleTags, vehicleInventory]);
+    const query = restrictionSearch.trim().toLowerCase();
+    const activeTags = new Set(allowedVehicleTags);
+    return vehicleInventory.filter((vehicle) => {
+      if (activeTags.size > 0) {
+        const hasTag = Array.isArray(vehicle.tags)
+          && vehicle.tags.some((tag) => activeTags.has(tag));
+        if (!hasTag) return false;
+      }
+      if (!query) return true;
+      const name = `${vehicle.nickname || ""} ${vehicle.plate || ""} ${vehicle.imei || ""}`.toLowerCase();
+      return name.includes(query);
+    });
+  }, [allowedVehicleTags, restrictionSearch, vehicleInventory]);
+  const editFilteredVehicles = React.useMemo(() => {
+    const query = editRestrictionSearch.trim().toLowerCase();
+    const activeTags = new Set(editAllowedVehicleTags);
+    return vehicleInventory.filter((vehicle) => {
+      if (activeTags.size > 0) {
+        const hasTag =
+          Array.isArray(vehicle.tags) && vehicle.tags.some((tag) => activeTags.has(tag));
+        if (!hasTag) return false;
+      }
+      if (!query) return true;
+      const name = `${vehicle.nickname || ""} ${vehicle.plate || ""} ${vehicle.imei || ""}`.toLowerCase();
+      return name.includes(query);
+    });
+  }, [editAllowedVehicleTags, editRestrictionSearch, vehicleInventory]);
 
   return (
     <div className="space-y-4">
@@ -1423,7 +1579,6 @@ function AdminSidebar({
               const sortedUsers = sortWithDir(filteredUsers, userSort.dir, (user) => {
                 if (userSort.field === "email") return user.email;
                 if (userSort.field === "role") return user.role ?? 99;
-                if (userSort.field === "privilege") return user.privilege ?? 99;
                 if (userSort.field === "createdAt") {
                   return user.createdAt ? new Date(user.createdAt).getTime() : 0;
                 }
@@ -1514,14 +1669,6 @@ function AdminSidebar({
                           dir={userSort.dir}
                           onClick={() => updateUserSort("role")}
                         />
-                        <div className="hidden sm:block">
-                          <SortButton
-                            label="Privilegio"
-                            active={userSort.field === "privilege"}
-                            dir={userSort.dir}
-                            onClick={() => updateUserSort("privilege")}
-                          />
-                        </div>
                         <SortButton
                           label="Creato"
                           active={userSort.field === "createdAt"}
@@ -1550,9 +1697,6 @@ function AdminSidebar({
                               {user.email}
                             </div>
                             <div className="text-white/70">{formatRoleLabel(user.role)}</div>
-                            <div className="hidden sm:block text-white/70">
-                              {user.privilege ?? "N/D"}
-                            </div>
                             <div className="text-white/70">{formatShortDate(user.createdAt)}</div>
                             <div className="flex justify-end">
                               <DropdownMenu>
@@ -1565,7 +1709,11 @@ function AdminSidebar({
                                   </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="min-w-[160px]">
-                                  <DropdownMenuItem>Modifica</DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onSelect={() => openEditRestrictions(user)}
+                                  >
+                                    Modifica
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem>Disattiva</DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -1919,82 +2067,174 @@ function AdminSidebar({
               </div>
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Ruolo
-                </label>
-                <select
-                  value={userRole}
-                  onChange={(e) => setUserRole(Number(e.target.value))}
-                  disabled={!isSuperAdmin}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                >
-                  <option value={1}>Admin</option>
-                  <option value={2}>Operatore</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
                   Privilegio
                 </label>
                 <select
                   value={userPrivilege}
                   onChange={(e) => setUserPrivilege(Number(e.target.value))}
-                  disabled={!isSuperAdmin}
                   className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
-                  {isSuperAdmin && <option value={0}>Super admin</option>}
-                  <option value={1}>Admin</option>
-                  <option value={2}>Utente</option>
-                  <option value={3}>Viewer</option>
+                  {isSuperAdmin ? (
+                    <>
+                      <option value={0}>Super admin</option>
+                      <option value={1}>Amministratore</option>
+                      <option value={2}>Utente</option>
+                      <option value={3}>Sola lettura</option>
+                    </>
+                  ) : (
+                    <option value={3}>Sola lettura</option>
+                  )}
                 </select>
               </div>
             </div>
 
             {userPrivilege === 3 && (
               <div className="mt-6 space-y-3">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">
-                  Veicoli consentiti (tag)
-                </p>
-                <TagInput
-                  value={allowedVehicleTags}
-                  onChange={setAllowedVehicleTags}
-                  suggestions={vehicleTags}
-                  storageKey="vehicleTags_allowed"
-                />
-                <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
-                    <span>Veicolo</span>
-                    <span>Tag</span>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {vehicleLoading ? (
-                      <div className="px-3 py-3 text-xs text-white/60">
-                        Caricamento veicoli...
-                      </div>
-                    ) : allowedVehicleTags.length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-white/60">
-                        Seleziona uno o piu tag per filtrare i veicoli.
-                      </div>
-                    ) : filteredVehicles.length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-white/60">
-                        Nessun veicolo corrispondente ai tag selezionati.
-                      </div>
-                    ) : (
-                      filteredVehicles.map((vehicle) => (
-                        <div
-                          key={vehicle.imei || `${vehicle.nickname}-${vehicle.plate}`}
-                          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/5"
+                <label className="flex items-center gap-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={restrictionsEnabled}
+                    onChange={(e) => setRestrictionsEnabled(e.target.checked)}
+                  />
+                  Restrizioni veicoli
+                </label>
+
+                {restrictionsEnabled && (
+                  <div className="rounded-xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRestrictionMode("include")}
+                        className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
+                          restrictionMode === "include"
+                            ? "border-white/40 text-white"
+                            : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+                        }`}
+                      >
+                        Mostra solo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRestrictionMode("exclude")}
+                        className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
+                          restrictionMode === "exclude"
+                            ? "border-white/40 text-white"
+                            : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+                        }`}
+                      >
+                        Tutti Tranne
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={restrictionSearch}
+                        onChange={(e) => setRestrictionSearch(e.target.value)}
+                        placeholder="Cerca veicolo..."
+                        className="flex-1 rounded-lg border border-white/10 bg-[#0b0b0d] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                      />
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setRestrictionFilterOpen((prev) => !prev)}
+                          className="h-9 w-9 rounded-lg border border-white/10 bg-white/5 text-white/70 hover:text-white hover:border-white/30 transition inline-flex items-center justify-center"
+                          aria-label="Filtra per tag"
                         >
-                          <span className="truncate">
-                            {vehicle.nickname || vehicle.plate || vehicle.imei || "Veicolo"}
-                          </span>
-                          <span className="truncate text-white/60">
-                            {(vehicle.tags || []).join(", ") || "--"}
-                          </span>
-                        </div>
-                      ))
-                    )}
+                          <i className="fa fa-filter" aria-hidden="true" />
+                        </button>
+                        {restrictionFilterOpen && (
+                          <div className="absolute right-0 mt-2 w-48 rounded-lg border border-white/10 bg-[#0b0b0d] shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+                            {vehicleTags.length === 0 ? (
+                              <div className="px-3 py-2 text-[11px] text-white/50">
+                                Nessun tag disponibile.
+                              </div>
+                            ) : (
+                              vehicleTags.map((tag) => {
+                                const isActive = allowedVehicleTags.includes(tag);
+                                return (
+                                  <button
+                                    key={tag}
+                                    type="button"
+                                    onClick={() =>
+                                      setAllowedVehicleTags((prev) =>
+                                        prev.includes(tag)
+                                          ? prev.filter((item) => item !== tag)
+                                          : [...prev, tag],
+                                      )
+                                    }
+                                    className="w-full px-3 py-2 text-left text-[11px] text-white/80 hover:bg-white/10 flex items-center justify-between"
+                                  >
+                                    <span className="truncate">{tag}</span>
+                                    <span className="text-white/40">
+                                      {isActive ? "OK" : ""}
+                                    </span>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+                        <span>Veicolo</span>
+                        <span>Tag</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        {vehicleLoading ? (
+                          <div className="px-3 py-3 text-xs text-white/60">
+                            Caricamento veicoli...
+                          </div>
+                        ) : filteredVehicles.length === 0 ? (
+                          <div className="px-3 py-3 text-xs text-white/60">
+                            Nessun veicolo corrispondente ai filtri.
+                          </div>
+                        ) : (
+                          filteredVehicles.map((vehicle) => {
+                            const vehicleKey =
+                              vehicle.id || vehicle.imei || `${vehicle.nickname}-${vehicle.plate}`;
+                            const selectionId = vehicle.id || null;
+                            const isSelected =
+                              selectionId ? selectedVehicleIds.includes(selectionId) : false;
+                            return (
+                              <button
+                                key={vehicleKey}
+                                type="button"
+                                onClick={() => {
+                                  if (!selectionId) return;
+                                  setSelectedVehicleIds((prev) =>
+                                    prev.includes(selectionId)
+                                      ? prev.filter((id) => id !== selectionId)
+                                      : [...prev, selectionId],
+                                  );
+                                }}
+                                disabled={!selectionId}
+                                className={`grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-left text-xs border-t border-white/5 transition ${
+                                  isSelected
+                                    ? "bg-white/10 text-white"
+                                    : "text-white/80 hover:bg-white/5"
+                                }`}
+                                aria-pressed={isSelected}
+                              >
+                                <span className="truncate">
+                                  {vehicle.nickname || vehicle.plate || vehicle.imei || "Veicolo"}
+                                </span>
+                                <span className="truncate text-white/60 flex items-center justify-between gap-2">
+                                  {(vehicle.tags || []).join(", ") || "--"}
+                                  <span className="text-white/50">
+                                    {isSelected ? "Selezionato" : ""}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -2024,6 +2264,202 @@ function AdminSidebar({
           </div>
         </div>
       )}
+
+      {editModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
+                  Restrizioni veicoli
+                </p>
+                <h3 className="text-lg font-semibold text-white">Modifica visibilita</h3>
+                <p className="text-sm text-white/60">
+                  Utente: {editUserName || "N/D"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditModalOpen(false);
+                  resetEditModal();
+                }}
+                className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                aria-label="Chiudi"
+              >
+                <i className="fa fa-close" aria-hidden="true" />
+              </button>
+            </div>
+
+            {editLoading ? (
+              <div className="mt-6 text-sm text-white/60">Caricamento utente...</div>
+            ) : editUserRole !== 3 ? (
+              <div className="mt-6 rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-3 text-sm text-white/70">
+                Le restrizioni veicoli sono disponibili solo per utenti sola lettura.
+              </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditRestrictionMode("include")}
+                    className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
+                      editRestrictionMode === "include"
+                        ? "border-white/40 text-white"
+                        : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+                    }`}
+                  >
+                    Mostra solo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditRestrictionMode("exclude")}
+                    className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
+                      editRestrictionMode === "exclude"
+                        ? "border-white/40 text-white"
+                        : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+                    }`}
+                  >
+                    Tutti Tranne
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    value={editRestrictionSearch}
+                    onChange={(e) => setEditRestrictionSearch(e.target.value)}
+                    placeholder="Cerca veicolo..."
+                    className="flex-1 rounded-lg border border-white/10 bg-[#0b0b0d] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setEditRestrictionFilterOpen((prev) => !prev)}
+                      className="h-9 w-9 rounded-lg border border-white/10 bg-white/5 text-white/70 hover:text-white hover:border-white/30 transition inline-flex items-center justify-center"
+                      aria-label="Filtra per tag"
+                    >
+                      <i className="fa fa-filter" aria-hidden="true" />
+                    </button>
+                    {editRestrictionFilterOpen && (
+                      <div className="absolute right-0 mt-2 w-48 rounded-lg border border-white/10 bg-[#0b0b0d] shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+                        {vehicleTags.length === 0 ? (
+                          <div className="px-3 py-2 text-[11px] text-white/50">
+                            Nessun tag disponibile.
+                          </div>
+                        ) : (
+                          vehicleTags.map((tag) => {
+                            const isActive = editAllowedVehicleTags.includes(tag);
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() =>
+                                  setEditAllowedVehicleTags((prev) =>
+                                    prev.includes(tag)
+                                      ? prev.filter((item) => item !== tag)
+                                      : [...prev, tag],
+                                  )
+                                }
+                                className="w-full px-3 py-2 text-left text-[11px] text-white/80 hover:bg-white/10 flex items-center justify-between"
+                              >
+                                <span className="truncate">{tag}</span>
+                                <span className="text-white/40">
+                                  {isActive ? "OK" : ""}
+                                </span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+                    <span>Veicolo</span>
+                    <span>Tag</span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {vehicleLoading ? (
+                      <div className="px-3 py-3 text-xs text-white/60">
+                        Caricamento veicoli...
+                      </div>
+                    ) : editFilteredVehicles.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-white/60">
+                        Nessun veicolo corrispondente ai filtri.
+                      </div>
+                    ) : (
+                      editFilteredVehicles.map((vehicle) => {
+                        const vehicleKey =
+                          vehicle.id || vehicle.imei || `${vehicle.nickname}-${vehicle.plate}`;
+                        const selectionId = vehicle.id || null;
+                        const isSelected =
+                          selectionId ? editSelectedVehicleIds.includes(selectionId) : false;
+                        return (
+                          <button
+                            key={vehicleKey}
+                            type="button"
+                            onClick={() => {
+                              if (!selectionId) return;
+                              setEditSelectedVehicleIds((prev) =>
+                                prev.includes(selectionId)
+                                  ? prev.filter((id) => id !== selectionId)
+                                  : [...prev, selectionId],
+                              );
+                            }}
+                            disabled={!selectionId}
+                            className={`grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-left text-xs border-t border-white/5 transition ${
+                              isSelected
+                                ? "bg-white/10 text-white"
+                                : "text-white/80 hover:bg-white/5"
+                            }`}
+                            aria-pressed={isSelected}
+                          >
+                            <span className="truncate">
+                              {vehicle.nickname || vehicle.plate || vehicle.imei || "Veicolo"}
+                            </span>
+                            <span className="truncate text-white/60 flex items-center justify-between gap-2">
+                              {(vehicle.tags || []).join(", ") || "--"}
+                              <span className="text-white/50">
+                                {isSelected ? "Selezionato" : ""}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {editError && <p className="mt-4 text-sm text-red-400">{editError}</p>}
+            {editSuccess && <p className="mt-4 text-sm text-emerald-300">{editSuccess}</p>}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditModalOpen(false);
+                  resetEditModal();
+                }}
+                className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveRestrictions}
+                disabled={editSaving || editLoading || editUserRole !== 3}
+                className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
+              >
+                {editSaving ? "Salvataggio..." : "Salva"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2041,6 +2477,7 @@ export function DriverSidebar({
     return `${window.location.protocol}//${window.location.hostname}:8080`;
   }, []);
   const [effectivePrivilege, setEffectivePrivilege] = React.useState<number | null>(null);
+  const [sessionRole, setSessionRole] = React.useState<number | null>(null);
   const [sessionCompanyId, setSessionCompanyId] = React.useState<string | null>(null);
   const [sessionCompanyName, setSessionCompanyName] = React.useState<string | null>(null);
   const initialCounters = React.useMemo(
@@ -2120,6 +2557,9 @@ export function DriverSidebar({
               : null;
         if (!cancelled) {
           setEffectivePrivilege(privilegeValue);
+          setSessionRole(
+            Number.isInteger(data?.user?.role) ? data.user.role : null,
+          );
           setSessionCompanyId(data?.user?.companyId ?? null);
           setSessionCompanyName(data?.user?.companyName ?? null);
         }
@@ -2202,7 +2642,13 @@ export function DriverSidebar({
           <AdminSidebar
             isOpen={isOpen}
             canManageUsers={canManageUsers}
-            isSuperAdmin={canManageVehicles}
+            isSuperAdmin={
+              Number.isInteger(sessionRole)
+                ? sessionRole === 0
+                : Number.isInteger(effectivePrivilege)
+                  ? effectivePrivilege === 0
+                  : false
+            }
             sessionLoaded={sessionLoaded}
             sessionCompanyId={sessionCompanyId}
             sessionCompanyName={sessionCompanyName}

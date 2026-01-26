@@ -14,12 +14,12 @@ const HISTORY_BUCKET_MS = 60_000;
 
 const getPrivilegeLevel = (user) => {
   if (!user) return 2;
-  if (Number.isInteger(user.privilege)) return user.privilege;
   if (Number.isInteger(user.role)) return user.role;
+  if (Number.isInteger(user.privilege)) return user.privilege;
   return 2;
 };
 
-const isSuperAdmin = (user) => getPrivilegeLevel(user) <= 1;
+const isSuperAdmin = (user) => getPrivilegeLevel(user) === 0;
 const canManageUsers = (user) => getPrivilegeLevel(user) <= 2;
 
 router.get('/session', async (req, res) => {
@@ -390,7 +390,10 @@ router.post('/admin/users', auth, async (req, res) => {
     role = 1,
     status = 0,
     privilege = 2,
+    allowedVehicleIds,
+    allowedVehicleIdsMode,
     allowedVehicleTags,
+    allowedVehicleTagsMode,
   } = req.body || {};
 
   if (!firstName || !lastName || !phone || !email || !password) {
@@ -407,15 +410,28 @@ router.post('/admin/users', auth, async (req, res) => {
     return [];
   };
 
+  const normalizeIds = (value) => {
+    if (Array.isArray(value)) {
+      return value.map((id) => String(id).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(',').map((id) => id.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
   const isAdmin = isSuperAdmin(req.user);
   const resolvedCompanyId = isAdmin ? companyId : req.user?.companyId;
   if (!resolvedCompanyId) {
     return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
   }
 
-  const resolvedRole = isAdmin && Number.isFinite(Number(role)) ? Number(role) : 2;
-  const resolvedPrivilege = isAdmin && Number.isFinite(Number(privilege)) ? Number(privilege) : 3;
+  const resolvedRole = isAdmin && Number.isFinite(Number(role)) ? Number(role) : 3;
+  const resolvedPrivilege = resolvedRole;
+  const resolvedIds = normalizeIds(allowedVehicleIds);
+  const resolvedIdsMode = allowedVehicleIdsMode === 'exclude' ? 'exclude' : 'include';
   const resolvedTags = normalizeTags(allowedVehicleTags);
+  const resolvedTagsMode = allowedVehicleTagsMode === 'exclude' ? 'exclude' : 'include';
 
   try {
     const user = await _Users.new(
@@ -428,7 +444,10 @@ router.post('/admin/users', auth, async (req, res) => {
       resolvedRole,
       Number(status),
       resolvedPrivilege,
-      resolvedTags,
+      resolvedPrivilege === 3 ? resolvedIds : [],
+      resolvedPrivilege === 3 ? resolvedIdsMode : 'include',
+      resolvedPrivilege === 3 ? resolvedTags : [],
+      resolvedPrivilege === 3 ? resolvedTagsMode : 'include',
     );
     return res.status(201).json({
       user: {
@@ -440,6 +459,118 @@ router.post('/admin/users', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('[api] /admin/users create error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/admin/users/:id', auth, async (req, res) => {
+  if (!canManageUsers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const userId = req.params.id;
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ error: 'BAD_REQUEST' });
+  }
+
+  try {
+    const user = await UserModel.findById(userId).lean();
+    if (!user) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    if (!isSuperAdmin(req.user) && String(user.companyId || '') !== String(req.user?.companyId || '')) {
+      return res.status(403).json({ error: 'FORBIDDEN' });
+    }
+
+    return res.status(200).json({
+      user: {
+        id: user._id?.toString?.() || user._id,
+        email: user.email,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        role: Number.isInteger(user.role) ? user.role : null,
+        privilege: Number.isInteger(user.privilege) ? user.privilege : null,
+        allowedVehicleIds: Array.isArray(user.allowedVehicleIds) ? user.allowedVehicleIds : [],
+        allowedVehicleIdsMode: user.allowedVehicleIdsMode === 'exclude' ? 'exclude' : 'include',
+        allowedVehicleTags: Array.isArray(user.allowedVehicleTags) ? user.allowedVehicleTags : [],
+        allowedVehicleTagsMode: user.allowedVehicleTagsMode === 'exclude' ? 'exclude' : 'include',
+      },
+    });
+  } catch (err) {
+    console.error('[api] /admin/users get error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.patch('/admin/users/:id', auth, async (req, res) => {
+  if (!canManageUsers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const userId = req.params.id;
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ error: 'BAD_REQUEST' });
+  }
+
+  const {
+    allowedVehicleIds,
+    allowedVehicleIdsMode,
+    allowedVehicleTags,
+    allowedVehicleTagsMode,
+  } = req.body || {};
+
+  const normalizeIds = (value) => {
+    if (Array.isArray(value)) {
+      return value.map((id) => String(id).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(',').map((id) => id.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
+  const normalizeTags = (value) => {
+    if (Array.isArray(value)) {
+      return value.map((tag) => String(tag).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
+  try {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    if (!isSuperAdmin(req.user) && String(user.companyId || '') !== String(req.user?.companyId || '')) {
+      return res.status(403).json({ error: 'FORBIDDEN' });
+    }
+
+    const targetRole = Number.isInteger(user.role) ? user.role : null;
+    if (targetRole !== 3) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Restrizioni applicabili solo a utenti sola lettura.' });
+    }
+
+    user.allowedVehicleIds = normalizeIds(allowedVehicleIds);
+    user.allowedVehicleIdsMode = allowedVehicleIdsMode === 'exclude' ? 'exclude' : 'include';
+    user.allowedVehicleTags = normalizeTags(allowedVehicleTags);
+    user.allowedVehicleTagsMode = allowedVehicleTagsMode === 'exclude' ? 'exclude' : 'include';
+    await user.save();
+
+    return res.status(200).json({
+      user: {
+        id: user._id?.toString?.() || user._id,
+        role: user.role,
+        allowedVehicleIds: user.allowedVehicleIds,
+        allowedVehicleIdsMode: user.allowedVehicleIdsMode,
+        allowedVehicleTags: user.allowedVehicleTags,
+        allowedVehicleTagsMode: user.allowedVehicleTagsMode,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /admin/users update error:', err);
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
@@ -483,19 +614,62 @@ router.get('/vehicles', auth, async (req, res) => {
     const privilegeLevel = getPrivilegeLevel(user);
     let rows = [];
 
-    if (privilegeLevel >= 3) {
+    if (privilegeLevel === 0) {
+      rows = await Vehicles.find({}).lean();
+    } else if (privilegeLevel >= 3) {
+      const allowedIds = Array.isArray(user.allowedVehicleIds)
+        ? user.allowedVehicleIds.map((id) => String(id).trim()).filter(Boolean)
+        : [];
+      const allowedIdsMode = user.allowedVehicleIdsMode === 'exclude' ? 'exclude' : 'include';
       const allowedTags = Array.isArray(user.allowedVehicleTags)
         ? user.allowedVehicleTags.map((tag) => String(tag).trim()).filter(Boolean)
         : [];
-      if (!allowedTags.length || !user.companyId) {
+      const allowedMode = user.allowedVehicleTagsMode === 'exclude' ? 'exclude' : 'include';
+      if (!user.companyId) {
         return res.status(200).json({ vehicles: [] });
       }
       const owners = await UserModel.find({ companyId: user.companyId }, { _id: 1 }).lean();
       const ownerIds = owners.map((owner) => owner._id);
-      rows = await Vehicles.find({
-        owner: { $in: ownerIds },
-        tags: { $in: allowedTags }
-      }).lean();
+
+      if (allowedIds.length) {
+        const normalizedIds = allowedIds
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+          .map((id) => new mongoose.Types.ObjectId(id));
+        if (!normalizedIds.length) {
+          return res.status(200).json({ vehicles: [] });
+        }
+        if (allowedIdsMode === 'exclude') {
+          rows = await Vehicles.find({
+            owner: { $in: ownerIds },
+            _id: { $nin: normalizedIds }
+          }).lean();
+        } else {
+          rows = await Vehicles.find({
+            owner: { $in: ownerIds },
+            _id: { $in: normalizedIds }
+          }).lean();
+        }
+      } else if (!allowedTags.length) {
+        if (allowedMode === 'exclude') {
+          rows = await Vehicles.find({ owner: { $in: ownerIds } }).lean();
+        } else {
+          return res.status(200).json({ vehicles: [] });
+        }
+      } else if (allowedMode === 'exclude') {
+        rows = await Vehicles.find({
+          owner: { $in: ownerIds },
+          tags: { $nin: allowedTags }
+        }).lean();
+      } else {
+        rows = await Vehicles.find({
+          owner: { $in: ownerIds },
+          tags: { $in: allowedTags }
+        }).lean();
+      }
+    } else if (user.companyId) {
+      const owners = await UserModel.find({ companyId: user.companyId }, { _id: 1 }).lean();
+      const ownerIds = owners.map((owner) => owner._id);
+      rows = await Vehicles.find({ owner: { $in: ownerIds } }).lean();
     } else {
       const ownerValues = [user.id];
       if (mongoose.Types.ObjectId.isValid(user.id)) {

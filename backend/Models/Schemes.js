@@ -90,7 +90,10 @@ const UserSchema = new mongoose.Schema({
   drivers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Driver" }],
   role: { type: Number, enum: [0, 1, 2, 3], default: 1 },
   privilege: { type: Number, enum: [0, 1, 2, 3], default: 2 }, // 0/1=admin,2=user,3=viewer
+  allowedVehicleIds: { type: [String], default: [] },
+  allowedVehicleIdsMode: { type: String, enum: ["include", "exclude"], default: "include" },
   allowedVehicleTags: { type: [String], default: [] },
+  allowedVehicleTagsMode: { type: String, enum: ["include", "exclude"], default: "include" },
   status: { type: Number, enum: [0, 1, 2], default: 0 },
   lastSessionEnc: { type: String, default: null },    // JSON criptato
 }, { timestamps: true });
