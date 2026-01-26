@@ -89,7 +89,8 @@ const UserSchema = new mongoose.Schema({
   vehicles: [{ type: mongoose.Schema.Types.ObjectId, ref: "Vehicle" }],
   drivers: [{ type: mongoose.Schema.Types.ObjectId, ref: "Driver" }],
   role: { type: Number, enum: [0, 1, 2, 3], default: 1 },
-  privilege: { type: Number, enum: [0, 1, 2], default: 2 }, // 0=admin,1=editor,2=readonly
+  privilege: { type: Number, enum: [0, 1, 2, 3], default: 2 }, // 0/1=admin,2=user,3=viewer
+  allowedVehicleTags: { type: [String], default: [] },
   status: { type: Number, enum: [0, 1, 2], default: 0 },
   lastSessionEnc: { type: String, default: null },    // JSON criptato
 }, { timestamps: true });

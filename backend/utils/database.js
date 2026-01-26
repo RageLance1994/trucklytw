@@ -68,7 +68,7 @@ class Users {
         return await this.model.find({});
     }
 
-    async new(firstName, lastName, phone, email, password, companyId, role = 1, status = 0, privilege = 2) {
+    async new(firstName, lastName, phone, email, password, companyId, role = 1, status = 0, privilege = 2, allowedVehicleTags = []) {
         try {
             const passwordHash = await bcrypt.hash(password, 10);
 
@@ -83,6 +83,7 @@ class Users {
                 drivers: [],
                 role,
                 privilege,
+                allowedVehicleTags,
                 status,
                 lastSession: {
                     ip: "127.0.0.1",
@@ -178,8 +179,25 @@ class User {
     // -------------------------------
     // Vehicles API
     async listVehicles() {
+        const privilegeLevel = this.getPrivilegeLevel();
+        const allowedTags = Array.isArray(this.allowedVehicleTags)
+            ? this.allowedVehicleTags.map((tag) => String(tag).trim()).filter(Boolean)
+            : [];
+        let res = [];
 
-        var res = await Models.Vehicles.find({ owner: this.id }).lean();
+        if (privilegeLevel >= 3) {
+            if (!allowedTags.length || !this.companyId) {
+                return [];
+            }
+            const owners = await Models.UserModel.find({ companyId: this.companyId }, { _id: 1 }).lean();
+            const ownerIds = owners.map((user) => user._id);
+            res = await Models.Vehicles.find({
+                owner: { $in: ownerIds },
+                tags: { $in: allowedTags }
+            }).lean();
+        } else {
+            res = await Models.Vehicles.find({ owner: this.id }).lean();
+        }
         res.forEach((v) => {
             Object.keys(v).filter(element => element.includes('Enc')).map((k) => {
                 var newKey = k.split('Enc')[0]

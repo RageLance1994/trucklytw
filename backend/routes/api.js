@@ -12,10 +12,15 @@ const { TachoSync } = require('../utils/tacho');
 const router = express.Router();
 const HISTORY_BUCKET_MS = 60_000;
 
-const isSuperAdmin = (user) => {
-  const role = Number.isInteger(user?.role) ? user.role : null;
-  return Number.isInteger(role) && role <= 1;
+const getPrivilegeLevel = (user) => {
+  if (!user) return 2;
+  if (Number.isInteger(user.privilege)) return user.privilege;
+  if (Number.isInteger(user.role)) return user.role;
+  return 2;
 };
+
+const isSuperAdmin = (user) => getPrivilegeLevel(user) <= 1;
+const canManageUsers = (user) => getPrivilegeLevel(user) <= 2;
 
 router.get('/session', async (req, res) => {
   const token = req.cookies?.auth_token;
@@ -50,6 +55,7 @@ router.get('/session', async (req, res) => {
         companyName,
         role: Number.isInteger(user.role) ? user.role : null,
         privilege: Number.isInteger(user.privilege) ? user.privilege : null,
+        effectivePrivilege: getPrivilegeLevel(user),
       },
     });
   } catch (err) {
@@ -59,7 +65,8 @@ router.get('/session', async (req, res) => {
 });
 
 router.get('/admin/companies', auth, async (req, res) => {
-  if (!isSuperAdmin(req.user)) {
+  const privilegeLevel = getPrivilegeLevel(req.user);
+  if (privilegeLevel > 2) {
     return res.status(403).json({ error: 'FORBIDDEN' });
   }
 
@@ -73,6 +80,42 @@ router.get('/admin/companies', auth, async (req, res) => {
   const filter = search ? { name: { $regex: search, $options: 'i' } } : {};
 
   try {
+    if (!isSuperAdmin(req.user)) {
+      const companyId = req.user?.companyId || null;
+      if (!companyId) {
+        return res.status(200).json({ companies: [] });
+      }
+      const company = await Companies.findById(companyId).lean();
+      if (!company) {
+        return res.status(200).json({ companies: [] });
+      }
+      const users = await UserModel.find({ companyId }).lean();
+      const list = users.map((user) => ({
+        id: user._id?.toString?.() || user._id,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email,
+        role: Number.isInteger(user.role) ? user.role : null,
+        privilege: Number.isInteger(user.privilege) ? user.privilege : null,
+        status: Number.isInteger(user.status) ? user.status : null,
+        createdAt: user.createdAt || null,
+      }));
+      list.sort((a, b) => (a.privilege ?? 99) - (b.privilege ?? 99));
+      return res.status(200).json({
+        companies: [
+          {
+            id: company._id?.toString?.() || company._id,
+            name: company.name,
+            status: company.status ?? 0,
+            createdAt: company.createdAt || null,
+            updatedAt: company.updatedAt || null,
+            userCount: list.length,
+            users: list,
+          },
+        ],
+      });
+    }
+
     const companies = await Companies.find(filter).sort({ [sortField]: sortDir }).lean();
     const companyIds = companies.map((company) => company._id);
     const users = await UserModel.find({ companyId: { $in: companyIds } }).lean();
@@ -333,7 +376,7 @@ router.get('/tacho/files/download', auth, async (req, res) => {
 });
 
 router.post('/admin/users', auth, async (req, res) => {
-  if (!isSuperAdmin(req.user)) {
+  if (!canManageUsers(req.user)) {
     return res.status(403).json({ error: 'FORBIDDEN' });
   }
 
@@ -347,11 +390,32 @@ router.post('/admin/users', auth, async (req, res) => {
     role = 1,
     status = 0,
     privilege = 2,
+    allowedVehicleTags,
   } = req.body || {};
 
-  if (!firstName || !lastName || !phone || !email || !password || !companyId) {
+  if (!firstName || !lastName || !phone || !email || !password) {
     return res.status(400).json({ error: 'BAD_REQUEST', message: 'Campi obbligatori mancanti.' });
   }
+
+  const normalizeTags = (value) => {
+    if (Array.isArray(value)) {
+      return value.map((tag) => String(tag).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
+  const isAdmin = isSuperAdmin(req.user);
+  const resolvedCompanyId = isAdmin ? companyId : req.user?.companyId;
+  if (!resolvedCompanyId) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+  }
+
+  const resolvedRole = isAdmin && Number.isFinite(Number(role)) ? Number(role) : 2;
+  const resolvedPrivilege = isAdmin && Number.isFinite(Number(privilege)) ? Number(privilege) : 3;
+  const resolvedTags = normalizeTags(allowedVehicleTags);
 
   try {
     const user = await _Users.new(
@@ -360,10 +424,11 @@ router.post('/admin/users', auth, async (req, res) => {
       String(phone),
       String(email),
       String(password),
-      companyId,
-      Number(role),
+      resolvedCompanyId,
+      resolvedRole,
       Number(status),
-      Number(privilege),
+      resolvedPrivilege,
+      resolvedTags,
     );
     return res.status(201).json({
       user: {
@@ -415,12 +480,29 @@ router.get('/vehicles', auth, async (req, res) => {
       return res.status(401).json({ error: 'UNAUTHORIZED' });
     }
 
-    const ownerValues = [user.id];
-    if (mongoose.Types.ObjectId.isValid(user.id)) {
-      ownerValues.push(new mongoose.Types.ObjectId(user.id));
-    }
+    const privilegeLevel = getPrivilegeLevel(user);
+    let rows = [];
 
-    const rows = await Vehicles.find({ owner: { $in: ownerValues } }).lean();
+    if (privilegeLevel >= 3) {
+      const allowedTags = Array.isArray(user.allowedVehicleTags)
+        ? user.allowedVehicleTags.map((tag) => String(tag).trim()).filter(Boolean)
+        : [];
+      if (!allowedTags.length || !user.companyId) {
+        return res.status(200).json({ vehicles: [] });
+      }
+      const owners = await UserModel.find({ companyId: user.companyId }, { _id: 1 }).lean();
+      const ownerIds = owners.map((owner) => owner._id);
+      rows = await Vehicles.find({
+        owner: { $in: ownerIds },
+        tags: { $in: allowedTags }
+      }).lean();
+    } else {
+      const ownerValues = [user.id];
+      if (mongoose.Types.ObjectId.isValid(user.id)) {
+        ownerValues.push(new mongoose.Types.ObjectId(user.id));
+      }
+      rows = await Vehicles.find({ owner: { $in: ownerValues } }).lean();
+    }
 
     // For each vehicle, fetch the latest monitoring document to derive lat/lon
     const vehiclesWithNulls = await Promise.all(

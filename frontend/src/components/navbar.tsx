@@ -17,7 +17,8 @@ export function Navbar() {
   const [search, setSearch] = React.useState("");
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [companyName, setCompanyName] = React.useState("Account");
-  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
+  const [canManageUsers, setCanManageUsers] = React.useState(false);
+  const [canManageVehicles, setCanManageVehicles] = React.useState(false);
   const headerRef = React.useRef<HTMLElement | null>(null);
   const [mobileSection, setMobileSection] = React.useState<
     "flotta" | "analisi" | "mappe" | "impostazioni" | null
@@ -110,8 +111,16 @@ export function Navbar() {
         if (!cancelled && data?.user?.companyName) {
           setCompanyName(data.user.companyName);
         }
-        if (!cancelled && Number.isInteger(data?.user?.role)) {
-          setIsSuperAdmin(data.user.role <= 1);
+        const privilegeValue = Number.isInteger(data?.user?.effectivePrivilege)
+          ? data.user.effectivePrivilege
+          : Number.isInteger(data?.user?.privilege)
+            ? data.user.privilege
+            : Number.isInteger(data?.user?.role)
+              ? data.user.role
+              : null;
+        if (!cancelled) {
+          setCanManageUsers(Number.isInteger(privilegeValue) && privilegeValue <= 2);
+          setCanManageVehicles(Number.isInteger(privilegeValue) && privilegeValue <= 1);
         }
       } catch (err) {
         console.warn("[Navbar] session lookup failed", err);
@@ -277,16 +286,18 @@ export function Navbar() {
                       Veicoli
                     </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            window.dispatchEvent(
-                              new CustomEvent("truckly:vehicle-register-open"),
-                            )
-                          }
-                        >
-                          <i className="fa fa-plus mr-2 text-[12px]" aria-hidden="true" />
-                          Registra nuovo
-                        </DropdownMenuItem>
+                        {canManageVehicles && (
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              window.dispatchEvent(
+                                new CustomEvent("truckly:vehicle-register-open"),
+                              )
+                            }
+                          >
+                            <i className="fa fa-plus mr-2 text-[12px]" aria-hidden="true" />
+                            Registra nuovo
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem>
                           <i className="fa fa-table mr-2 text-[12px]" aria-hidden="true" />
                           Tabelle
@@ -564,7 +575,7 @@ export function Navbar() {
                 </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="min-w-[160px]">
-                  {isSuperAdmin && (
+                  {canManageUsers && (
                     <DropdownMenuItem
                       onSelect={() =>
                         window.dispatchEvent(new CustomEvent("truckly:admin-open"))
@@ -947,7 +958,7 @@ export function Navbar() {
               </svg>
             </summary>
             <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
-              {isSuperAdmin && (
+              {canManageUsers && (
                 <button
                   className="w-full px-2 py-1 text-left hover:text-white transition"
                   onClick={() => {

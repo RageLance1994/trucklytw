@@ -1256,7 +1256,7 @@ function FuelDashboard({
                 <button
                   type="button"
                   onClick={openFullscreenChart}
-                  className="absolute right-3 top-3 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/80 backdrop-blur hover:text-white hover:border-white/40 transition"
+                  className="absolute right-3 top-3 z-20 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/80 backdrop-blur hover:text-white hover:border-white/40 transition"
                 >
                   Mostra a tutto schermo
                 </button>

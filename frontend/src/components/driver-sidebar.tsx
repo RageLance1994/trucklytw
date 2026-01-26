@@ -68,6 +68,13 @@ type AdminCompany = {
   users: AdminUser[];
 };
 
+type AdminVehicleSummary = {
+  imei?: string | null;
+  nickname?: string | null;
+  plate?: string | null;
+  tags?: string[];
+};
+
 type TachoCompany = {
   id: string;
   name: string;
@@ -950,7 +957,21 @@ function SortButton({
   );
 }
 
-function AdminSidebar({ isOpen }: { isOpen: boolean }) {
+function AdminSidebar({
+  isOpen,
+  canManageUsers,
+  isSuperAdmin,
+  sessionLoaded,
+  sessionCompanyId,
+  sessionCompanyName,
+}: {
+  isOpen: boolean;
+  canManageUsers: boolean;
+  isSuperAdmin: boolean;
+  sessionLoaded: boolean;
+  sessionCompanyId: string | null;
+  sessionCompanyName: string | null;
+}) {
   const [companies, setCompanies] = React.useState<AdminCompany[]>([]);
   const [search, setSearch] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -995,6 +1016,10 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
   const [userSubmitting, setUserSubmitting] = React.useState(false);
   const [userError, setUserError] = React.useState<string | null>(null);
   const [userSuccess, setUserSuccess] = React.useState<string | null>(null);
+  const [vehicleInventory, setVehicleInventory] = React.useState<AdminVehicleSummary[]>([]);
+  const [vehicleTags, setVehicleTags] = React.useState<string[]>([]);
+  const [allowedVehicleTags, setAllowedVehicleTags] = React.useState<string[]>([]);
+  const [vehicleLoading, setVehicleLoading] = React.useState(false);
 
   const fetchCompanies = React.useCallback(async () => {
     const query = new URLSearchParams();
@@ -1039,6 +1064,46 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
     }
   }, []);
 
+  const fetchVehicles = React.useCallback(async () => {
+    setVehicleLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL || ""}/dashboard/vehicles`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setVehicleInventory([]);
+        setVehicleTags([]);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      const vehicles = Array.isArray(data?.vehicles) ? data.vehicles : [];
+      const normalized = vehicles.map((vehicle: any) => {
+        const rawPlate = vehicle?.plate;
+        const plate = typeof rawPlate === "string" ? rawPlate : rawPlate?.v || null;
+        const tags = Array.isArray(vehicle?.tags)
+          ? vehicle.tags.map((tag: any) => String(tag).trim()).filter(Boolean)
+          : [];
+        return {
+          imei: vehicle?.imei ?? null,
+          nickname: vehicle?.nickname ?? null,
+          plate,
+          tags,
+        } as AdminVehicleSummary;
+      });
+      const tagSet = new Set<string>();
+      normalized.forEach((vehicle) => {
+        vehicle.tags?.forEach((tag) => tagSet.add(tag));
+      });
+      setVehicleInventory(normalized);
+      setVehicleTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b, "it")));
+    } catch (err) {
+      setVehicleInventory([]);
+      setVehicleTags([]);
+    } finally {
+      setVehicleLoading(false);
+    }
+  }, []);
+
   const resetModal = () => {
     setActiveTab("new");
     setNewName("");
@@ -1060,13 +1125,22 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
     setUserPhone("");
     setUserEmail("");
     setUserPassword("");
-    setUserRole(1);
-    setUserPrivilege(2);
+    setUserRole(isSuperAdmin ? 1 : 2);
+    setUserPrivilege(isSuperAdmin ? 2 : 3);
     setUserStatus(0);
     setUserSubmitting(false);
     setUserError(null);
     setUserSuccess(null);
+    setAllowedVehicleTags([]);
   };
+
+  React.useEffect(() => {
+    if (!canManageUsers || isSuperAdmin) return;
+    if (sessionCompanyId) {
+      setUserCompanyId(sessionCompanyId);
+      setUserCompanyName(sessionCompanyName);
+    }
+  }, [canManageUsers, isSuperAdmin, sessionCompanyId, sessionCompanyName]);
 
   const clearModalForm = () => {
     setNewName("");
@@ -1081,13 +1155,20 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
   };
 
   React.useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen || !canManageUsers) return undefined;
     const handle = window.setTimeout(() => {
       fetchCompanies();
-      fetchTachoCompanies();
+      if (isSuperAdmin) {
+        fetchTachoCompanies();
+      }
     }, 200);
     return () => window.clearTimeout(handle);
-  }, [isOpen, fetchCompanies, fetchTachoCompanies, search]);
+  }, [isOpen, canManageUsers, isSuperAdmin, fetchCompanies, fetchTachoCompanies, search]);
+
+  React.useEffect(() => {
+    if (!userModalOpen) return;
+    fetchVehicles();
+  }, [userModalOpen, fetchVehicles]);
 
   const sortedCompanies = React.useMemo(() => {
     return sortWithDir(companies, companySort.dir, (company) => {
@@ -1191,6 +1272,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
           role: userRole,
           privilege: userPrivilege,
           status: userStatus,
+          allowedVehicleTags: userPrivilege === 3 ? allowedVehicleTags : [],
         }),
       });
       if (!res.ok) {
@@ -1236,25 +1318,45 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
     "grid min-w-0 grid-cols-[minmax(0,2.2fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
   const userGrid =
     "grid min-w-0 grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
+  const filteredVehicles = React.useMemo(() => {
+    if (!allowedVehicleTags.length) return [];
+    const allowed = new Set(allowedVehicleTags);
+    return vehicleInventory.filter((vehicle) =>
+      Array.isArray(vehicle.tags) && vehicle.tags.some((tag) => allowed.has(tag)),
+    );
+  }, [allowedVehicleTags, vehicleInventory]);
 
   return (
     <div className="space-y-4">
+      {!sessionLoaded && (
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 text-sm text-white/70 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+          Caricamento autorizzazioni...
+        </div>
+      )}
+      {sessionLoaded && !canManageUsers && (
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 text-sm text-white/70 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+          Non hai i permessi per gestire gli utenti.
+        </div>
+      )}
+      {sessionLoaded && canManageUsers && (
       <div className="rounded-2xl border border-white/10 bg-[#121212] p-3 sm:p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">Aziende</p>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setModalOpen(true);
-                setRegisterSuccess(null);
-                setTachoError(null);
-              }}
-              className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-            >
-              <i className="fa fa-plus mr-2" aria-hidden="true" />
-              Registra azienda
-            </button>
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setModalOpen(true);
+                  setRegisterSuccess(null);
+                  setTachoError(null);
+                }}
+                className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+              >
+                <i className="fa fa-plus mr-2" aria-hidden="true" />
+                Registra azienda
+              </button>
+            )}
             <button
               type="button"
               onClick={fetchCompanies}
@@ -1357,9 +1459,19 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                             <i className="fa fa-ellipsis-h text-[11px]" aria-hidden="true" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[160px]">
-                          <DropdownMenuItem>Nuovo utente</DropdownMenuItem>
-                          <DropdownMenuItem>Dettagli azienda</DropdownMenuItem>
+                      <DropdownMenuContent align="end" className="min-w-[160px]">
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setUserCompanyId(company.id);
+                              setUserCompanyName(company.name);
+                              setUserModalOpen(true);
+                              setUserSuccess(null);
+                              setUserError(null);
+                            }}
+                          >
+                            Nuovo utente
+                          </DropdownMenuItem>
+                          {isSuperAdmin && <DropdownMenuItem>Dettagli azienda</DropdownMenuItem>}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1434,9 +1546,13 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                             <div className="min-w-0 truncate">
                               {`${user.firstName} ${user.lastName}`.trim() || user.email}
                             </div>
-                            <div className="hidden sm:block min-w-0 truncate text-white/70">{user.email}</div>
+                            <div className="hidden sm:block min-w-0 truncate text-white/70">
+                              {user.email}
+                            </div>
                             <div className="text-white/70">{formatRoleLabel(user.role)}</div>
-                            <div className="hidden sm:block text-white/70">{user.privilege ?? "N/D"}</div>
+                            <div className="hidden sm:block text-white/70">
+                              {user.privilege ?? "N/D"}
+                            </div>
                             <div className="text-white/70">{formatShortDate(user.createdAt)}</div>
                             <div className="flex justify-end">
                               <DropdownMenu>
@@ -1456,7 +1572,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                             </div>
                           </div>
                         ))
-                          )}
+                      )}
                     </div>
                   )}
                 </div>
@@ -1465,6 +1581,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
           )}
         </div>
       </div>
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
@@ -1807,6 +1924,7 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                 <select
                   value={userRole}
                   onChange={(e) => setUserRole(Number(e.target.value))}
+                  disabled={!isSuperAdmin}
                   className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
                   <option value={1}>Admin</option>
@@ -1820,14 +1938,65 @@ function AdminSidebar({ isOpen }: { isOpen: boolean }) {
                 <select
                   value={userPrivilege}
                   onChange={(e) => setUserPrivilege(Number(e.target.value))}
+                  disabled={!isSuperAdmin}
                   className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
-                  <option value={0}>Admin</option>
-                  <option value={1}>Editor</option>
-                  <option value={2}>Readonly</option>
+                  {isSuperAdmin && <option value={0}>Super admin</option>}
+                  <option value={1}>Admin</option>
+                  <option value={2}>Utente</option>
+                  <option value={3}>Viewer</option>
                 </select>
               </div>
             </div>
+
+            {userPrivilege === 3 && (
+              <div className="mt-6 space-y-3">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">
+                  Veicoli consentiti (tag)
+                </p>
+                <TagInput
+                  value={allowedVehicleTags}
+                  onChange={setAllowedVehicleTags}
+                  suggestions={vehicleTags}
+                  storageKey="vehicleTags_allowed"
+                />
+                <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+                    <span>Veicolo</span>
+                    <span>Tag</span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {vehicleLoading ? (
+                      <div className="px-3 py-3 text-xs text-white/60">
+                        Caricamento veicoli...
+                      </div>
+                    ) : allowedVehicleTags.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-white/60">
+                        Seleziona uno o piu tag per filtrare i veicoli.
+                      </div>
+                    ) : filteredVehicles.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-white/60">
+                        Nessun veicolo corrispondente ai tag selezionati.
+                      </div>
+                    ) : (
+                      filteredVehicles.map((vehicle) => (
+                        <div
+                          key={vehicle.imei || `${vehicle.nickname}-${vehicle.plate}`}
+                          className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/5"
+                        >
+                          <span className="truncate">
+                            {vehicle.nickname || vehicle.plate || vehicle.imei || "Veicolo"}
+                          </span>
+                          <span className="truncate text-white/60">
+                            {(vehicle.tags || []).join(", ") || "--"}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {userError && <p className="mt-4 text-sm text-red-400">{userError}</p>}
             {userSuccess && <p className="mt-4 text-sm text-emerald-300">{userSuccess}</p>}
@@ -1871,6 +2040,9 @@ export function DriverSidebar({
     if (typeof window === "undefined") return "";
     return `${window.location.protocol}//${window.location.hostname}:8080`;
   }, []);
+  const [effectivePrivilege, setEffectivePrivilege] = React.useState<number | null>(null);
+  const [sessionCompanyId, setSessionCompanyId] = React.useState<string | null>(null);
+  const [sessionCompanyName, setSessionCompanyName] = React.useState<string | null>(null);
   const initialCounters = React.useMemo(
     () => buildCounterBars(emptyParams()),
     [],
@@ -1885,6 +2057,11 @@ export function DriverSidebar({
   const isGeofenceMode = mode === "geofence";
   const isVehicleMode = mode === "vehicle";
   const isAdminMode = mode === "admin";
+  const sessionLoaded = effectivePrivilege !== null;
+  const canManageVehicles =
+    Number.isInteger(effectivePrivilege) && effectivePrivilege <= 1;
+  const canManageUsers =
+    Number.isInteger(effectivePrivilege) && effectivePrivilege <= 2;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1922,6 +2099,39 @@ export function DriverSidebar({
       cancelled = true;
     };
   }, [isOpen, driver1Id, hasDriver1, routesBaseUrl, initialCounters, isAdminMode]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!isOpen) return () => {};
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/session`, {
+          cache: "no-store" as RequestCache,
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        const privilegeValue = Number.isInteger(data?.user?.effectivePrivilege)
+          ? data.user.effectivePrivilege
+          : Number.isInteger(data?.user?.privilege)
+            ? data.user.privilege
+            : Number.isInteger(data?.user?.role)
+              ? data.user.role
+              : null;
+        if (!cancelled) {
+          setEffectivePrivilege(privilegeValue);
+          setSessionCompanyId(data?.user?.companyId ?? null);
+          setSessionCompanyName(data?.user?.companyName ?? null);
+        }
+      } catch (err) {
+        console.warn("[DriverSidebar] session lookup failed", err);
+      }
+    };
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   return (
     <aside
@@ -1975,9 +2185,28 @@ export function DriverSidebar({
         ) : isRoutesMode ? (
           <RoutesSidebar isOpen={isOpen} selectedVehicleImei={selectedRouteImei} />
         ) : isVehicleMode ? (
-          <VehicleRegistrationSidebar isOpen={isOpen} />
+          !sessionLoaded ? (
+            <Section
+              title="Verifica permessi"
+              body="Caricamento autorizzazioni in corso..."
+            />
+          ) : canManageVehicles ? (
+            <VehicleRegistrationSidebar isOpen={isOpen} />
+          ) : (
+            <Section
+              title="Accesso limitato"
+              body="Non hai i permessi per registrare nuovi veicoli."
+            />
+          )
         ) : isAdminMode ? (
-          <AdminSidebar isOpen={isOpen} />
+          <AdminSidebar
+            isOpen={isOpen}
+            canManageUsers={canManageUsers}
+            isSuperAdmin={canManageVehicles}
+            sessionLoaded={sessionLoaded}
+            sessionCompanyId={sessionCompanyId}
+            sessionCompanyName={sessionCompanyName}
+          />
         ) : (
           <>
             <Section
