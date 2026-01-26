@@ -2496,7 +2496,7 @@ export function DriverSidebar({
   const isAdminMode = mode === "admin";
   const sessionLoaded = effectivePrivilege !== null;
   const canManageVehicles =
-    Number.isInteger(effectivePrivilege) && effectivePrivilege <= 1;
+    Number.isInteger(effectivePrivilege) && effectivePrivilege === 0;
   const canManageUsers =
     Number.isInteger(effectivePrivilege) && effectivePrivilege <= 2;
 
@@ -2631,7 +2631,10 @@ export function DriverSidebar({
               body="Caricamento autorizzazioni in corso..."
             />
           ) : canManageVehicles ? (
-            <VehicleRegistrationSidebar isOpen={isOpen} />
+            <VehicleRegistrationSidebar
+              isOpen={isOpen}
+              isSuperAdmin={Number.isInteger(effectivePrivilege) && effectivePrivilege === 0}
+            />
           ) : (
             <Section
               title="Accesso limitato"
@@ -2727,8 +2730,18 @@ export function DriverSidebar({
   );
 }
 
-function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
+function VehicleRegistrationSidebar({
+  isOpen,
+  isSuperAdmin,
+}: {
+  isOpen: boolean;
+  isSuperAdmin: boolean;
+}) {
   const imeiRegex = /^\d{15}$/;
+  const [companyOptions, setCompanyOptions] = React.useState<AdminCompany[]>([]);
+  const [companyId, setCompanyId] = React.useState("");
+  const [companyLoading, setCompanyLoading] = React.useState(false);
+  const [companyError, setCompanyError] = React.useState<string | null>(null);
   const [nickname, setNickname] = React.useState("");
   const [plate, setPlate] = React.useState("");
   const [brand, setBrand] = React.useState("");
@@ -2765,6 +2778,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
   const tank2UnitValid = !secondTankEnabled || Boolean(tank2Unit);
 
   const canSubmit =
+    (!isSuperAdmin || companyId.trim().length > 0) &&
     nickname.trim().length > 0 &&
     plate.trim().length > 3 &&
     brand.trim().length > 0 &&
@@ -2794,6 +2808,31 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
       fn(targetImei);
     }
   }, []);
+
+  React.useEffect(() => {
+    if (!isOpen || !isSuperAdmin) return;
+    const loadCompanies = async () => {
+      setCompanyLoading(true);
+      setCompanyError(null);
+      try {
+        const res = await fetch(`${API_BASE_URL || ""}/api/admin/companies`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data?.companies) ? data.companies : [];
+        setCompanyOptions(list);
+      } catch (err: any) {
+        setCompanyError(err?.message || "Errore durante il caricamento aziende.");
+      } finally {
+        setCompanyLoading(false);
+      }
+    };
+    void loadCompanies();
+  }, [isOpen, isSuperAdmin]);
 
   React.useEffect(() => {
     if (!isOpen || !imeiValid) {
@@ -2890,6 +2929,10 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
       tags,
     };
 
+    if (isSuperAdmin && companyId.trim()) {
+      payload.companyId = companyId.trim();
+    }
+
     const details: any = {
       tanks: {
         primary: {
@@ -2932,6 +2975,7 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
       }
 
       setSuccess(`Veicolo ${payload.nickname} registrato.`);
+      setCompanyId("");
       setNickname("");
       setPlate("");
       setBrand("");
@@ -2981,6 +3025,30 @@ function VehicleRegistrationSidebar({ isOpen }: { isOpen: boolean }) {
             I campi contrassegnati sono obbligatori.
           </p>
         </div>
+        {isSuperAdmin && (
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.1em] text-white/60">
+              Azienda
+            </label>
+            <select
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            >
+              <option value="">
+                {companyLoading ? "Caricamento..." : "Seleziona azienda"}
+              </option>
+              {companyOptions.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+            {companyError && (
+              <p className="text-xs text-red-400">{companyError}</p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Nickname</label>

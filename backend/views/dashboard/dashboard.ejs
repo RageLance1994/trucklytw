@@ -8,7 +8,7 @@
         const effectivePrivilege = (typeof rParams !== 'undefined' && rParams && rParams.user && typeof rParams.user.effectivePrivilege !== 'undefined')
             ? rParams.user.effectivePrivilege
             : (Number.isInteger(userPrivilege) ? userPrivilege : (Number.isInteger(userRole) ? userRole : null));
-        const canManageVehicles = Number.isInteger(effectivePrivilege) ? effectivePrivilege <= 1 : false;
+        const canManageVehicles = Number.isInteger(effectivePrivilege) ? effectivePrivilege === 0 : false;
     %>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

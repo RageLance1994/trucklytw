@@ -32,12 +32,12 @@ const ALLOWED_REFUEL_ATTACHMENT_MIMES = new Set([
 
 const getPrivilegeLevel = (user) => {
   if (!user) return 2;
-  if (Number.isInteger(user.privilege)) return user.privilege;
   if (Number.isInteger(user.role)) return user.role;
+  if (Number.isInteger(user.privilege)) return user.privilege;
   return 2;
 };
 
-const canManageVehicles = (user) => getPrivilegeLevel(user) <= 1;
+const canManageVehicles = (user) => getPrivilegeLevel(user) === 0;
 
 const permissionDeniedResponse = (message = "Non sei autorizzato ad eseguire quest'azione.") => ({
   error: 'PERMISSION_DENIED',
@@ -735,6 +735,7 @@ router.post('/vehicles/:action', auth, async (req, res) => {
     tags,
     deviceModel,
     codec,
+    companyId,
     details,
     from,
     to,
@@ -760,6 +761,19 @@ router.post('/vehicles/:action', auth, async (req, res) => {
           });
         } catch { }
 
+        let ownerIds = [];
+        if (getPrivilegeLevel(req.user) === 0) {
+          const targetCompanyId = typeof companyId === 'string' ? companyId.trim() : '';
+          if (!targetCompanyId) {
+            return res.status(400).json(permissionDeniedResponse("Seleziona una azienda per il veicolo."));
+          }
+          const owners = await UserModel.find({ companyId: targetCompanyId }, { _id: 1 }).lean();
+          ownerIds = owners.map((owner) => owner._id);
+          if (!ownerIds.length) {
+            return res.status(400).json(permissionDeniedResponse("Azienda selezionata senza utenti."));
+          }
+        }
+
         const vehicle = await req.user.vehicles.create({
           nickname,
           plate,
@@ -769,7 +783,8 @@ router.post('/vehicles/:action', auth, async (req, res) => {
           codec,
           deviceModel,
           tags,
-          details: sanitizedDetails
+          details: sanitizedDetails,
+          ownerIds,
         });
 
         await _Devices.authorize(imei, {

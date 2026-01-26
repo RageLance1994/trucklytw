@@ -120,7 +120,7 @@ export function Navbar() {
               : null;
         if (!cancelled) {
           setCanManageUsers(Number.isInteger(privilegeValue) && privilegeValue <= 2);
-          setCanManageVehicles(Number.isInteger(privilegeValue) && privilegeValue <= 1);
+          setCanManageVehicles(Number.isInteger(privilegeValue) && privilegeValue === 0);
         }
       } catch (err) {
         console.warn("[Navbar] session lookup failed", err);

@@ -190,7 +190,7 @@ class User {
     }
 
     canManageVehicles() {
-        return this.getPrivilegeLevel() <= 1;
+        return this.getPrivilegeLevel() === 0;
     }
 
     // -------------------------------
@@ -285,7 +285,7 @@ class User {
         });
     }
 
-    async createVehicle({ nickname, plate, brand, model, imei, codec, deviceModel, tags = [], details = {} }) {
+    async createVehicle({ nickname, plate, brand, model, imei, codec, deviceModel, tags = [], details = {}, ownerIds = [] }) {
         try {
             if (!this.canManageVehicles()) {
                 const err = new Error('PERMISSION_DENIED');
@@ -293,8 +293,12 @@ class User {
                 throw err;
             }
 
+            const resolvedOwners = Array.isArray(ownerIds) && ownerIds.length
+                ? ownerIds
+                : [this.id];
+
             const info = {
-                owner: [this.id],
+                owner: resolvedOwners,
                 nickname,
                 imei,
                 plateEnc: encryptString(plate),
@@ -308,9 +312,11 @@ class User {
             console.log(info)
             const vehicle = await Models.Vehicles.create(info);
 
-            // aggiorna lista veicoli dell'utente
-            var result = await Models.UserModel.findByIdAndUpdate(this.id, { $push: { vehicles: vehicle._id } }, { new: true });
-            console.log(result);
+            // aggiorna lista veicoli degli owner
+            await Models.UserModel.updateMany(
+                { _id: { $in: resolvedOwners } },
+                { $addToSet: { vehicles: vehicle._id } }
+            );
 
             return vehicle;
         }
