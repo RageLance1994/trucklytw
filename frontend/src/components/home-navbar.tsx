@@ -7,6 +7,23 @@ type HomeNavbarProps = {
 
 export function HomeNavbar({ compact = false }: HomeNavbarProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [isDesktop, setIsDesktop] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(min-width: 768px)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDesktop(event.matches);
+    };
+    setIsDesktop(media.matches);
+    media.addEventListener("change", handleChange);
+    return () => {
+      media.removeEventListener("change", handleChange);
+    };
+  }, []);
 
   const handleMenuToggle = () => {
     setMenuOpen((prev) => !prev);
@@ -43,20 +60,35 @@ export function HomeNavbar({ compact = false }: HomeNavbarProps) {
         </nav>
       )}
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleMenuToggle}
-          aria-expanded={menuOpen}
-          aria-controls="home-menu"
-          className="flex h-10 w-10 items-center justify-center text-white/80 transition hover:text-white"
-        >
-          <span className="sr-only">Apri menu</span>
-          <span className="flex h-5 w-6 flex-col justify-between">
-            <span className="h-[2px] w-full rounded bg-current" />
-            <span className="h-[2px] w-full rounded bg-current" />
-            <span className="h-[2px] w-4 rounded bg-current" />
-          </span>
-        </button>
+        <div className="hidden items-center gap-3 md:flex">
+          <a
+            href="/login"
+            className="text-xs uppercase tracking-[0.24em] text-white/70 hover:text-white transition"
+          >
+            Accedi
+          </a>
+          {!compact && (
+            <Button asChild className="h-10 px-4 text-xs uppercase tracking-[0.2em]">
+              <a href="/accesso">Richiedi accesso</a>
+            </Button>
+          )}
+        </div>
+        {!isDesktop && (
+          <button
+            type="button"
+            onClick={handleMenuToggle}
+            aria-expanded={menuOpen}
+            aria-controls="home-menu"
+            className="flex h-10 w-10 items-center justify-center text-white/80 transition hover:text-white md:hidden"
+          >
+            <span className="sr-only">Apri menu</span>
+            <span className="flex h-5 w-6 flex-col justify-between">
+              <span className="h-[2px] w-full rounded bg-current" />
+              <span className="h-[2px] w-full rounded bg-current" />
+              <span className="h-[2px] w-4 rounded bg-current" />
+            </span>
+          </button>
+        )}
       </div>
       {menuOpen && (
         <div className="fixed inset-0 z-[2000]">
