@@ -40,6 +40,8 @@ type Vehicle = {
       unit?: string;
     };
   };
+  tags?: string[];
+  company?: string;
 };
 
 function LoginPage() {
@@ -213,6 +215,9 @@ function DashboardPage() {
     imei: string | null;
   }>({ open: false, html: "", vehicle: null, device: null, imei: null });
   const [assistantOpen, setAssistantOpen] = React.useState(false);
+  const [assistantCompanionMode, setAssistantCompanionMode] = React.useState(false);
+  const [assistantAction, setAssistantAction] = React.useState<any | null>(null);
+  const [actionDebugOpen, setActionDebugOpen] = React.useState(false);
   const [mobileMarkerMenuOpen, setMobileMarkerMenuOpen] = React.useState(false);
   const [mapStyle, setMapStyle] = React.useState<
     "base" | "light" | "dark" | "satellite"
@@ -262,6 +267,11 @@ function DashboardPage() {
     () => vehicles.find((vehicle) => vehicle.imei === selectedFuelImei) ?? null,
     [vehicles, selectedFuelImei],
   );
+  const sampleImei = vehicles[0]?.imei || null;
+  const sampleGroupImeis = vehicles
+    .slice(0, 3)
+    .map((vehicle) => vehicle.imei)
+    .filter(Boolean) as string[];
 
   React.useEffect(() => {
     selectedFuelImeiRef.current = selectedFuelImei;
@@ -554,10 +564,17 @@ function DashboardPage() {
   }, []);
 
   React.useEffect(() => {
+    if (assistantCompanionMode) return;
     if (isQuickSidebarOpen || isDriverSidebarOpen || bottomBarState.open) {
       setAssistantOpen(false);
     }
-  }, [bottomBarState.open, isDriverSidebarOpen, isQuickSidebarOpen]);
+  }, [assistantCompanionMode, bottomBarState.open, isDriverSidebarOpen, isQuickSidebarOpen]);
+
+  React.useEffect(() => {
+    if (assistantOpen) return;
+    setAssistantCompanionMode(false);
+    setAssistantAction(null);
+  }, [assistantOpen]);
 
   React.useEffect(() => {
     if (!assistantOpen) return;
@@ -631,6 +648,250 @@ function DashboardPage() {
     void loadAssistantChats();
   }, [assistantOpen, loadAssistantChats]);
 
+  const resolveVehicleByQuery = React.useCallback(
+    (query?: unknown) => {
+      if (!query) return null;
+      if (typeof query === "object") {
+        const imei = (query as any)?.imei || (query as any)?.vehicleId || (query as any)?.id;
+        if (imei) {
+          return vehicles.find((vehicle) => String(vehicle.imei) === String(imei)) || null;
+        }
+      }
+      const q = String(query || "").trim().toLowerCase();
+      if (!q) return null;
+      const exact = vehicles.find((vehicle) => String(vehicle.imei).toLowerCase() === q);
+      if (exact) return exact;
+      return (
+        vehicles.find((vehicle) => {
+          const nickname = String(vehicle.nickname || "").toLowerCase();
+          const plate = String(vehicle.plate || "").toLowerCase();
+          return nickname.includes(q) || plate.includes(q);
+        }) || null
+      );
+    },
+    [vehicles],
+  );
+
+  const performAssistantAction = React.useCallback(
+    (payload: any) => {
+      if (!payload || typeof payload !== "object") return false;
+      const action = String(payload.action || payload.type || "").toLowerCase();
+      if (!action) return false;
+
+      const toArray = (value: any) => (Array.isArray(value) ? value : value ? [value] : []);
+      const toNumber = (value: any) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+      };
+      const getCenter = (raw: any) => {
+        if (!raw) return null;
+        const lat = toNumber(raw.lat ?? raw.latitude);
+        const lng = toNumber(raw.lng ?? raw.lon ?? raw.long ?? raw.longitude);
+        if (lat === null || lng === null) return null;
+        return { lat, lng };
+      };
+      const resolveImei = (value: any) => resolveVehicleByQuery(value)?.imei || null;
+      const resolveImeis = (list: any[]) =>
+        list
+          .map((entry) => resolveImei(entry) || (typeof entry === "string" ? entry : null))
+          .filter(Boolean) as string[];
+      const knownImeis = new Set(vehicles.map((vehicle) => String(vehicle.imei)));
+      const normalizeImeis = (list: string[]) =>
+        list.filter((imei) => knownImeis.has(String(imei)));
+
+      const candidateQueries = [
+        payload?.target,
+        payload?.targetImei,
+        payload?.imei,
+        payload?.vehicleId,
+        payload?.vehicle,
+        payload?.event?.target,
+        payload?.event?.vehicleId,
+        payload?.event?.imei,
+      ];
+      const targetImei = resolveImei(
+        candidateQueries.find((value) => value != null) ?? null,
+      );
+
+      if (action.includes("geofence")) {
+        const center =
+          getCenter(payload.coordinatesCenter) ||
+          getCenter(payload.center) ||
+          getCenter(payload.coordinates?.center);
+        const radius =
+          toNumber(payload.coordinatesRadius) ||
+          toNumber(payload.radiusMeters) ||
+          toNumber(payload.radius) ||
+          toNumber(payload.coordinates?.radius);
+        const imei = targetImei || (vehicles.length === 1 ? vehicles[0]?.imei : null);
+        const validImei = imei && knownImeis.has(String(imei)) ? imei : null;
+        if (center) {
+          (window as any).trucklyFlyToLocation?.({ lng: center.lng, lat: center.lat });
+        }
+        if (validImei && center && radius) {
+          (window as any).trucklyCreateGeofence?.(validImei, center, radius);
+          return true;
+        }
+        if (validImei) {
+          (window as any).trucklyStartGeofence?.(validImei);
+          return true;
+        }
+        return Boolean(center);
+      }
+
+      if (action.includes("showall") || action.includes("show_all")) {
+        (window as any).trucklyShowAllMarkers?.();
+        return true;
+      }
+
+      if (action.includes("showgroup") || action.includes("group") || action.includes("hide_show")) {
+        const list = resolveImeis(
+          []
+            .concat(toArray(payload.targets))
+            .concat(toArray(payload.targetIds))
+            .concat(toArray(payload.group))
+            .concat(toArray(payload.groupImeis)),
+        );
+        const normalized = normalizeImeis(list);
+        if (normalized.length) {
+          (window as any).trucklyShowOnlyMarkers?.(normalized);
+          return true;
+        }
+      }
+
+      if (action.includes("showfiltered") || action.includes("filter")) {
+        const filters = payload.filters || payload.filter || {};
+        const tags = toArray(filters.tags || filters.tag).map((tag) => String(tag).toLowerCase());
+        const status = filters.status ? String(filters.status).toLowerCase() : null;
+        const company = filters.company ? String(filters.company).toLowerCase() : null;
+        const filtered = vehicles.filter((vehicle) => {
+          const matchesStatus = status
+            ? String(vehicle.status || "").toLowerCase().includes(status)
+            : true;
+          const matchesCompany = company
+            ? String(vehicle.company || "").toLowerCase().includes(company)
+            : true;
+          const vehicleTags = Array.isArray(vehicle.tags)
+            ? vehicle.tags.map((t) => String(t).toLowerCase())
+            : [];
+          const matchesTags = tags.length
+            ? tags.some((tag) => vehicleTags.includes(tag))
+            : true;
+          return matchesStatus && matchesCompany && matchesTags;
+        });
+        const imeis = filtered
+          .map((vehicle) => vehicle.imei)
+          .filter(Boolean)
+          .filter((imei) => knownImeis.has(String(imei)));
+        if (imeis.length) {
+          (window as any).trucklyShowOnlyMarkers?.(imeis);
+          return true;
+        }
+      }
+
+      if (action.includes("showalone") || action.includes("showonly") || action.includes("solo")) {
+        const imei = targetImei || resolveImei(payload?.vehicle);
+        if (imei && knownImeis.has(String(imei))) {
+          (window as any).trucklyHideOtherMarkers?.(imei);
+          const targetVehicle = vehicles.find((vehicle) => vehicle.imei === imei);
+          if (targetVehicle) {
+            (window as any).trucklyFlyToVehicle?.(targetVehicle);
+          }
+          return true;
+        }
+      }
+
+      if (
+        action.includes("track") ||
+        action.includes("locate") ||
+        action.includes("find") ||
+        action.includes("showvehicle") ||
+        action.includes("vehicle")
+      ) {
+        const query =
+          payload?.query ||
+          payload?.vehicle ||
+          payload?.target ||
+          payload?.targetImei ||
+          payload?.imei ||
+          payload?.targetQuery;
+        const match = resolveVehicleByQuery(query);
+        if (match?.imei && knownImeis.has(String(match.imei))) {
+          (window as any).trucklyShowAllMarkers?.();
+          (window as any).trucklyFlyToVehicle?.(match);
+          return true;
+        }
+      }
+
+      if (action.includes("report_fuel")) {
+        const imei = targetImei || resolveImei(payload?.targetQuery || payload?.query);
+        if (imei) {
+          window.dispatchEvent(
+            new CustomEvent("truckly:bottom-bar-toggle", {
+              detail: { mode: "fuel", imei },
+            }),
+          );
+          return true;
+        }
+      }
+
+      if (action.includes("report_driver")) {
+        const imei = targetImei || resolveImei(payload?.targetQuery || payload?.query);
+        if (imei) {
+          window.dispatchEvent(
+            new CustomEvent("truckly:driver-open", {
+              detail: { imei },
+            }),
+          );
+          return true;
+        }
+      }
+
+      if (action.includes("report_route")) {
+        const imei = targetImei || resolveImei(payload?.targetQuery || payload?.query);
+        if (imei) {
+          window.dispatchEvent(
+            new CustomEvent("truckly:routes-open", {
+              detail: { imei },
+            }),
+          );
+          return true;
+        }
+      }
+
+      if (action.includes("activity_alert")) {
+        return true;
+      }
+
+      if (action.includes("focus") || action.includes("center") || action.includes("fly")) {
+        const center =
+          getCenter(payload.coordinatesCenter) ||
+          getCenter(payload.center) ||
+          getCenter(payload.coordinates?.center);
+        if (center) {
+          (window as any).trucklyFlyToLocation?.({ lng: center.lng, lat: center.lat });
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [resolveVehicleByQuery, vehicles],
+  );
+
+  const triggerMockAction = React.useCallback(
+    (payload: any) => {
+      const performed = performAssistantAction(payload);
+      setAssistantAction(payload);
+      setAssistantOpen(true);
+      if (performed) {
+        setAssistantCompanionMode(true);
+      }
+      return performed;
+    },
+    [performAssistantAction],
+  );
+
   const handleAssistantSend = async () => {
     const text = assistantInput.trim();
     if ((!text && assistantAttachments.length === 0) || assistantSending) return;
@@ -671,6 +932,24 @@ function DashboardPage() {
       }
       const data = await res.json().catch(() => ({}));
       const reply = data?.reply?.content ? String(data.reply.content) : "";
+      const actionPayload =
+        data?.actionPerformative ||
+        data?.reply?.actionPerformative ||
+        data?.action ||
+        null;
+      if (Array.isArray(actionPayload)) {
+        const performed = actionPayload.some((entry) => performAssistantAction(entry));
+        if (performed) {
+          setAssistantCompanionMode(true);
+          setAssistantAction(actionPayload);
+        }
+      } else if (actionPayload && typeof actionPayload === "object") {
+        const performed = performAssistantAction(actionPayload);
+        if (performed) {
+          setAssistantCompanionMode(true);
+          setAssistantAction(actionPayload);
+        }
+      }
       const nextChatId = data?.chatId ? String(data.chatId) : assistantChatId;
       if (nextChatId && nextChatId !== assistantChatId) {
         setAssistantChatId(nextChatId);
@@ -764,9 +1043,22 @@ function DashboardPage() {
             selectedVehicle={selectedFuelVehicle}
           />
           {assistantOpen && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px] truckly-chat-overlay">
-              <div className="w-full max-w-4xl rounded-[28px] border border-white/10 bg-[#111111] px-6 py-6 shadow-[0_30px_80px_rgba(0,0,0,0.6)] h-[75vh] flex truckly-chat-modal">
-                <div className="w-60 border-r border-white/10 pr-4 flex flex-col min-w-0">
+            <div
+              className={`fixed inset-0 z-40 flex truckly-chat-overlay ${
+                assistantCompanionMode
+                  ? "items-end justify-end bg-transparent px-4 pb-4"
+                  : "items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]"
+              } ${assistantCompanionMode ? "truckly-chat-overlay--companion" : ""}`}
+            >
+              <div
+                className={`rounded-[28px] border border-white/10 bg-[#111111] flex truckly-chat-modal ${
+                  assistantCompanionMode
+                    ? "w-[360px] max-w-[92vw] h-[480px] md:w-[420px] md:h-[520px] px-5 py-5 shadow-[0_18px_40px_rgba(0,0,0,0.55)]"
+                    : "w-full max-w-4xl h-[75vh] px-6 py-6 shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
+                } ${assistantCompanionMode ? "truckly-chat-modal--companion" : ""}`}
+              >
+                {!assistantCompanionMode && (
+                  <div className="w-60 border-r border-white/10 pr-4 flex flex-col min-w-0">
                   <div className="flex items-center justify-between pb-3">
                     <span className="text-[11px] uppercase tracking-[0.2em] text-white/50">
                       Chat
@@ -829,8 +1121,46 @@ function DashboardPage() {
                       })
                     )}
                   </div>
-                </div>
-                <div className="relative flex-1 pl-6 flex flex-col min-w-0">
+                  </div>
+                )}
+                <div
+                  className={`relative flex-1 flex flex-col min-w-0 ${
+                    assistantCompanionMode ? "pl-0" : "pl-6"
+                  }`}
+                >
+                  {assistantCompanionMode && (
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        {assistantAction && (
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+                            {String(
+                              (Array.isArray(assistantAction)
+                                ? assistantAction?.[0]?.action
+                                : assistantAction?.action) || "azione",
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAssistantCompanionMode(false)}
+                          className="rounded-full border border-white/15 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+                        >
+                          Espandi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssistantOpen(false)}
+                          className="rounded-full border border-white/15 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+                        >
+                          Chiudi
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!assistantCompanionMode && (
                   <button
                     type="button"
                     onClick={() => setAssistantOpen(false)}
@@ -839,6 +1169,7 @@ function DashboardPage() {
                   >
                     <i className="fa fa-close" aria-hidden="true" />
                   </button>
+                  )}
 
                   {assistantMessages.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center gap-8">
@@ -1233,6 +1564,115 @@ function DashboardPage() {
                 </svg>
               </span>
             </button>
+          )}
+          {import.meta.env.DEV && (
+            <div className="fixed bottom-6 left-6 z-40 flex flex-col items-start gap-2">
+              <button
+                type="button"
+                onClick={() => setActionDebugOpen((prev) => !prev)}
+                className="rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition hover:text-white hover:border-white/40"
+              >
+                Azioni demo
+              </button>
+              {actionDebugOpen && (
+                <div className="w-64 rounded-2xl border border-white/10 bg-[#0b0b0c] p-3 shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        triggerMockAction({
+                          action: "geoFenceAlert",
+                          coordinatesCenter: { lat: 41.9028, lng: 12.4964 },
+                          coordinatesRadius: 2000,
+                          event: { type: "vehicleIn", target: sampleImei || "vehicleId", triggerTimes: 1 },
+                          target: sampleImei,
+                        })
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Geofence Roma
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        triggerMockAction({
+                          action: "locateVehicle",
+                          query: sampleImei || "",
+                        })
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Trova veicolo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        triggerMockAction({
+                          action: "showAlone",
+                          target: sampleImei || "",
+                        })
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Mostra solo 1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        triggerMockAction({
+                          action: "showGroup",
+                          groupImeis: sampleGroupImeis,
+                        })
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Gruppo (prime 3)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        triggerMockAction({
+                          action: "showFiltered",
+                          filters: { tags: ["cold"] },
+                        })
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Filtra tag "cold"
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => triggerMockAction({ action: "showAll" })}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Mostra tutti
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        triggerMockAction({
+                          action: "focus",
+                          center: { lat: 41.9028, lng: 12.4964 },
+                        })
+                      }
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                    >
+                      Centra Roma
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssistantCompanionMode(false);
+                        setAssistantOpen(false);
+                      }}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/60 hover:text-white hover:border-white/30 transition"
+                    >
+                      Chiudi companion
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

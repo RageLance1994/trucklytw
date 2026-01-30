@@ -438,6 +438,89 @@ export class TrucklyMap {
     this._setMarkersDimmed(false);
   }
 
+  createGeofence(
+    imei: string,
+    center: { lng: number; lat: number },
+    radiusMeters: number,
+    geofenceId?: string,
+  ) {
+    if (!imei || !center || !Number.isFinite(center.lng) || !Number.isFinite(center.lat)) {
+      return null;
+    }
+    const safeRadius = Math.max(50, Number(radiusMeters) || 0);
+    if (!Number.isFinite(safeRadius) || safeRadius <= 0) return null;
+    const id = geofenceId || `geofence-${imei}-${Date.now()}`;
+    if (this._geofenceLayers.has(id)) {
+      this.updateGeofence(id, center, safeRadius);
+      return id;
+    }
+
+    this.stopGeofence();
+    this.closeOtherPopups(null);
+
+    const map = this.map;
+    const feature = this._buildCirclePolygon(center, safeRadius);
+    const sourceId = `${id}-src`;
+    const layerId = `${id}-layer`;
+
+    try {
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: feature,
+      });
+      map.addLayer({
+        id: layerId,
+        type: "fill",
+        source: sourceId,
+        paint: {
+          "fill-color": "#0b1d2a",
+          "fill-opacity": 0.18,
+        },
+      });
+      map.addLayer({
+        id: `${layerId}-outline-halo`,
+        type: "line",
+        source: sourceId,
+        paint: {
+          "line-color": "#000000",
+          "line-width": 4,
+          "line-opacity": 0.55,
+        },
+      });
+      map.addLayer({
+        id: `${layerId}-outline`,
+        type: "line",
+        source: sourceId,
+        paint: {
+          "line-color": "#0b1d2a",
+          "line-width": 2,
+        },
+      });
+      this._geofenceLayers.set(id, {
+        sourceId,
+        fillId: layerId,
+        outlineId: `${layerId}-outline`,
+        outlineHaloId: `${layerId}-outline-halo`,
+      });
+    } catch {}
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent("truckly:geofence-created", {
+          detail: {
+            imei,
+            center,
+            radiusMeters: safeRadius,
+            feature,
+            geofenceId: id,
+          },
+        }),
+      );
+    } catch {}
+
+    return id;
+  }
+
   updateGeofence(geofenceId: string, center: { lng: number; lat: number }, radiusMeters: number) {
     if (!geofenceId) return;
     const entry = this._geofenceLayers.get(geofenceId);
@@ -666,6 +749,30 @@ export class TrucklyMap {
         el.style.display = "none";
         this._hiddenMarkers.add(id);
       }
+    });
+  }
+
+  showOnlyMarkers(imeis: string[]) {
+    if (!Array.isArray(imeis) || imeis.length === 0) {
+      this.showAllMarkers();
+      return;
+    }
+    const allowed = new Set(imeis.map((value) => String(value)));
+    this._hiddenMarkers.clear();
+    this.markers.forEach((marker, id) => {
+      const baseId = String(id || "");
+      const normalizedId = baseId.startsWith("preview:") ? baseId.slice(8) : baseId;
+      const shouldShow = allowed.has(normalizedId);
+      const el = marker.getElement ? marker.getElement() : marker._element;
+      if (!el) return;
+      if (shouldShow) {
+        el.style.display = "";
+        return;
+      }
+      if (el.style.display !== "none") {
+        el.style.display = "none";
+      }
+      this._hiddenMarkers.add(id);
     });
   }
 

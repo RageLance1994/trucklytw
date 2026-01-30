@@ -991,6 +991,16 @@
   animation: truckly-chat-in 220ms ease-out both;
 }
 
+.truckly-chat-overlay--companion {
+  pointer-events: none;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.truckly-chat-overlay--companion .truckly-chat-modal {
+  pointer-events: auto;
+}
+
 .truckly-typing-dot {
   display: inline-block;
   width: 8px;

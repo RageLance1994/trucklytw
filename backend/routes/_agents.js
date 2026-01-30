@@ -347,6 +347,14 @@ Keep replies concise and in Italian.
 You can use tools to query the database and manage vehicles/users only when permitted.
 When the user asks about vehicles, plates, users, or companies you MUST use tools (db_find or specific tools) to answer.
 Ask for missing information before running tools.
+When the user asks to perform a map action (geofence, show alone, show group, show filtered, center/fly to, locate/find a vehicle),
+include a single line that starts with "ACTION: " followed by a JSON object describing the action.
+Example: ACTION: {"action":"geoFenceAlert","coordinatesCenter":{"lat":41.9028,"lng":12.4964},"coordinatesRadius":2000,"event":{"type":"vehicleIn","target":"AB123CD","triggerTimes":1}}
+Examples:
+- ACTION: {"action":"locateVehicle","query":"Stralis Landi"}
+- ACTION: {"action":"showFiltered","filters":{"tags":["cold"],"company":"ACME"}}
+If the user asks to locate a specific vehicle, use tools to resolve it and put the target identifier in "target" (imei or plate) and/or "query".
+Keep the rest of the reply user-friendly; do not wrap the ACTION JSON in code fences.
 Today's date is ${new Date().toISOString()}.
 `,
     tools: [...createTools(req), vehicleLocation(req)],
@@ -372,6 +380,26 @@ Examples:
 - "Ricerca veicolo Stralis Landi"
 - "Report consumi flotta"
 Return ONLY the title string.
+`
+});
+
+const intentAgent = Agent.create({
+  name: "Action Intent Classifier",
+  apiKey: process.env.OPENAI_API_KEY,
+  instructions: `
+Classify the user request into one of these actions:
+- track_vehicles
+- hide_show_vehicles
+- report_fuel
+- report_driver
+- report_route
+- geofence_alert
+- activity_alert
+
+Return ONLY valid JSON with this schema:
+{"action":"<one_of_or_none>","targetQuery":"<string_or_null>","confidence":0-1}
+
+Use "none" when no action matches. If a vehicle name/plate is mentioned, put it in targetQuery.
 `
 });
 
@@ -500,8 +528,87 @@ const normalizeKeywords = (value) => {
     .slice(0, 10);
 };
 
+const normalizeActionPayload = (parsed) => {
+  if (!parsed) return null;
+  if (typeof parsed === "string") return { action: parsed };
+  if (typeof parsed !== "object") return null;
+  if (parsed.actionPerformative) return parsed.actionPerformative;
+  if (parsed.action) return parsed;
+  if (parsed.type) return { action: parsed.type };
+  return null;
+};
+
+const extractActionPerformative = (raw) => {
+  if (!raw || typeof raw !== "string") {
+    return { action: null, cleaned: raw || "" };
+  }
+  const parseJsonSafe = (value) => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
+  let cleaned = raw;
+  let action = null;
+
+  const codeBlock = cleaned.match(/```action\s*([\s\S]*?)```/i);
+  if (codeBlock) {
+    const parsed = parseJsonSafe(codeBlock[1].trim());
+    const normalized = normalizeActionPayload(parsed);
+    if (normalized) {
+      action = normalized;
+      cleaned = cleaned.replace(codeBlock[0], "").trim();
+    }
+  }
+
+  if (!action) {
+    const lineMatch = cleaned.match(/^\s*ACTION:\s*({[\s\S]*})\s*$/im);
+    if (lineMatch) {
+      const parsed = parseJsonSafe(lineMatch[1].trim());
+      const normalized = normalizeActionPayload(parsed);
+      if (normalized) {
+        action = normalized;
+        cleaned = cleaned.replace(lineMatch[0], "").trim();
+      }
+    }
+  }
+
+  return { action, cleaned };
+};
+
+const looksLikeMapIntent = (text) => {
+  if (!text) return false;
+  return /mappa|map|visualizz|mostr|trova|localizz|centra|fly|veder/i.test(text);
+};
+
+const extractQuotedVehicleName = (text) => {
+  if (!text) return null;
+  const doubleQuoted = text.match(/"([^"]{2,})"/);
+  if (doubleQuoted?.[1]) return doubleQuoted[1].trim();
+  const singleQuoted = text.match(/'([^']{2,})'/);
+  if (singleQuoted?.[1]) return singleQuoted[1].trim();
+  return null;
+};
+
+const extractVehicleQueryFromHistory = (messages = []) => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (!msg?.content) continue;
+    const quoted = extractQuotedVehicleName(String(msg.content));
+    if (quoted) return quoted;
+  }
+  return null;
+};
+
 router.post("/chat", auth, async (req, res) => {
   try {
+    console.log("[agents/chat] request start", {
+      userId: req.user?.id || req.user?._id || null,
+      hasApiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasFiles: Boolean(req.files),
+      ts: new Date().toISOString(),
+    });
     const { chatId } = req.body || {};
     const rawMessage = req.body?.message || req.body?.content || "";
     const message = typeof rawMessage === "string" ? rawMessage : rawMessage?.content;
@@ -585,13 +692,49 @@ router.post("/chat", auth, async (req, res) => {
       ...imageBlocks,
     ];
     history.push({ role: "user", content: userContentBlocks });
+    let intentPayload = null;
+    try {
+      const intentPrompt = `Utente: ${message}`;
+      const intentResult = await run(intentAgent, [
+        { role: "user", content: [{ type: "input_text", text: intentPrompt }] }
+      ]);
+      intentPayload = parseJson(intentResult?.finalOutput) || null;
+      console.log("[agents/chat] intent result", intentPayload);
+    } catch (err) {
+      console.warn("[agents/chat] intent error", err?.message || err);
+    }
+
     const chatAgent = buildChatAgent(req);
+    console.log("[agents/chat] running agent", {
+      chatId: chat?._id?.toString?.() || chat?.id || null,
+      messagePreview: message.slice(0, 160),
+    });
     const result = await run(chatAgent, history);
+    console.log("[agents/chat] agent finished", {
+      usage: result?.usage || null,
+      hasOutput: Boolean(result?.finalOutput),
+    });
 
     const assistantReply = result.finalOutput || "";
+    const extracted = extractActionPerformative(assistantReply);
+    let actionPerformative = extracted.action || null;
+    const replyContent = extracted.cleaned || "";
+    console.log("[agents/chat] action extraction", {
+      hasAction: Boolean(actionPerformative?.action),
+      action: actionPerformative?.action || null,
+      rawAction: actionPerformative || null,
+    });
+
+    if (!actionPerformative?.action && intentPayload?.action && intentPayload.action !== "none") {
+      actionPerformative = {
+        action: intentPayload.action,
+        targetQuery: intentPayload?.targetQuery || null,
+      };
+      console.log("[agents/chat] intent action applied", actionPerformative);
+    }
     await UserChatsModel.updateOne(
       { _id: chat._id },
-      { $push: { messages: { role: "assistant", content: assistantReply } } }
+      { $push: { messages: { role: "assistant", content: replyContent } } }
     );
 
     const messageCount = refreshed.messages.length + 1;
@@ -620,9 +763,31 @@ router.post("/chat", auth, async (req, res) => {
       );
     }
 
+    if (!actionPerformative && looksLikeMapIntent(message)) {
+      console.log("[agents/chat] map-intent fallback", { messagePreview: message.slice(0, 160) });
+      const queryFromMessage = extractQuotedVehicleName(message);
+      const queryFromHistory = extractVehicleQueryFromHistory(refreshed?.messages || []);
+      const vehicleQuery = queryFromMessage || queryFromHistory || message;
+      try {
+        const resolvedVehicle = await resolveVehicleByQuery(req, vehicleQuery);
+        if (resolvedVehicle?.imei || resolvedVehicle?.plate || resolvedVehicle?.nickname) {
+          actionPerformative = {
+            action: "locateVehicle",
+            target: resolvedVehicle?.imei || resolvedVehicle?.plate || null,
+            query: resolvedVehicle?.nickname || resolvedVehicle?.plate || vehicleQuery
+          };
+          console.log("[agents/chat] fallback action created", {
+            target: actionPerformative.target,
+            query: actionPerformative.query,
+          });
+        }
+      } catch {}
+    }
+
     return res.json({
       chatId: chat._id,
-      reply: { role: "assistant", content: assistantReply }
+      reply: { role: "assistant", content: replyContent },
+      actionPerformative
     });
   } catch (err) {
     console.error("[agents/chat] error:", err);

@@ -715,6 +715,39 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       ) => {
         mapInstanceRef.current?.updateGeofence(geofenceId, center, radiusMeters);
       };
+      (window as any).trucklyCreateGeofence = (
+        imei: string,
+        center: { lng: number; lat: number },
+        radiusMeters: number,
+        geofenceId?: string,
+      ) => {
+        return mapInstanceRef.current?.createGeofence(
+          imei,
+          center,
+          radiusMeters,
+          geofenceId,
+        );
+      };
+      (window as any).trucklyShowOnlyMarkers = (imeis: string[]) => {
+        mapInstanceRef.current?.showOnlyMarkers(imeis);
+      };
+      (window as any).trucklyFlyToLocation = (
+        center: { lng: number; lat: number },
+        zoom?: number,
+      ) => {
+        const map = mapInstanceRef.current?.map;
+        if (!map || !center) return;
+        const currentZoom = map.getZoom?.();
+        const nextZoom = Number.isFinite(zoom)
+          ? Number(zoom)
+          : Math.max(Number.isFinite(currentZoom) ? currentZoom : 12, 12.5);
+        map.flyTo({
+          center,
+          zoom: nextZoom,
+          speed: 1.2,
+          curve: 1.4,
+        });
+      };
 
       try {
         const saved = window.localStorage.getItem("truckly:map-style") as
@@ -756,6 +789,9 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       window.removeEventListener("truckly:mobile-marker-focus", handleMobileFocus as EventListener);
       delete (window as any).trucklyRefreshMarkers;
       delete (window as any).trucklyForceMarkerClass;
+      delete (window as any).trucklyCreateGeofence;
+      delete (window as any).trucklyShowOnlyMarkers;
+      delete (window as any).trucklyFlyToLocation;
       mapInstanceRef.current?.destroy();
       mapInstanceRef.current = null;
     };
@@ -854,14 +890,14 @@ export function MapContainer({ vehicles }: MapContainerProps) {
       previewMarkersRef.current.clear();
     };
 
-    (window as any).trucklyPreviewVehicle = upsertPreviewMarker;
-    (window as any).trucklyClearPreviewVehicle = clearPreviewMarker;
+      (window as any).trucklyPreviewVehicle = upsertPreviewMarker;
+      (window as any).trucklyClearPreviewVehicle = clearPreviewMarker;
 
-    return () => {
-      delete (window as any).trucklyPreviewVehicle;
-      delete (window as any).trucklyClearPreviewVehicle;
-      clearPreviewMarker();
-    };
+      return () => {
+        delete (window as any).trucklyPreviewVehicle;
+        delete (window as any).trucklyClearPreviewVehicle;
+        clearPreviewMarker();
+      };
   }, []);
 
   // Manage WebSocket: connect only once we have vehicles, keep subscriptions in sync
