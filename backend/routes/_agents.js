@@ -278,17 +278,32 @@ const createTools = (req) => {
   ];
 };
 
-const resolveVehicleByQuery = async (req, query) => {
-  const list = await req.user.vehicles.list();
-  if (!query) return null;
-  const q = String(query).toLowerCase().trim();
-  const exact = list.find((v) => String(v.imei || "") === q);
-  if (exact) return exact;
-  const match = list.find((v) => {
+const normalizeVehicleList = (list = []) =>
+  list.map((entry) => decorateVehicle(entry)).filter(Boolean);
+
+const findVehiclesByQuery = (vehicles, query) => {
+  if (!query) return [];
+  if (typeof query === "object") {
+    const imei = query?.imei || query?.vehicleId || query?.id || null;
+    if (imei) {
+      const exact = vehicles.filter((v) => String(v.imei || "") === String(imei));
+      if (exact.length) return exact;
+    }
+  }
+  const q = String(query || "").toLowerCase().trim();
+  if (!q) return [];
+  const exact = vehicles.filter((v) => String(v.imei || "").toLowerCase() === q);
+  if (exact.length) return exact;
+  return vehicles.filter((v) => {
     const hay = `${v.nickname || ""} ${v.plate || ""} ${v.imei || ""}`.toLowerCase();
     return hay.includes(q);
   });
-  return match || null;
+};
+
+const resolveVehicleByQuery = async (req, query) => {
+  const list = normalizeVehicleList(await req.user.vehicles.list());
+  const matches = findVehiclesByQuery(list, query);
+  return matches[0] || null;
 };
 
 const vehicleLocation = (req) =>
@@ -582,6 +597,39 @@ const looksLikeMapIntent = (text) => {
   return /mappa|map|visualizz|mostr|trova|localizz|centra|fly|veder/i.test(text);
 };
 
+const looksLikeNotFoundReply = (text) => {
+  if (!text) return false;
+  return /non\s+riesco\s+a\s+trovare|non\s+trovo|nessun\s+veicolo|veicolo\s+non\s+trovato/i.test(
+    text,
+  );
+};
+
+const looksLikeAlertRequest = (text) => {
+  if (!text) return false;
+  return /avvisa|notifica|alert|fammi\s+sapere|avvert|dimmi\s+quando/i.test(text);
+};
+
+const looksLikeArrivalDeparture = (text) => {
+  if (!text) return false;
+  return /arriv|entra|entrer|uscit|esce|uscir|lascia|lascer|part|raggiung/i.test(text);
+};
+
+const extractLocationHint = (text) => {
+  if (!text) return null;
+  const match = text.match(/\b(?:a|in|verso|entro|su)\s+([A-ZÀ-ÖØ-Ý][\wÀ-ÿ' -]{2,})/);
+  if (match?.[1]) return match[1].trim();
+  return null;
+};
+
+const extractVehicleHint = (text) => {
+  if (!text) return null;
+  const match = text.match(
+    /\b(?:quando|se)\s+(.+?)\s+(arriva|arriv(a|i|o)|entra|entr(a|i|o)|esce|usc(i|e|o)|lascia|part(a|e|i)|raggiung)/i,
+  );
+  if (match?.[1]) return match[1].trim();
+  return null;
+};
+
 const extractQuotedVehicleName = (text) => {
   if (!text) return null;
   const doubleQuoted = text.match(/"([^"]{2,})"/);
@@ -599,6 +647,187 @@ const extractVehicleQueryFromHistory = (messages = []) => {
     if (quoted) return quoted;
   }
   return null;
+};
+
+const collectTargetQueries = (payload = {}) => {
+  const candidates = [
+    payload?.targetImei,
+    payload?.target,
+    payload?.targetQuery,
+    payload?.query,
+    payload?.vehicle,
+    payload?.imei,
+    payload?.vehicleId,
+    payload?.event?.target,
+    payload?.event?.vehicleId,
+    payload?.event?.imei,
+  ];
+  return candidates.filter((value) => value != null && value !== "");
+};
+
+const collectGroupQueries = (payload = {}) => {
+  const toArray = (value) => (Array.isArray(value) ? value : value ? [value] : []);
+  return []
+    .concat(toArray(payload.targets))
+    .concat(toArray(payload.targetIds))
+    .concat(toArray(payload.group))
+    .concat(toArray(payload.groupImeis))
+    .filter((value) => value != null && value !== "");
+};
+
+const formatVehicleOptions = (vehicles) =>
+  vehicles
+    .map((v) => `- ${v.nickname || "Senza nome"} (targa: ${v.plate || "N/D"}, imei: ${v.imei || "N/D"})`)
+    .join("\n");
+
+const resolveActionTargets = async (req, actionPerformative, userMessage) => {
+  if (!actionPerformative?.action) {
+    return { actionPerformative, reply: null };
+  }
+
+  const action = String(actionPerformative.action || "").toLowerCase();
+  const vehicles = normalizeVehicleList(await req.user.vehicles.list());
+  const knownImeis = new Set(vehicles.map((v) => String(v.imei || "")));
+  const singleVehicle = vehicles.length === 1 ? vehicles[0] : null;
+
+  const needsVehicle =
+    action.includes("geofence") ||
+    action.includes("track") ||
+    action.includes("locate") ||
+    action.includes("find") ||
+    action.includes("showalone") ||
+    action.includes("showonly") ||
+    action.includes("report_fuel") ||
+    action.includes("report_driver") ||
+    action.includes("report_route") ||
+    action.includes("hide_show") ||
+    action.includes("showvehicle") ||
+    action.includes("vehicle");
+
+  const groupAction = action.includes("showgroup") || action.includes("group");
+
+  if (groupAction) {
+    const groupQueries = collectGroupQueries(actionPerformative);
+    const resolvedImeis = [];
+    for (const query of groupQueries) {
+      if (knownImeis.has(String(query))) {
+        resolvedImeis.push(String(query));
+        continue;
+      }
+      const matches = findVehiclesByQuery(vehicles, query);
+      if (matches.length === 1) {
+        resolvedImeis.push(String(matches[0].imei));
+      }
+    }
+    if (resolvedImeis.length) {
+      return {
+        actionPerformative: {
+          ...actionPerformative,
+          targetsImeis: Array.from(new Set(resolvedImeis)),
+        },
+        reply: null,
+      };
+    }
+  }
+
+  if (!needsVehicle) {
+    return { actionPerformative, reply: null };
+  }
+
+  const targetQueries = collectTargetQueries(actionPerformative);
+  let ambiguousMatches = [];
+  for (const query of targetQueries) {
+    if (knownImeis.has(String(query))) {
+      const match = vehicles.find((v) => String(v.imei) === String(query));
+      if (match) {
+        return {
+          actionPerformative: {
+            ...actionPerformative,
+            targetImei: String(match.imei),
+            targetVehicle: { imei: match.imei, nickname: match.nickname || null, plate: match.plate || null },
+          },
+          reply: null,
+        };
+      }
+    }
+    const matches = findVehiclesByQuery(vehicles, query);
+    if (matches.length === 1) {
+      const match = matches[0];
+      return {
+        actionPerformative: {
+          ...actionPerformative,
+          targetImei: String(match.imei),
+          targetVehicle: { imei: match.imei, nickname: match.nickname || null, plate: match.plate || null },
+        },
+        reply: null,
+      };
+    }
+    if (matches.length > 1) {
+      ambiguousMatches = matches;
+      break;
+    }
+  }
+
+  if (!targetQueries.length && singleVehicle) {
+    return {
+      actionPerformative: {
+        ...actionPerformative,
+        targetImei: String(singleVehicle.imei),
+        targetVehicle: {
+          imei: singleVehicle.imei,
+          nickname: singleVehicle.nickname || null,
+          plate: singleVehicle.plate || null,
+        },
+      },
+      reply: null,
+    };
+  }
+
+  if (!targetQueries.length) {
+    return {
+      actionPerformative: null,
+      reply: "Quale veicolo intendi? Puoi indicare nome o targa?",
+    };
+  }
+
+  if (ambiguousMatches.length) {
+    return {
+      actionPerformative: null,
+      reply: `Ho trovato più veicoli con quel nome o targa. Quale intendi?\n${formatVehicleOptions(
+        ambiguousMatches,
+      )}`,
+    };
+  }
+
+  if (needsVehicle && targetQueries.length) {
+    const fallbackQuery = extractQuotedVehicleName(userMessage) || userMessage;
+    if (vehicles.length && fallbackQuery) {
+      const matches = findVehiclesByQuery(vehicles, fallbackQuery);
+      if (matches.length === 1) {
+        const match = matches[0];
+        return {
+          actionPerformative: {
+            ...actionPerformative,
+            targetImei: String(match.imei),
+            targetVehicle: { imei: match.imei, nickname: match.nickname || null, plate: match.plate || null },
+          },
+          reply: null,
+        };
+      }
+      if (matches.length > 1) {
+        return {
+          actionPerformative: null,
+          reply: `Ho trovato più veicoli. Quale intendi?\n${formatVehicleOptions(matches)}`,
+        };
+      }
+    }
+    return {
+      actionPerformative: null,
+      reply: "Non trovo il veicolo richiesto. Puoi indicare targa o nome esatto?",
+    };
+  }
+
+  return { actionPerformative, reply: null };
 };
 
 router.post("/chat", auth, async (req, res) => {
@@ -718,7 +947,7 @@ router.post("/chat", auth, async (req, res) => {
     const assistantReply = result.finalOutput || "";
     const extracted = extractActionPerformative(assistantReply);
     let actionPerformative = extracted.action || null;
-    const replyContent = extracted.cleaned || "";
+    let replyContent = extracted.cleaned || "";
     console.log("[agents/chat] action extraction", {
       hasAction: Boolean(actionPerformative?.action),
       action: actionPerformative?.action || null,
@@ -732,6 +961,78 @@ router.post("/chat", auth, async (req, res) => {
       };
       console.log("[agents/chat] intent action applied", actionPerformative);
     }
+
+    if (
+      !actionPerformative?.action &&
+      looksLikeAlertRequest(message) &&
+      looksLikeArrivalDeparture(message)
+    ) {
+      const locationHint = extractLocationHint(message);
+      const vehicleHint = extractVehicleHint(message);
+      actionPerformative = {
+        action: "geofence_alert",
+        targetQuery: vehicleHint || null,
+        locationQuery: locationHint || null,
+      };
+      console.log("[agents/chat] alert intent inferred", actionPerformative);
+    }
+
+    if (!actionPerformative && looksLikeMapIntent(message)) {
+      console.log("[agents/chat] map-intent fallback", { messagePreview: message.slice(0, 160) });
+      const queryFromMessage = extractQuotedVehicleName(message);
+      const queryFromHistory = extractVehicleQueryFromHistory(refreshed?.messages || []);
+      const vehicleQuery = queryFromMessage || queryFromHistory || message;
+      try {
+        const resolvedVehicle = await resolveVehicleByQuery(req, vehicleQuery);
+        if (resolvedVehicle?.imei || resolvedVehicle?.plate || resolvedVehicle?.nickname) {
+          actionPerformative = {
+            action: "locateVehicle",
+            target: resolvedVehicle?.imei || resolvedVehicle?.plate || null,
+            query: resolvedVehicle?.nickname || resolvedVehicle?.plate || vehicleQuery
+          };
+          console.log("[agents/chat] fallback action created", {
+            target: actionPerformative.target,
+            query: actionPerformative.query,
+          });
+        }
+      } catch {}
+    }
+
+    if (actionPerformative?.action) {
+      const resolved = await resolveActionTargets(req, actionPerformative, message);
+      actionPerformative = resolved.actionPerformative;
+      if (resolved.reply) {
+        replyContent = resolved.reply;
+      } else if (actionPerformative?.targetVehicle && looksLikeNotFoundReply(replyContent)) {
+        const displayName =
+          actionPerformative.targetVehicle.nickname ||
+          actionPerformative.targetVehicle.plate ||
+          actionPerformative.targetVehicle.imei ||
+          "il veicolo";
+        replyContent = `Ho trovato ${displayName}. Ti mostro la posizione sulla mappa.`;
+      }
+
+      if (actionPerformative?.action?.toLowerCase().includes("geofence")) {
+        const hasCenter =
+          actionPerformative?.coordinatesCenter ||
+          actionPerformative?.center ||
+          actionPerformative?.coordinates?.center;
+        if (!hasCenter) {
+          const locationLabel =
+            actionPerformative?.locationQuery || extractLocationHint(message) || null;
+          if (locationLabel) {
+            actionPerformative.locationLabel = locationLabel;
+            if (!resolved.reply) {
+              replyContent = `Ok. Imposto un alert geofence per ${locationLabel}. Seleziona l'area sulla mappa.`;
+            }
+          } else if (!resolved.reply) {
+            replyContent =
+              "Ok. Imposto un alert geofence. Seleziona l'area sulla mappa o dimmi la localita.";
+          }
+        }
+      }
+    }
+
     await UserChatsModel.updateOne(
       { _id: chat._id },
       { $push: { messages: { role: "assistant", content: replyContent } } }
@@ -761,27 +1062,6 @@ router.post("/chat", auth, async (req, res) => {
         { _id: chat._id },
         { $set: { topicKeywords: keywords, topicUpdatedAt: new Date(), title } }
       );
-    }
-
-    if (!actionPerformative && looksLikeMapIntent(message)) {
-      console.log("[agents/chat] map-intent fallback", { messagePreview: message.slice(0, 160) });
-      const queryFromMessage = extractQuotedVehicleName(message);
-      const queryFromHistory = extractVehicleQueryFromHistory(refreshed?.messages || []);
-      const vehicleQuery = queryFromMessage || queryFromHistory || message;
-      try {
-        const resolvedVehicle = await resolveVehicleByQuery(req, vehicleQuery);
-        if (resolvedVehicle?.imei || resolvedVehicle?.plate || resolvedVehicle?.nickname) {
-          actionPerformative = {
-            action: "locateVehicle",
-            target: resolvedVehicle?.imei || resolvedVehicle?.plate || null,
-            query: resolvedVehicle?.nickname || resolvedVehicle?.plate || vehicleQuery
-          };
-          console.log("[agents/chat] fallback action created", {
-            target: actionPerformative.target,
-            query: actionPerformative.query,
-          });
-        }
-      } catch {}
     }
 
     return res.json({

@@ -217,7 +217,6 @@ function DashboardPage() {
   const [assistantOpen, setAssistantOpen] = React.useState(false);
   const [assistantCompanionMode, setAssistantCompanionMode] = React.useState(false);
   const [assistantAction, setAssistantAction] = React.useState<any | null>(null);
-  const [actionDebugOpen, setActionDebugOpen] = React.useState(false);
   const [mobileMarkerMenuOpen, setMobileMarkerMenuOpen] = React.useState(false);
   const [mapStyle, setMapStyle] = React.useState<
     "base" | "light" | "dark" | "satellite"
@@ -267,11 +266,6 @@ function DashboardPage() {
     () => vehicles.find((vehicle) => vehicle.imei === selectedFuelImei) ?? null,
     [vehicles, selectedFuelImei],
   );
-  const sampleImei = vehicles[0]?.imei || null;
-  const sampleGroupImeis = vehicles
-    .slice(0, 3)
-    .map((vehicle) => vehicle.imei)
-    .filter(Boolean) as string[];
 
   React.useEffect(() => {
     selectedFuelImeiRef.current = selectedFuelImei;
@@ -373,49 +367,51 @@ function DashboardPage() {
     setMobileMarkerMenuOpen(false);
   };
 
-  React.useEffect(() => {
-    const fetchVehicles = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}${VEHICLES_PATH}`, {
-          cache: "no-store" as RequestCache,
-          credentials: "include",
-        });
+  const loadVehicles = React.useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}${VEHICLES_PATH}`, {
+        cache: "no-store" as RequestCache,
+        credentials: "include",
+      });
 
-        if (res.status === 401) {
-          navigate("/login", { replace: true });
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(`Failed to load vehicles (${res.status})`);
-        }
-
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          navigate("/login", { replace: true });
-          return;
-        }
-
-        const data = await res.json();
-        const enriched = (data?.vehicles ?? []).map((vehicle: Vehicle) => ({
-          ...vehicle,
-          lat:
-            typeof vehicle.lat === "number" ? vehicle.lat : vehicle.lat ?? null,
-          lon:
-            typeof vehicle.lon === "number" ? vehicle.lon : vehicle.lon ?? null,
-        }));
-
-        setVehicles(enriched);
-      } catch (err: any) {
-        console.error("[Dashboard] error while loading vehicles", err);
-        setError(err?.message || "Unable to load vehicles");
-      } finally {
-        setLoading(false);
+      if (res.status === 401) {
+        navigate("/login", { replace: true });
+        return null;
       }
-    };
 
-    fetchVehicles();
+      if (!res.ok) {
+        throw new Error(`Failed to load vehicles (${res.status})`);
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        navigate("/login", { replace: true });
+        return null;
+      }
+
+      const data = await res.json();
+      const enriched = (data?.vehicles ?? []).map((vehicle: Vehicle) => ({
+        ...vehicle,
+        lat:
+          typeof vehicle.lat === "number" ? vehicle.lat : vehicle.lat ?? null,
+        lon:
+          typeof vehicle.lon === "number" ? vehicle.lon : vehicle.lon ?? null,
+      }));
+
+      setVehicles(enriched);
+      return enriched;
+    } catch (err: any) {
+      console.error("[Dashboard] error while loading vehicles", err);
+      setError(err?.message || "Unable to load vehicles");
+      return null;
+    } finally {
+      setLoading(false);
+    }
   }, [navigate]);
+
+  React.useEffect(() => {
+    void loadVehicles();
+  }, [loadVehicles]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -648,35 +644,50 @@ function DashboardPage() {
     void loadAssistantChats();
   }, [assistantOpen, loadAssistantChats]);
 
-  const resolveVehicleByQuery = React.useCallback(
-    (query?: unknown) => {
+  const resolveVehicleByQueryInList = React.useCallback(
+    (list: Vehicle[], query?: unknown) => {
       if (!query) return null;
       if (typeof query === "object") {
         const imei = (query as any)?.imei || (query as any)?.vehicleId || (query as any)?.id;
         if (imei) {
-          return vehicles.find((vehicle) => String(vehicle.imei) === String(imei)) || null;
+          return list.find((vehicle) => String(vehicle.imei) === String(imei)) || null;
         }
       }
       const q = String(query || "").trim().toLowerCase();
       if (!q) return null;
-      const exact = vehicles.find((vehicle) => String(vehicle.imei).toLowerCase() === q);
+      const exact = list.find((vehicle) => String(vehicle.imei).toLowerCase() === q);
       if (exact) return exact;
       return (
-        vehicles.find((vehicle) => {
+        list.find((vehicle) => {
           const nickname = String(vehicle.nickname || "").toLowerCase();
           const plate = String(vehicle.plate || "").toLowerCase();
           return nickname.includes(q) || plate.includes(q);
         }) || null
       );
     },
-    [vehicles],
+    [],
+  );
+
+  const resolveVehicleByQuery = React.useCallback(
+    (query?: unknown) => resolveVehicleByQueryInList(vehicles, query),
+    [resolveVehicleByQueryInList, vehicles],
   );
 
   const performAssistantAction = React.useCallback(
-    (payload: any) => {
+    async (payload: any) => {
       if (!payload || typeof payload !== "object") return false;
       const action = String(payload.action || payload.type || "").toLowerCase();
       if (!action) return false;
+
+      let currentVehicles = vehicles;
+      const getKnownImeis = () => new Set(currentVehicles.map((vehicle) => String(vehicle.imei)));
+
+      const ensureVehiclesLoaded = async () => {
+        const refreshed = await loadVehicles();
+        if (Array.isArray(refreshed)) {
+          currentVehicles = refreshed;
+        }
+      };
 
       const toArray = (value: any) => (Array.isArray(value) ? value : value ? [value] : []);
       const toNumber = (value: any) => {
@@ -690,18 +701,22 @@ function DashboardPage() {
         if (lat === null || lng === null) return null;
         return { lat, lng };
       };
-      const resolveImei = (value: any) => resolveVehicleByQuery(value)?.imei || null;
-      const resolveImeis = (list: any[]) =>
-        list
-          .map((entry) => resolveImei(entry) || (typeof entry === "string" ? entry : null))
-          .filter(Boolean) as string[];
-      const knownImeis = new Set(vehicles.map((vehicle) => String(vehicle.imei)));
-      const normalizeImeis = (list: string[]) =>
-        list.filter((imei) => knownImeis.has(String(imei)));
+      const resolveImeiFromList = (value: any) =>
+        resolveVehicleByQueryInList(currentVehicles, value)?.imei || null;
+      const resolveVehicleWithRefresh = async (value: any) => {
+        let match = resolveVehicleByQueryInList(currentVehicles, value);
+        if (!match) {
+          await ensureVehiclesLoaded();
+          match = resolveVehicleByQueryInList(currentVehicles, value);
+        }
+        return match;
+      };
 
       const candidateQueries = [
-        payload?.target,
         payload?.targetImei,
+        payload?.target,
+        payload?.targetQuery,
+        payload?.query,
         payload?.imei,
         payload?.vehicleId,
         payload?.vehicle,
@@ -709,9 +724,25 @@ function DashboardPage() {
         payload?.event?.vehicleId,
         payload?.event?.imei,
       ];
-      const targetImei = resolveImei(
-        candidateQueries.find((value) => value != null) ?? null,
-      );
+
+      let targetImei =
+        payload?.targetImei != null ? String(payload.targetImei) : null;
+      if (targetImei && !getKnownImeis().has(String(targetImei))) {
+        await ensureVehiclesLoaded();
+        if (!getKnownImeis().has(String(targetImei))) {
+          targetImei = null;
+        }
+      }
+
+      if (!targetImei) {
+        for (const query of candidateQueries) {
+          const match = await resolveVehicleWithRefresh(query);
+          if (match?.imei) {
+            targetImei = String(match.imei);
+            break;
+          }
+        }
+      }
 
       if (action.includes("geofence")) {
         const center =
@@ -723,8 +754,12 @@ function DashboardPage() {
           toNumber(payload.radiusMeters) ||
           toNumber(payload.radius) ||
           toNumber(payload.coordinates?.radius);
-        const imei = targetImei || (vehicles.length === 1 ? vehicles[0]?.imei : null);
-        const validImei = imei && knownImeis.has(String(imei)) ? imei : null;
+        const imei =
+          targetImei || (currentVehicles.length === 1 ? currentVehicles[0]?.imei : null);
+        if (imei && !getKnownImeis().has(String(imei))) {
+          await ensureVehiclesLoaded();
+        }
+        const validImei = imei && getKnownImeis().has(String(imei)) ? imei : null;
         if (center) {
           (window as any).trucklyFlyToLocation?.({ lng: center.lng, lat: center.lat });
         }
@@ -745,17 +780,39 @@ function DashboardPage() {
       }
 
       if (action.includes("showgroup") || action.includes("group") || action.includes("hide_show")) {
-        const list = resolveImeis(
-          []
-            .concat(toArray(payload.targets))
-            .concat(toArray(payload.targetIds))
-            .concat(toArray(payload.group))
-            .concat(toArray(payload.groupImeis)),
-        );
-        const normalized = normalizeImeis(list);
-        if (normalized.length) {
-          (window as any).trucklyShowOnlyMarkers?.(normalized);
+        const list = []
+          .concat(toArray(payload.targetsImeis))
+          .concat(toArray(payload.targets))
+          .concat(toArray(payload.targetIds))
+          .concat(toArray(payload.group))
+          .concat(toArray(payload.groupImeis));
+        let resolved = list
+          .map((entry) => resolveImeiFromList(entry) || (typeof entry === "string" ? entry : null))
+          .filter(Boolean) as string[];
+        resolved = resolved.filter((imei) => getKnownImeis().has(String(imei)));
+        if (!resolved.length && list.length) {
+          await ensureVehiclesLoaded();
+          resolved = list
+            .map((entry) => resolveImeiFromList(entry) || (typeof entry === "string" ? entry : null))
+            .filter(Boolean) as string[];
+          resolved = resolved.filter((imei) => getKnownImeis().has(String(imei)));
+        }
+        if (resolved.length) {
+          (window as any).trucklyShowOnlyMarkers?.(resolved);
           return true;
+        }
+        if (action.includes("hide_show")) {
+          const targetQuery =
+            payload?.target ||
+            payload?.targetQuery ||
+            payload?.query ||
+            payload?.vehicle;
+          const match = await resolveVehicleWithRefresh(targetQuery);
+          if (match?.imei && getKnownImeis().has(String(match.imei))) {
+            (window as any).trucklyHideOtherMarkers?.(match.imei);
+            (window as any).trucklyFlyToVehicle?.(match);
+            return true;
+          }
         }
       }
 
@@ -764,7 +821,7 @@ function DashboardPage() {
         const tags = toArray(filters.tags || filters.tag).map((tag) => String(tag).toLowerCase());
         const status = filters.status ? String(filters.status).toLowerCase() : null;
         const company = filters.company ? String(filters.company).toLowerCase() : null;
-        const filtered = vehicles.filter((vehicle) => {
+        const filtered = currentVehicles.filter((vehicle) => {
           const matchesStatus = status
             ? String(vehicle.status || "").toLowerCase().includes(status)
             : true;
@@ -782,7 +839,7 @@ function DashboardPage() {
         const imeis = filtered
           .map((vehicle) => vehicle.imei)
           .filter(Boolean)
-          .filter((imei) => knownImeis.has(String(imei)));
+          .filter((imei) => getKnownImeis().has(String(imei)));
         if (imeis.length) {
           (window as any).trucklyShowOnlyMarkers?.(imeis);
           return true;
@@ -790,10 +847,13 @@ function DashboardPage() {
       }
 
       if (action.includes("showalone") || action.includes("showonly") || action.includes("solo")) {
-        const imei = targetImei || resolveImei(payload?.vehicle);
-        if (imei && knownImeis.has(String(imei))) {
+        const imei = targetImei || resolveImeiFromList(payload?.vehicle);
+        if (imei && !getKnownImeis().has(String(imei))) {
+          await ensureVehiclesLoaded();
+        }
+        if (imei && getKnownImeis().has(String(imei))) {
           (window as any).trucklyHideOtherMarkers?.(imei);
-          const targetVehicle = vehicles.find((vehicle) => vehicle.imei === imei);
+          const targetVehicle = currentVehicles.find((vehicle) => vehicle.imei === imei);
           if (targetVehicle) {
             (window as any).trucklyFlyToVehicle?.(targetVehicle);
           }
@@ -815,8 +875,8 @@ function DashboardPage() {
           payload?.targetImei ||
           payload?.imei ||
           payload?.targetQuery;
-        const match = resolveVehicleByQuery(query);
-        if (match?.imei && knownImeis.has(String(match.imei))) {
+        const match = await resolveVehicleWithRefresh(query);
+        if (match?.imei && getKnownImeis().has(String(match.imei))) {
           (window as any).trucklyShowAllMarkers?.();
           (window as any).trucklyFlyToVehicle?.(match);
           return true;
@@ -824,7 +884,9 @@ function DashboardPage() {
       }
 
       if (action.includes("report_fuel")) {
-        const imei = targetImei || resolveImei(payload?.targetQuery || payload?.query);
+        const match =
+          targetImei ? { imei: targetImei } : await resolveVehicleWithRefresh(payload?.targetQuery || payload?.query);
+        const imei = match?.imei || null;
         if (imei) {
           window.dispatchEvent(
             new CustomEvent("truckly:bottom-bar-toggle", {
@@ -836,7 +898,9 @@ function DashboardPage() {
       }
 
       if (action.includes("report_driver")) {
-        const imei = targetImei || resolveImei(payload?.targetQuery || payload?.query);
+        const match =
+          targetImei ? { imei: targetImei } : await resolveVehicleWithRefresh(payload?.targetQuery || payload?.query);
+        const imei = match?.imei || null;
         if (imei) {
           window.dispatchEvent(
             new CustomEvent("truckly:driver-open", {
@@ -848,7 +912,9 @@ function DashboardPage() {
       }
 
       if (action.includes("report_route")) {
-        const imei = targetImei || resolveImei(payload?.targetQuery || payload?.query);
+        const match =
+          targetImei ? { imei: targetImei } : await resolveVehicleWithRefresh(payload?.targetQuery || payload?.query);
+        const imei = match?.imei || null;
         if (imei) {
           window.dispatchEvent(
             new CustomEvent("truckly:routes-open", {
@@ -876,20 +942,7 @@ function DashboardPage() {
 
       return false;
     },
-    [resolveVehicleByQuery, vehicles],
-  );
-
-  const triggerMockAction = React.useCallback(
-    (payload: any) => {
-      const performed = performAssistantAction(payload);
-      setAssistantAction(payload);
-      setAssistantOpen(true);
-      if (performed) {
-        setAssistantCompanionMode(true);
-      }
-      return performed;
-    },
-    [performAssistantAction],
+    [loadVehicles, resolveVehicleByQueryInList, vehicles],
   );
 
   const handleAssistantSend = async () => {
@@ -938,13 +991,18 @@ function DashboardPage() {
         data?.action ||
         null;
       if (Array.isArray(actionPayload)) {
-        const performed = actionPayload.some((entry) => performAssistantAction(entry));
+        let performed = false;
+        for (const entry of actionPayload) {
+          if (await performAssistantAction(entry)) {
+            performed = true;
+          }
+        }
         if (performed) {
           setAssistantCompanionMode(true);
           setAssistantAction(actionPayload);
         }
       } else if (actionPayload && typeof actionPayload === "object") {
-        const performed = performAssistantAction(actionPayload);
+        const performed = await performAssistantAction(actionPayload);
         if (performed) {
           setAssistantCompanionMode(true);
           setAssistantAction(actionPayload);
@@ -1564,115 +1622,6 @@ function DashboardPage() {
                 </svg>
               </span>
             </button>
-          )}
-          {import.meta.env.DEV && (
-            <div className="fixed bottom-6 left-6 z-40 flex flex-col items-start gap-2">
-              <button
-                type="button"
-                onClick={() => setActionDebugOpen((prev) => !prev)}
-                className="rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition hover:text-white hover:border-white/40"
-              >
-                Azioni demo
-              </button>
-              {actionDebugOpen && (
-                <div className="w-64 rounded-2xl border border-white/10 bg-[#0b0b0c] p-3 shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        triggerMockAction({
-                          action: "geoFenceAlert",
-                          coordinatesCenter: { lat: 41.9028, lng: 12.4964 },
-                          coordinatesRadius: 2000,
-                          event: { type: "vehicleIn", target: sampleImei || "vehicleId", triggerTimes: 1 },
-                          target: sampleImei,
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Geofence Roma
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        triggerMockAction({
-                          action: "locateVehicle",
-                          query: sampleImei || "",
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Trova veicolo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        triggerMockAction({
-                          action: "showAlone",
-                          target: sampleImei || "",
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Mostra solo 1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        triggerMockAction({
-                          action: "showGroup",
-                          groupImeis: sampleGroupImeis,
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Gruppo (prime 3)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        triggerMockAction({
-                          action: "showFiltered",
-                          filters: { tags: ["cold"] },
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Filtra tag "cold"
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => triggerMockAction({ action: "showAll" })}
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Mostra tutti
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        triggerMockAction({
-                          action: "focus",
-                          center: { lat: 41.9028, lng: 12.4964 },
-                        })
-                      }
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
-                    >
-                      Centra Roma
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAssistantCompanionMode(false);
-                        setAssistantOpen(false);
-                      }}
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] text-white/60 hover:text-white hover:border-white/30 transition"
-                    >
-                      Chiudi companion
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           )}
         </div>
       )}

@@ -740,6 +740,7 @@ export class TrucklyMap {
   }
 
   hideOtherMarkers(activeImei: string) {
+    this.resetClusterState({ animate: false });
     this._hiddenMarkers.clear();
     this.markers.forEach((marker, id) => {
       if (id === activeImei) return;
@@ -757,6 +758,7 @@ export class TrucklyMap {
       this.showAllMarkers();
       return;
     }
+    this.resetClusterState({ animate: false });
     const allowed = new Set(imeis.map((value) => String(value)));
     this._hiddenMarkers.clear();
     this.markers.forEach((marker, id) => {
@@ -783,6 +785,7 @@ export class TrucklyMap {
       if (el) el.style.display = "";
     });
     this._hiddenMarkers.clear();
+    this._scheduleUpdateClusters({ force: true });
   }
 
   _resolveTheme(preferred?: "light" | "dark") {
