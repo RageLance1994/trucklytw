@@ -955,6 +955,62 @@ router.post('/vehicles/assign', auth, async (req, res) => {
     console.error('[api]/vehicles/assign error', err);
     return res.status(500).json({ message: 'Errore interno' });
   }
+  });
+
+router.post('/vehicles/owners', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ message: 'Operazione non autorizzata.' });
+  }
+
+  const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+  if (!vehicleId || !mongoose.Types.ObjectId.isValid(vehicleId)) {
+    return res.status(400).json({ message: 'Veicolo non valido.' });
+  }
+  const requestedCompanies = Array.isArray(req.body.companyIds)
+    ? req.body.companyIds.map((companyId) => String(companyId).trim()).filter(Boolean)
+    : [];
+  if (!requestedCompanies.length) {
+    return res.status(400).json({ message: 'Seleziona almeno una azienda.' });
+  }
+
+  try {
+    const existing = await Vehicles.findById(vehicleId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    const ownerDocs = await UserModel.find(
+      { companyId: { $in: requestedCompanies } },
+      { _id: 1 }
+    ).lean();
+    const ownerIds = ownerDocs.map((owner) => owner._id);
+    if (!ownerIds.length) {
+      return res.status(400).json({ message: 'Le aziende selezionate non hanno utenti.' });
+    }
+
+    const previousOwners = Array.isArray(existing.owner) ? existing.owner : [];
+    if (previousOwners.length) {
+      await UserModel.updateMany(
+        { _id: { $in: previousOwners } },
+        { $pull: { vehicles: existing._id } }
+      );
+    }
+    await UserModel.updateMany(
+      { _id: { $in: ownerIds } },
+      { $addToSet: { vehicles: existing._id } }
+    );
+
+    const updated = await Vehicles.findByIdAndUpdate(
+      existing._id,
+      { $set: { owner: ownerIds } },
+      { new: true }
+    );
+
+    return res.status(200).json({ vehicle: updated });
+  } catch (err) {
+    console.error('[api]/vehicles/owners error', err);
+    return res.status(500).json({ message: 'Errore interno' });
+  }
 });
 
 module.exports = router;
@@ -1146,7 +1202,7 @@ router.post('/fuel/history', auth, imeiOwnership, async (req, res) => {
   }
 });
 
-// === SeepTrucker test endpoint ===
+// === Driver activity test endpoint ===
 // POST /api/seep/test
 // Body: { driverId, startDate, endDate, timezone, regulation, penalty, onlyInfringementsGraphs, ignoreCountrySelectedInfringements }
 // Optionally attach a multipart file under field "file" to upload a DDD before analysis.

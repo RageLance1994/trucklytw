@@ -114,11 +114,17 @@ type VehicleTableVehicle = {
   company?: string | null;
   customer?: string | null;
   tags?: string[];
+  owner?: string[] | null;
 };
 
 type AdminCompanyOption = {
   id: string;
   name: string;
+};
+
+type OwnerOption = {
+  id: string;
+  label: string;
 };
 
 const formatDateLabel = (value?: string) => {
@@ -534,7 +540,7 @@ export function DriverBottomBar({
       : mode === "vehicles"
         ? "Elenco completo dei veicoli registrati."
       : mode === "tacho"
-        ? "Elenco file .ddd disponibili dal servizio Teltonika."
+        ? "Elenco file .ddd disponibili dal servizio."
         : `Tabella autisti e report attivita. Selezione attuale: ${
             selectedDriverImei || "nessuna"
           }`;
@@ -574,6 +580,7 @@ export function DriverBottomBar({
             vehicles={vehicles}
             canEdit={canEditVehicles}
             canDelete={canDeleteVehicles}
+            canManageOwners={Number.isInteger(effectivePrivilege) && effectivePrivilege === 0}
           />
         ) : mode === "tacho" ? (
           <TachoFilesDashboard isOpen={isOpen} />
@@ -589,10 +596,12 @@ function VehicleTableDashboard({
   vehicles,
   canEdit,
   canDelete,
+  canManageOwners,
 }: {
   vehicles: VehicleTableVehicle[];
   canEdit: boolean;
   canDelete: boolean;
+  canManageOwners: boolean;
 }) {
   const rows = React.useMemo(() => {
     return [...vehicles].sort((a, b) => {
@@ -609,6 +618,14 @@ function VehicleTableDashboard({
   const [assignCompanyId, setAssignCompanyId] = React.useState("");
   const [assignLoading, setAssignLoading] = React.useState(false);
   const [assignError, setAssignError] = React.useState<string | null>(null);
+  const [ownerAssignTarget, setOwnerAssignTarget] = React.useState<VehicleTableVehicle | null>(
+    null,
+  );
+  const [ownerOptions, setOwnerOptions] = React.useState<OwnerOption[]>([]);
+  const [ownerSelectedIds, setOwnerSelectedIds] = React.useState<string[]>([]);
+  const [ownerSearch, setOwnerSearch] = React.useState("");
+  const [ownerLoading, setOwnerLoading] = React.useState(false);
+  const [ownerError, setOwnerError] = React.useState<string | null>(null);
 
   const resolveVehicleId = (vehicle: VehicleTableVehicle) =>
     vehicle.id || vehicle._id || vehicle.imei || null;
@@ -752,11 +769,92 @@ function VehicleTableDashboard({
     }
   };
 
+  const openOwnerAssign = async (vehicle: VehicleTableVehicle) => {
+    setOwnerAssignTarget(vehicle);
+    setOwnerSearch("");
+    setOwnerError(null);
+    setOwnerLoading(true);
+    setOwnerSelectedIds([]);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/companies`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore caricamento aziende (${res.status})`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const companies = Array.isArray(data?.companies) ? data.companies : [];
+      const owners = companies.map((company: any) => ({
+        id: String(company?.id || company?._id || ""),
+        label: String(company?.name || "--"),
+      }));
+      const unique = new Map<string, OwnerOption>();
+      owners.forEach((owner: OwnerOption) => {
+        if (!owner.id) return;
+        unique.set(owner.id, owner);
+      });
+      const list = Array.from(unique.values()).sort((a, b) => {
+        return a.label.localeCompare(b.label, "it-IT", { sensitivity: "base" });
+      });
+      setOwnerOptions(list);
+    } catch (err: any) {
+      setOwnerError(err?.message || "Errore caricamento proprietari.");
+    } finally {
+      setOwnerLoading(false);
+    }
+  };
+
+  const filteredOwnerOptions = React.useMemo(() => {
+    const query = ownerSearch.trim().toLowerCase();
+    if (!query) return ownerOptions;
+    return ownerOptions.filter((owner) => {
+      return owner.label.toLowerCase().includes(query);
+    });
+  }, [ownerOptions, ownerSearch]);
+
+  const toggleOwner = (ownerId: string) => {
+    setOwnerSelectedIds((prev) =>
+      prev.includes(ownerId) ? prev.filter((id) => id !== ownerId) : [...prev, ownerId],
+    );
+  };
+
+  const handleOwnerAssign = async () => {
+    if (!ownerAssignTarget) return;
+    const vehicleId = resolveVehicleId(ownerAssignTarget);
+    if (!vehicleId) return;
+    if (!ownerSelectedIds.length) {
+      setOwnerError("Seleziona almeno un proprietario.");
+      return;
+    }
+    setOwnerLoading(true);
+    setOwnerError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vehicles/owners`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: vehicleId, companyIds: ownerSelectedIds }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore assegnazione proprietari (${res.status})`);
+      }
+      window.dispatchEvent(new CustomEvent("truckly:vehicles-refresh"));
+      setOwnerAssignTarget(null);
+      setOwnerSelectedIds([]);
+    } catch (err: any) {
+      setOwnerError(err?.message || "Errore durante l'assegnazione.");
+    } finally {
+      setOwnerLoading(false);
+    }
+  };
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-      {assignTarget && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        {assignTarget && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+            <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
             <div className="space-y-2">
               <p className="text-sm uppercase tracking-[0.18em] text-white/60">
                 Assegna veicolo
@@ -917,6 +1015,12 @@ function VehicleTableDashboard({
                                 Assegna
                               </DropdownMenuItem>
                             )}
+                            {canManageOwners && (
+                              <DropdownMenuItem onSelect={() => openOwnerAssign(vehicle)}>
+                                <i className="fa fa-users mr-2 text-[12px]" aria-hidden="true" />
+                                Assegna proprietari
+                              </DropdownMenuItem>
+                            )}
                             {canDelete && (
                               <DropdownMenuItem
                                 onSelect={() => handleDelete(vehicle)}
@@ -935,6 +1039,96 @@ function VehicleTableDashboard({
             </div>
           </div>
         )}
+        {ownerAssignTarget && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+            <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+              <div className="space-y-2">
+                <p className="text-sm uppercase tracking-[0.18em] text-white/60">
+                  Assegna proprietari
+                </p>
+                <h3 className="text-lg font-semibold text-white">
+                  {ownerAssignTarget.nickname
+                    || (typeof ownerAssignTarget.plate === "string"
+                      ? ownerAssignTarget.plate
+                      : ownerAssignTarget.plate?.v)
+                    || ownerAssignTarget.imei
+                    || "Veicolo"}
+                </h3>
+                <p className="text-sm text-white/70">
+                  Seleziona una o più aziende proprietarie per questo veicolo.
+                </p>
+              </div>
+              <div className="mt-4 space-y-3">
+                <input
+                  type="text"
+                  value={ownerSearch}
+                  onChange={(e) => setOwnerSearch(e.target.value)}
+                  placeholder="Cerca azienda..."
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+                <div className="max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-[#0d0d0f]">
+                  {ownerLoading ? (
+                    <div className="px-3 py-3 text-xs text-white/60">
+                      Caricamento aziende...
+                    </div>
+                  ) : filteredOwnerOptions.length ? (
+                    filteredOwnerOptions.map((owner) => {
+                      const isSelected = ownerSelectedIds.includes(owner.id);
+                      return (
+                        <button
+                          key={owner.id}
+                          type="button"
+                          onClick={() => toggleOwner(owner.id)}
+                          className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
+                            isSelected
+                              ? "bg-white/10 text-white"
+                              : "text-white/80 hover:bg-white/5"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{owner.label}</div>
+                          </div>
+                          <span
+                            className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200"
+                                : "border-white/20 text-white/40"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            <i className="fa fa-check text-[10px]" />
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-3 text-xs text-white/60">
+                      Nessuna azienda trovata.
+                    </div>
+                  )}
+                </div>
+                {ownerError && <p className="text-xs text-red-400">{ownerError}</p>}
+              </div>
+              <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleOwnerAssign}
+                  disabled={ownerLoading || !ownerSelectedIds.length}
+                  className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {ownerLoading ? "Salvataggio..." : "Conferma"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOwnerAssignTarget(null)}
+                  className="rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition"
+                >
+                  Annulla
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -944,11 +1138,13 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
   const [files, setFiles] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = React.useState(false);
   const [search, setSearch] = React.useState("");
 
   const fetchFiles = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAccessDenied(false);
     try {
       const baseUrl = resolveBackendBaseUrl();
       const query = new URLSearchParams();
@@ -959,6 +1155,11 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
         `${baseUrl}/api/tacho/files${query.toString() ? `?${query}` : ""}`,
         { credentials: "include" },
       );
+      if (res.status === 403) {
+        setAccessDenied(true);
+        setFiles([]);
+        return;
+      }
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
@@ -988,7 +1189,7 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
               File disponibili
             </p>
             <p className="text-sm text-white/60">
-              Scarica i file .ddd da Teltonika per autisti e veicoli.
+              Scarica i file .ddd per autisti e veicoli.
             </p>
           </div>
           <button
@@ -1009,7 +1210,12 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
           />
         </div>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {accessDenied && (
+          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
+            Contatta l'amministratore per accedere a questa pagina
+          </div>
+        )}
+        {!accessDenied && error && <p className="text-xs text-red-400">{error}</p>}
 
         <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
           <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
@@ -1132,7 +1338,7 @@ function DriverDashboard({
         setError("Nessun grafico SVG restituito (verifica driverId e date).");
       }
     } catch (err: any) {
-      setError(err?.message || "Errore nella richiesta SeepTrucker");
+      setError(err?.message || "Errore nella richiesta di analisi");
     } finally {
       setLoading(false);
     }

@@ -1106,7 +1106,7 @@ function AdminSidebar({
       const data = await res.json();
       setTachoCompanies(Array.isArray(data?.companies) ? data.companies : []);
     } catch (err: any) {
-      setTachoError(err?.message || "Errore durante il caricamento Teltonika.");
+      setTachoError(err?.message || "Errore durante il caricamento del servizio.");
     } finally {
       setTachoLoading(false);
     }
@@ -1306,7 +1306,7 @@ function AdminSidebar({
       }
     } else {
       if (!selectedTachoCompany) {
-        setTachoError("Seleziona una azienda Teltonika.");
+        setTachoError("Seleziona una azienda per l'import.");
         return;
       }
       if (!importName.trim()) {
@@ -1768,9 +1768,9 @@ function AdminSidebar({
                   Registrazione azienda
                 </p>
                 <h3 className="text-lg font-semibold text-white">Nuova azienda</h3>
-                <p className="text-sm text-white/60">
-                  Crea una nuova azienda o importa da Teltonika.
-                </p>
+                  <p className="text-sm text-white/60">
+                    Crea una nuova azienda o importa da un servizio esterno.
+                  </p>
               </div>
               <button
                 type="button"
@@ -1814,7 +1814,7 @@ function AdminSidebar({
                     : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
                 }`}
               >
-                Importa da Teltonika
+                Importa da servizio esterno
               </button>
             </div>
 
@@ -1879,15 +1879,15 @@ function AdminSidebar({
                       checked={registerTeltonika}
                       onChange={(e) => setRegisterTeltonika(e.target.checked)}
                     />
-                    Registra su Teltonika
+                    Registra su servizio esterno
                   </label>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.1em] text-white/60">
-                      Azienda Teltonika
-                    </p>
+                      <p className="text-xs uppercase tracking-[0.1em] text-white/60">
+                        Azienda servizio esterno
+                      </p>
                     <button
                       type="button"
                       onClick={fetchTachoCompanies}
