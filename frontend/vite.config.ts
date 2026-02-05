@@ -25,6 +25,10 @@ export default defineConfig({
         target: "http://127.0.0.1:8080",
         changeOrigin: true,
       },
+      "/_agents": {
+        target: "http://127.0.0.1:8080",
+        changeOrigin: true,
+      },
       "/ws": {
         // backend WebSocket is mounted at /ws/stream
         target: "http://127.0.0.1:8080",

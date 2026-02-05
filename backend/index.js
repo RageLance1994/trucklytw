@@ -76,6 +76,7 @@ var routes = [
   { location: '/dashboard', mw: require('./routes/_dashboard') },
   { location: '/ws', mw: require('./routes/_websockets') },
   { location: '/api', mw: require('./routes/api') },
+  { location: '/_agents', mw: require('./routes/_agents') },
 ];
 
 routes.map((r) => {
