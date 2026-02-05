@@ -16,6 +16,8 @@ type DriverSidebarProps = {
   selectedRouteImei?: string | null;
   selectedDriverDevice?: any | null;
   mode?: "driver" | "routes" | "geofence" | "vehicle" | "admin";
+  vehicleEditTarget?: VehicleEditTarget | null;
+  vehicleEditFocus?: "tags" | null;
   geofenceDraft?: {
     geofenceId: string;
     imei: string;
@@ -75,6 +77,31 @@ type AdminVehicleSummary = {
   plate?: string | null;
   tags?: string[];
 };
+
+type VehicleEditTarget = {
+  id?: string | null;
+  _id?: string | null;
+  imei?: string | null;
+  nickname?: string | null;
+  plate?: string | { v?: string; value?: string } | null;
+  brand?: string | null;
+  model?: string | null;
+  deviceModel?: string | null;
+  codec?: string | null;
+  tags?: string[];
+  details?: {
+    tanks?: {
+      primary?: { capacity?: number | null; unit?: string | null };
+      secondary?: { capacity?: number | null; unit?: string | null };
+    };
+    sim?: {
+      prefix?: string | null;
+      number?: string | null;
+      iccid?: string | null;
+    };
+  };
+};
+
 
 type TachoCompany = {
   id: string;
@@ -830,6 +857,49 @@ function RoutesSidebar({
 
   return (
     <div className="space-y-4">
+      {monitoringPromptOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+            <div className="space-y-2">
+              <p className="text-sm uppercase tracking-[0.18em] text-white/60">
+                Gestione storico
+              </p>
+              <h3 className="text-lg font-semibold text-white">
+                Cambiati targa/marca/modello
+              </h3>
+              <p className="text-sm text-white/70">
+                Vuoi accodare i nuovi dati allo storico esistente oppure
+                archiviare lo storico con la targa precedente e ripartire?
+              </p>
+            </div>
+            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => handleSubmit("append")}
+                className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
+              >
+                Accoda storico
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit("rename")}
+                className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
+              >
+                Archivia e riparti
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMonitoringPromptOpen(false);
+                }}
+                className="sm:col-span-2 rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -869,7 +939,10 @@ function RoutesSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div
+        ref={tagsRef}
+        className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+      >
         <div className="flex items-center justify-between text-sm text-white/70">
           <span>Rewind</span>
           <span>{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
@@ -2470,6 +2543,8 @@ export function DriverSidebar({
   selectedRouteImei,
   selectedDriverDevice,
   mode = "driver",
+  vehicleEditTarget = null,
+  vehicleEditFocus = null,
   geofenceDraft,
 }: DriverSidebarProps) {
   const routesBaseUrl = React.useMemo(() => {
@@ -2634,6 +2709,9 @@ export function DriverSidebar({
             <VehicleRegistrationSidebar
               isOpen={isOpen}
               isSuperAdmin={Number.isInteger(effectivePrivilege) && effectivePrivilege === 0}
+              initialVehicle={vehicleEditTarget}
+              focusSection={vehicleEditFocus}
+              onDone={onClose}
             />
           ) : (
             <Section
@@ -2733,11 +2811,18 @@ export function DriverSidebar({
 function VehicleRegistrationSidebar({
   isOpen,
   isSuperAdmin,
+  initialVehicle,
+  focusSection,
+  onDone,
 }: {
   isOpen: boolean;
   isSuperAdmin: boolean;
+  initialVehicle?: VehicleEditTarget | null;
+  focusSection?: "tags" | null;
+  onDone?: () => void;
 }) {
   const imeiRegex = /^\d{15}$/;
+  const isEditMode = Boolean(initialVehicle);
   const [companyOptions, setCompanyOptions] = React.useState<AdminCompany[]>([]);
   const [companyId, setCompanyId] = React.useState("");
   const [companyLoading, setCompanyLoading] = React.useState(false);
@@ -2761,14 +2846,93 @@ function VehicleRegistrationSidebar({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [monitoringPromptOpen, setMonitoringPromptOpen] = React.useState(false);
   const [previewStatus, setPreviewStatus] = React.useState<"idle" | "connecting" | "active" | "error">("idle");
   const wsRef = React.useRef<WebSocket | null>(null);
   const previewImeiRef = React.useRef<string | null>(null);
   const previewMetaRef = React.useRef({ nickname, plate, brand, model });
+  const tagsRef = React.useRef<HTMLDivElement | null>(null);
+  const initialMetaRef = React.useRef({ plate: "", brand: "", model: "" });
 
   React.useEffect(() => {
     previewMetaRef.current = { nickname, plate, brand, model };
   }, [nickname, plate, brand, model]);
+
+  React.useEffect(() => {
+    if (!isOpen || !initialVehicle) return;
+    const normalizePlate = (value: VehicleEditTarget["plate"]) => {
+      if (!value) return "";
+      if (typeof value === "string") return value;
+      return value.v || value.value || "";
+    };
+    const details = initialVehicle.details || {};
+    const tankPrimary = details?.tanks?.primary;
+    const tankSecondary = details?.tanks?.secondary;
+    const sim = details?.sim || {};
+
+    setCompanyId("");
+    setNickname(initialVehicle.nickname || "");
+    setPlate(normalizePlate(initialVehicle.plate));
+    setBrand(initialVehicle.brand || "");
+    setModel(initialVehicle.model || "");
+    setImei(initialVehicle.imei || "");
+    setDeviceModel(initialVehicle.deviceModel || "FMC150");
+    setCodec(initialVehicle.codec || "8 Ext");
+    setTags(Array.isArray(initialVehicle.tags) ? initialVehicle.tags : []);
+
+    setTank1Capacity(
+      tankPrimary?.capacity != null ? String(tankPrimary.capacity) : "",
+    );
+    setTank1Unit((tankPrimary?.unit as string) || "litres");
+    const hasSecondary = Number.isFinite(tankSecondary?.capacity ?? null);
+    setSecondTankEnabled(hasSecondary);
+    setTank2Capacity(
+      tankSecondary?.capacity != null ? String(tankSecondary.capacity) : "",
+    );
+    setTank2Unit((tankSecondary?.unit as string) || "litres");
+
+    setSimPrefix(sim.prefix || "+39");
+    setSimNumber(sim.number || "");
+    setSimIccid(sim.iccid || "");
+
+    initialMetaRef.current = {
+      plate: normalizePlate(initialVehicle.plate).trim().toLowerCase(),
+      brand: (initialVehicle.brand || "").trim().toLowerCase(),
+      model: (initialVehicle.model || "").trim().toLowerCase(),
+    };
+  }, [initialVehicle, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen || initialVehicle) return;
+    setCompanyId("");
+    setNickname("");
+    setPlate("");
+    setBrand("");
+    setModel("");
+    setImei("");
+    setSimPrefix("+39");
+    setSimNumber("");
+    setSimIccid("");
+    setDeviceModel("FMC150");
+    setCodec("8 Ext");
+    setTank1Capacity("");
+    setTank1Unit("litres");
+    setSecondTankEnabled(false);
+    setTank2Capacity("");
+    setTank2Unit("litres");
+    setTags([]);
+    setError(null);
+    setSuccess(null);
+  }, [initialVehicle, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen || focusSection !== "tags") return;
+    const node = tagsRef.current;
+    if (!node) return;
+    window.setTimeout(() => {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+  }, [focusSection, isOpen]);
 
   const imeiValid = imeiRegex.test(imei.trim());
   const tank1Value = Number(tank1Capacity);
@@ -2778,7 +2942,7 @@ function VehicleRegistrationSidebar({
   const tank2UnitValid = !secondTankEnabled || Boolean(tank2Unit);
 
   const canSubmit =
-    (!isSuperAdmin || companyId.trim().length > 0) &&
+    (!isSuperAdmin || isEditMode || companyId.trim().length > 0) &&
     nickname.trim().length > 0 &&
     plate.trim().length > 3 &&
     brand.trim().length > 0 &&
@@ -2912,12 +3076,28 @@ function VehicleRegistrationSidebar({
     };
   }, [clearPreviewMarker]);
 
-  const handleSubmit = async () => {
+  const hasMonitoringChange = () => {
+    if (!isEditMode) return false;
+    const next = {
+      plate: plate.trim().toLowerCase(),
+      brand: brand.trim().toLowerCase(),
+      model: model.trim().toLowerCase(),
+    };
+    const prev = initialMetaRef.current;
+    return next.plate !== prev.plate || next.brand !== prev.brand || next.model !== prev.model;
+  };
+
+  const handleSubmit = async (policy?: "append" | "rename") => {
     if (!canSubmit || submitting) return;
+    if (isEditMode && hasMonitoringChange() && !policy) {
+      setMonitoringPromptOpen(true);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setSuccess(null);
 
+    const vehicleId = initialVehicle?.id || (initialVehicle as any)?._id || null;
     const payload: any = {
       nickname: nickname.trim(),
       plate: plate.trim(),
@@ -2928,6 +3108,10 @@ function VehicleRegistrationSidebar({
       codec: codec.trim(),
       tags,
     };
+
+    if (vehicleId) {
+      payload.id = vehicleId;
+    }
 
     if (isSuperAdmin && companyId.trim()) {
       payload.companyId = companyId.trim();
@@ -2956,8 +3140,16 @@ function VehicleRegistrationSidebar({
 
     payload.details = details;
 
+    if (policy && hasMonitoringChange()) {
+      payload.monitoringPolicy = policy;
+    }
+
+    const url = isEditMode
+      ? `${API_BASE_URL}/dashboard/vehicles/update`
+      : `${API_BASE_URL}/dashboard/vehicles/create`;
+
     try {
-      const res = await fetch(`${API_BASE_URL}/dashboard/vehicles/create`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2969,38 +3161,54 @@ function VehicleRegistrationSidebar({
         throw new Error(data?.message || "Non hai i permessi per creare veicoli.");
       }
 
+      if (res.status === 409) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Operazione non completata.");
+      }
+
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `Errore salvataggio veicolo (${res.status})`);
       }
 
-      setSuccess(`Veicolo ${payload.nickname} registrato.`);
-      setCompanyId("");
-      setNickname("");
-      setPlate("");
-      setBrand("");
-      setModel("");
-      setImei("");
-      setSimPrefix("+39");
-      setSimNumber("");
-      setSimIccid("");
-      setDeviceModel("FMC150");
-      setCodec("8 Ext");
-      setTank1Capacity("");
-      setTank1Unit("litres");
-      setSecondTankEnabled(false);
-      setTank2Capacity("");
-      setTank2Unit("litres");
-      setTags([]);
+      setSuccess(
+        isEditMode
+          ? `Veicolo ${payload.nickname} aggiornato.`
+          : `Veicolo ${payload.nickname} registrato.`,
+      );
+      window.dispatchEvent(new CustomEvent("truckly:vehicles-refresh"));
 
-      if (previewImeiRef.current) {
-        clearPreviewMarker(previewImeiRef.current);
-        previewImeiRef.current = null;
+      if (!isEditMode) {
+        setCompanyId("");
+        setNickname("");
+        setPlate("");
+        setBrand("");
+        setModel("");
+        setImei("");
+        setSimPrefix("+39");
+        setSimNumber("");
+        setSimIccid("");
+        setDeviceModel("FMC150");
+        setCodec("8 Ext");
+        setTank1Capacity("");
+        setTank1Unit("litres");
+        setSecondTankEnabled(false);
+        setTank2Capacity("");
+        setTank2Unit("litres");
+        setTags([]);
+
+        if (previewImeiRef.current) {
+          clearPreviewMarker(previewImeiRef.current);
+          previewImeiRef.current = null;
+        }
+      } else {
+        onDone?.();
       }
     } catch (err: any) {
       setError(err?.message || "Errore durante la registrazione.");
     } finally {
       setSubmitting(false);
+      setMonitoringPromptOpen(false);
     }
   };
 
@@ -3025,7 +3233,7 @@ function VehicleRegistrationSidebar({
             I campi contrassegnati sono obbligatori.
           </p>
         </div>
-        {isSuperAdmin && (
+        {isSuperAdmin && !isEditMode && (
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.1em] text-white/60">
               Azienda
@@ -3144,7 +3352,8 @@ function VehicleRegistrationSidebar({
             <input
               value={imei}
               onChange={(e) => setImei(e.target.value)}
-              className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
+              disabled={isEditMode}
+              className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 disabled:opacity-60 disabled:cursor-not-allowed ${
                 imei && !imeiValid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
               }`}
               placeholder="15 cifre"
@@ -3249,7 +3458,11 @@ function VehicleRegistrationSidebar({
           disabled={!canSubmit || submitting}
           className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {submitting ? "Salvataggio..." : "Registra veicolo"}
+          {submitting
+            ? "Salvataggio..."
+            : isEditMode
+              ? "Aggiorna veicolo"
+              : "Registra veicolo"}
         </button>
       </div>
     </div>

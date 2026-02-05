@@ -26,9 +26,15 @@ import {
 } from "./config";
 
 type Vehicle = {
+  id?: string;
+  _id?: string;
   imei: string;
   nickname: string;
   plate: string;
+  brand?: string;
+  model?: string;
+  deviceModel?: string;
+  codec?: string;
   lat?: number | null;
   lon?: number | null;
   status?: string;
@@ -39,7 +45,14 @@ type Vehicle = {
       secondary?: { capacity?: number | null };
       unit?: string;
     };
+    sim?: {
+      prefix?: string | null;
+      number?: string | null;
+      iccid?: string | null;
+    };
   };
+  tags?: string[];
+  company?: string;
 };
 
 function LoginPage() {
@@ -203,7 +216,7 @@ function DashboardPage() {
   const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(false);
   const [bottomBarState, setBottomBarState] = React.useState<{
     open: boolean;
-    mode: "driver" | "fuel" | "tacho";
+    mode: "driver" | "fuel" | "tacho" | "vehicles";
   }>({ open: false, mode: "driver" });
   const [mobileMarkerPanel, setMobileMarkerPanel] = React.useState<{
     open: boolean;
@@ -217,6 +230,8 @@ function DashboardPage() {
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
   const [selectedRouteImei, setSelectedRouteImei] = React.useState<string | null>(null);
+  const [vehicleEditTarget, setVehicleEditTarget] = React.useState<Vehicle | null>(null);
+  const [vehicleEditFocus, setVehicleEditFocus] = React.useState<"tags" | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<
     "driver" | "routes" | "geofence" | "vehicle" | "admin"
   >("driver");
@@ -332,49 +347,58 @@ function DashboardPage() {
     setMobileMarkerMenuOpen(false);
   };
 
-  React.useEffect(() => {
-    const fetchVehicles = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}${VEHICLES_PATH}`, {
-          cache: "no-store" as RequestCache,
-          credentials: "include",
-        });
+  const fetchVehicles = React.useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}${VEHICLES_PATH}`, {
+        cache: "no-store" as RequestCache,
+        credentials: "include",
+      });
 
-        if (res.status === 401) {
-          navigate("/login", { replace: true });
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(`Failed to load vehicles (${res.status})`);
-        }
-
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          navigate("/login", { replace: true });
-          return;
-        }
-
-        const data = await res.json();
-        const enriched = (data?.vehicles ?? []).map((vehicle: Vehicle) => ({
-          ...vehicle,
-          lat:
-            typeof vehicle.lat === "number" ? vehicle.lat : vehicle.lat ?? null,
-          lon:
-            typeof vehicle.lon === "number" ? vehicle.lon : vehicle.lon ?? null,
-        }));
-
-        setVehicles(enriched);
-      } catch (err: any) {
-        console.error("[Dashboard] error while loading vehicles", err);
-        setError(err?.message || "Unable to load vehicles");
-      } finally {
-        setLoading(false);
+      if (res.status === 401) {
+        navigate("/login", { replace: true });
+        return;
       }
-    };
 
-    fetchVehicles();
+      if (!res.ok) {
+        throw new Error(`Failed to load vehicles (${res.status})`);
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      const data = await res.json();
+      const enriched = (data?.vehicles ?? []).map((vehicle: Vehicle) => ({
+        ...vehicle,
+        lat:
+          typeof vehicle.lat === "number" ? vehicle.lat : vehicle.lat ?? null,
+        lon:
+          typeof vehicle.lon === "number" ? vehicle.lon : vehicle.lon ?? null,
+      }));
+
+      setVehicles(enriched);
+    } catch (err: any) {
+      console.error("[Dashboard] error while loading vehicles", err);
+      setError(err?.message || "Unable to load vehicles");
+    } finally {
+      setLoading(false);
+    }
   }, [navigate]);
+
+  React.useEffect(() => {
+    fetchVehicles();
+  }, [fetchVehicles]);
+
+  React.useEffect(() => {
+    const handler = () => {
+      setLoading(true);
+      fetchVehicles();
+    };
+    window.addEventListener("truckly:vehicles-refresh", handler);
+    return () => window.removeEventListener("truckly:vehicles-refresh", handler);
+  }, [fetchVehicles]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -399,11 +423,19 @@ function DashboardPage() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail || {};
       const mode =
-        detail?.mode === "fuel" || detail?.mode === "tacho" ? detail.mode : "driver";
+        detail?.mode === "fuel"
+        || detail?.mode === "tacho"
+        || detail?.mode === "vehicles"
+          ? detail.mode
+          : "driver";
       const imei = detail?.imei || null;
 
       if (mode === "fuel") {
         setSelectedFuelImei(imei);
+      }
+      if (mode === "vehicles") {
+        setIsQuickSidebarOpen(false);
+        setIsDriverSidebarOpen(false);
       }
 
       setBottomBarState((prev) => ({
@@ -457,11 +489,27 @@ function DashboardPage() {
   React.useEffect(() => {
     const handler = () => {
       setSidebarMode("vehicle");
+      setVehicleEditTarget(null);
+      setVehicleEditFocus(null);
       setIsDriverSidebarOpen(true);
       setBottomBarState((prev) => ({ ...prev, open: false }));
     };
     window.addEventListener("truckly:vehicle-register-open", handler);
     return () => window.removeEventListener("truckly:vehicle-register-open", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      const target = detail?.vehicle || null;
+      setVehicleEditTarget(target);
+      setVehicleEditFocus(detail?.focus === "tags" ? "tags" : null);
+      setSidebarMode("vehicle");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:vehicle-edit-open", handler);
+    return () => window.removeEventListener("truckly:vehicle-edit-open", handler);
   }, []);
 
   React.useEffect(() => {
@@ -499,6 +547,7 @@ function DashboardPage() {
   React.useEffect(() => {
     if (bottomBarState.open) {
       setIsDriverSidebarOpen(false);
+      setIsQuickSidebarOpen(false);
     }
   }, [bottomBarState.open]);
 
@@ -519,15 +568,17 @@ function DashboardPage() {
             onClose={() => setIsQuickSidebarOpen(false)}
             vehicles={vehicles}
           />
-          <DriverSidebar
-            isOpen={isDriverSidebarOpen}
-            onClose={() => setIsDriverSidebarOpen(false)}
-            selectedDriverImei={selectedDriverImei}
-            selectedRouteImei={selectedRouteImei}
-            selectedDriverDevice={selectedDriverDevice}
-            mode={sidebarMode}
-            geofenceDraft={geofenceDraft}
-          />
+            <DriverSidebar
+              isOpen={isDriverSidebarOpen}
+              onClose={() => setIsDriverSidebarOpen(false)}
+              selectedDriverImei={selectedDriverImei}
+              selectedRouteImei={selectedRouteImei}
+              selectedDriverDevice={selectedDriverDevice}
+              mode={sidebarMode}
+              vehicleEditTarget={vehicleEditTarget}
+              vehicleEditFocus={vehicleEditFocus}
+              geofenceDraft={geofenceDraft}
+            />
           <DriverBottomBar
             isOpen={bottomBarState.open}
             mode={bottomBarState.mode}
@@ -535,6 +586,7 @@ function DashboardPage() {
             selectedDriverImei={selectedDriverImei}
             selectedVehicleImei={selectedFuelImei}
             selectedVehicle={selectedFuelVehicle}
+            vehicles={vehicles}
           />
           {mobileMarkerPanel.open && (
             <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">

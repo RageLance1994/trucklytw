@@ -1,7 +1,14 @@
 import React from "react";
 import { dataManager, resolveBackendBaseUrl } from "../lib/data-manager";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { API_BASE_URL } from "../config";
 
-type BottomBarMode = "driver" | "fuel" | "tacho";
+type BottomBarMode = "driver" | "fuel" | "tacho" | "vehicles";
 
 type DriverBottomBarProps = {
   isOpen: boolean;
@@ -9,6 +16,7 @@ type DriverBottomBarProps = {
   selectedDriverImei?: string | null;
   selectedVehicleImei?: string | null;
   selectedVehicle?: FuelVehicle | null;
+  vehicles: VehicleTableVehicle[];
   mode: BottomBarMode;
 };
 
@@ -92,6 +100,19 @@ type FuelVehicle = {
       unit?: string;
     };
   };
+};
+
+type VehicleTableVehicle = {
+  id?: string | null;
+  _id?: string | null;
+  imei?: string | null;
+  nickname?: string | null;
+  name?: string | null;
+  plate?: string | { v?: string; value?: string } | null;
+  status?: string | null;
+  company?: string | null;
+  customer?: string | null;
+  tags?: string[];
 };
 
 const formatDateLabel = (value?: string) => {
@@ -243,6 +264,26 @@ const resolveRefuelType = (doc?: RefuelingDoc, evt?: FuelEvent) => {
   const liters = doc?.liters ?? evt?.liters ?? evt?.delta;
   if (Number.isFinite(liters) && (liters as number) < 0) return "withdrawal";
   return "refuel";
+};
+
+const normalizeVehiclePlate = (plate: VehicleTableVehicle["plate"]) => {
+  if (!plate) return "--";
+  if (typeof plate === "string") return plate;
+  return plate.v || plate.value || "--";
+};
+
+const getVehicleStatusMeta = (status?: string | null) => {
+  const raw = typeof status === "string" ? status.toLowerCase() : "";
+  if (raw === "driving" || raw === "moving") {
+    return { label: "In marcia", className: "bg-emerald-500/20 text-emerald-200" };
+  }
+  if (raw === "working") {
+    return { label: "Lavoro", className: "bg-amber-500/20 text-amber-200" };
+  }
+  if (raw === "resting" || raw === "stopped" || raw === "fermo") {
+    return { label: "Fermo", className: "bg-rose-500/20 text-rose-200" };
+  }
+  return { label: status || "Online", className: "bg-white/10 text-white/70" };
 };
 
 
@@ -436,17 +477,22 @@ export function DriverBottomBar({
   selectedDriverImei,
   selectedVehicleImei,
   selectedVehicle,
+  vehicles,
   mode,
 }: DriverBottomBarProps) {
   const title =
     mode === "fuel"
       ? "Dashboard carburante"
+      : mode === "vehicles"
+        ? "Tabella veicoli"
       : mode === "tacho"
         ? "Scarico dati"
         : "Attivita autista + tabelle";
   const subtitle =
     mode === "fuel"
       ? `Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
+      : mode === "vehicles"
+        ? "Elenco completo dei veicoli registrati."
       : mode === "tacho"
         ? "Elenco file .ddd disponibili dal servizio Teltonika."
         : `Tabella autisti e report attivita. Selezione attuale: ${
@@ -483,6 +529,8 @@ export function DriverBottomBar({
             selectedVehicleImei={selectedVehicleImei}
             selectedVehicle={selectedVehicle}
           />
+        ) : mode === "vehicles" ? (
+          <VehicleTableDashboard vehicles={vehicles} />
         ) : mode === "tacho" ? (
           <TachoFilesDashboard isOpen={isOpen} />
         ) : (
@@ -490,6 +538,156 @@ export function DriverBottomBar({
         )}
       </div>
     </aside>
+  );
+}
+
+function VehicleTableDashboard({ vehicles }: { vehicles: VehicleTableVehicle[] }) {
+  const rows = React.useMemo(() => {
+    return [...vehicles].sort((a, b) => {
+      const aLabel = (a.nickname || a.name || a.imei || "").toString();
+      const bLabel = (b.nickname || b.name || b.imei || "").toString();
+      return aLabel.localeCompare(bLabel, "it-IT", { sensitivity: "base" });
+    });
+  }, [vehicles]);
+
+  const resolveVehicleId = (vehicle: VehicleTableVehicle) =>
+    vehicle.id || vehicle._id || vehicle.imei || null;
+
+  const handleEdit = (vehicle: VehicleTableVehicle, focus?: "tags") => {
+    window.dispatchEvent(
+      new CustomEvent("truckly:vehicle-edit-open", {
+        detail: { vehicle, focus },
+      }),
+    );
+  };
+
+  const handleDelete = async (vehicle: VehicleTableVehicle) => {
+    const id = resolveVehicleId(vehicle);
+    if (!id) return;
+    const label =
+      vehicle.nickname
+      || (typeof vehicle.plate === "string" ? vehicle.plate : vehicle.plate?.v)
+      || vehicle.imei
+      || "veicolo";
+    const confirmed = window.confirm(
+      `Vuoi eliminare ${label}? Questa azione è definitiva.`,
+    );
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/dashboard/vehicles/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore eliminazione veicolo (${res.status})`);
+      }
+      window.dispatchEvent(new CustomEvent("truckly:vehicles-refresh"));
+    } catch (err: any) {
+      console.error("[vehicles.delete] failed", err);
+      window.alert(err?.message || "Errore durante l'eliminazione.");
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Veicoli</p>
+        <span className="text-xs text-white/50">{rows.length} veicoli</span>
+      </div>
+      <div className="px-4 pb-4">
+        {rows.length === 0 ? (
+          <div className="rounded-xl border border-white/8 bg-[#0d0d0f] px-3.5 py-3 text-sm text-white/70 shadow-inner shadow-black/40">
+            Nessun veicolo disponibile.
+          </div>
+        ) : (
+          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+              <span>Nome</span>
+              <span>Targa</span>
+              <span>IMEI</span>
+              <span>Stato</span>
+              <span>Azienda</span>
+              <span>Tag</span>
+              <span className="text-right">Azioni</span>
+            </div>
+            <div className="max-h-[360px] overflow-y-auto">
+              {rows.map((vehicle) => {
+                const plate = normalizeVehiclePlate(vehicle.plate);
+                const label = vehicle.nickname || vehicle.name || plate || vehicle.imei || "--";
+                const status = getVehicleStatusMeta(vehicle.status);
+                const company = vehicle.company || vehicle.customer || "--";
+                const tags = vehicle.tags?.length ? vehicle.tags : [];
+                const rowKey = resolveVehicleId(vehicle) || label;
+                return (
+                  <div
+                    key={rowKey}
+                    className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/10"
+                  >
+                    <span className="truncate font-semibold text-white/90">{label}</span>
+                    <span className="truncate text-white/70">{plate}</span>
+                    <span className="truncate text-white/70">{vehicle.imei || "--"}</span>
+                    <span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${status.className}`}
+                      >
+                        {status.label}
+                      </span>
+                    </span>
+                    <span className="truncate text-white/70">{company}</span>
+                    <span className="text-white/70">
+                      {tags.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {tags.map((tag) => (
+                            <span
+                              key={`${rowKey}-${tag}`}
+                              className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em]"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        "--"
+                      )}
+                    </span>
+                    <span className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="h-8 w-8 rounded-full border border-white/15 bg-white/5 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                            aria-label="Azioni veicolo"
+                          >
+                            <i className="fa fa-ellipsis-h" aria-hidden="true" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[180px]">
+                          <DropdownMenuItem onSelect={() => handleEdit(vehicle)}>
+                            Modifica
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => handleEdit(vehicle, "tags")}>
+                            Aggiungi tag
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => handleDelete(vehicle)}
+                            className="text-white/80 hover:!bg-red-500/35 hover:text-red-100"
+                          >
+                            Elimina
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

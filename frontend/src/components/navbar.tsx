@@ -298,7 +298,15 @@ export function Navbar() {
                             Registra nuovo
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            window.dispatchEvent(
+                              new CustomEvent("truckly:bottom-bar-toggle", {
+                                detail: { mode: "vehicles" },
+                              }),
+                            )
+                          }
+                        >
                           <i className="fa fa-table mr-2 text-[12px]" aria-hidden="true" />
                           Tabelle
                         </DropdownMenuItem>
