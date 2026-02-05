@@ -39,6 +39,7 @@ const getPrivilegeLevel = (user) => {
 };
 
 const canManageVehicles = (user) => getPrivilegeLevel(user) === 0;
+const canEditVehicles = (user) => getPrivilegeLevel(user) <= 1;
 
 const permissionDeniedResponse = (message = "Non sei autorizzato ad eseguire quest'azione.") => ({
   error: 'PERMISSION_DENIED',
@@ -744,9 +745,6 @@ router.get('/vehicles', auth, async (req, res) => {
 
 
 router.post('/vehicles/:action', auth, async (req, res) => {
-  if (!canManageVehicles(req.user)) {
-    return res.status(403).json(permissionDeniedResponse("Non sei autorizzato ad eseguire quest'azione."));
-  }
 
 
   const {
@@ -775,6 +773,9 @@ router.post('/vehicles/:action', auth, async (req, res) => {
   switch (req.params.action) {
     case 'create':
       try {
+        if (!canManageVehicles(req.user)) {
+          return res.status(403).json(permissionDeniedResponse("Non sei autorizzato ad eseguire quest'azione."));
+        }
         const sanitizedDetails = sanitizeDetailsForStorage(details);
         try {
           console.debug('[vehicles:create][backend] received details.sim', {
@@ -826,6 +827,9 @@ router.post('/vehicles/:action', auth, async (req, res) => {
       break;
     case 'update':
       try {
+        if (!canEditVehicles(req.user)) {
+          return res.status(403).json(permissionDeniedResponse("Non sei autorizzato a modificare veicoli."));
+        }
         const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
         if (!vehicleId) {
           return res.status(400).json({ message: 'ID veicolo richiesto.' });
@@ -899,6 +903,9 @@ router.post('/vehicles/:action', auth, async (req, res) => {
       }
     case 'delete':
       try {
+        if (!canManageVehicles(req.user)) {
+          return res.status(403).json(permissionDeniedResponse("Non sei autorizzato a eliminare veicoli."));
+        }
         const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
         if (!vehicleId) {
           return res.status(400).json({ message: 'ID veicolo richiesto.' });
@@ -927,6 +934,49 @@ router.post('/vehicles/:action', auth, async (req, res) => {
         return res.status(200).json({ ok: true });
       } catch (err) {
         console.error("Errore eliminazione veicolo:", err);
+        return res.status(500).send({ message: "Errore interno" });
+      }
+    case 'assign':
+      try {
+        if (!canEditVehicles(req.user)) {
+          return res.status(403).json(permissionDeniedResponse("Non sei autorizzato ad assegnare veicoli."));
+        }
+        const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+        const targetCompanyId = typeof req.body.companyId === 'string' ? req.body.companyId.trim() : '';
+        if (!vehicleId || !targetCompanyId) {
+          return res.status(400).json({ message: 'ID veicolo e azienda richiesti.' });
+        }
+        const existing = await Vehicles.findById(vehicleId);
+        if (!existing) {
+          return res.status(404).json({ message: 'Veicolo non trovato.' });
+        }
+        const owners = await Models.UserModel.find(
+          { companyId: targetCompanyId },
+          { _id: 1 }
+        ).lean();
+        const ownerIds = owners.map((owner) => owner._id);
+        if (!ownerIds.length) {
+          return res.status(400).json({ message: 'Azienda selezionata senza utenti.' });
+        }
+        const previousOwners = Array.isArray(existing.owner) ? existing.owner : [];
+        if (previousOwners.length) {
+          await Models.UserModel.updateMany(
+            { _id: { $in: previousOwners } },
+            { $pull: { vehicles: vehicleId } }
+          );
+        }
+        await Models.UserModel.updateMany(
+          { _id: { $in: ownerIds } },
+          { $addToSet: { vehicles: vehicleId } }
+        );
+        const updated = await Vehicles.findByIdAndUpdate(
+          vehicleId,
+          { $set: { owner: ownerIds } },
+          { new: true }
+        );
+        return res.status(200).json({ vehicle: updated });
+      } catch (err) {
+        console.error("Errore assegnazione veicolo:", err);
         return res.status(500).send({ message: "Errore interno" });
       }
   }

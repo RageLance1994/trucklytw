@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { API_BASE_URL, VEHICLES_PATH } from "../config";
 import { dataManager } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
@@ -857,49 +858,6 @@ function RoutesSidebar({
 
   return (
     <div className="space-y-4">
-      {monitoringPromptOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
-            <div className="space-y-2">
-              <p className="text-sm uppercase tracking-[0.18em] text-white/60">
-                Gestione storico
-              </p>
-              <h3 className="text-lg font-semibold text-white">
-                Cambiati targa/marca/modello
-              </h3>
-              <p className="text-sm text-white/70">
-                Vuoi accodare i nuovi dati allo storico esistente oppure
-                archiviare lo storico con la targa precedente e ripartire?
-              </p>
-            </div>
-            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => handleSubmit("append")}
-                className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
-              >
-                Accoda storico
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSubmit("rename")}
-                className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
-              >
-                Archivia e riparti
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMonitoringPromptOpen(false);
-                }}
-                className="sm:col-span-2 rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition"
-              >
-                Annulla
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -939,10 +897,7 @@ function RoutesSidebar({
         </div>
       </div>
 
-      <div
-        ref={tagsRef}
-        className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
-      >
+        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between text-sm text-white/70">
           <span>Rewind</span>
           <span>{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
@@ -3088,8 +3043,14 @@ function VehicleRegistrationSidebar({
   };
 
   const handleSubmit = async (policy?: "append" | "rename") => {
-    if (!canSubmit || submitting) return;
-    if (isEditMode && hasMonitoringChange() && !policy) {
+    if (!canSubmit || submitting) {
+      return;
+    }
+    const monitoringChanged = isEditMode && hasMonitoringChange();
+    if (monitoringChanged && !policy) {
+      setError(
+        "Scegli come gestire lo storico: accoda o archivia e riparti.",
+      );
       setMonitoringPromptOpen(true);
       return;
     }
@@ -3145,7 +3106,7 @@ function VehicleRegistrationSidebar({
     }
 
     const url = isEditMode
-      ? `${API_BASE_URL}/dashboard/vehicles/update`
+      ? `${API_BASE_URL}/api/vehicles/update`
       : `${API_BASE_URL}/dashboard/vehicles/create`;
 
     try {
@@ -3222,8 +3183,73 @@ function VehicleRegistrationSidebar({
     "Alert",
   ];
 
+  const monitoringPrompt =
+    monitoringPromptOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 px-4">
+            <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0b0b0c] p-6 shadow-[0_30px_70px_rgba(0,0,0,0.7)]">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.28em] text-white/50">
+                  Attenzione
+                </p>
+                <h3 className="text-2xl font-semibold text-white">
+                  Gestione storico veicolo
+                </h3>
+                <p className="text-sm text-white/70">
+                  Hai modificato targa, marca o modello. Questa scelta determina
+                  come verranno gestiti i dati telemetrici storici del veicolo.
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-3 text-sm text-white/70">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-white/90 font-semibold">Accoda storico</div>
+                  <p className="mt-1 text-white/60">
+                    Continua a usare la stessa collection `IMEI_monitoring`
+                    aggiungendo i nuovi dati sopra allo storico esistente.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-white/90 font-semibold">Archivia e riavvia</div>
+                  <p className="mt-1 text-white/60">
+                    Rinomina la collection esistente in `IMEI_OLDPLATE_monitoring`
+                    e crea una nuova `IMEI_monitoring` per il veicolo aggiornato.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => handleSubmit("append")}
+                  className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 hover:bg-white/15 transition"
+                >
+                  Accoda
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSubmit("rename")}
+                  className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 hover:bg-white/15 transition"
+                >
+                  Archivia e riavvia
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonitoringPromptOpen(false)}
+                  className="rounded-xl border border-white/10 bg-transparent px-4 py-2 text-xs uppercase tracking-[0.22em] text-white/60 hover:text-white transition"
+                >
+                  Annulla
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className="space-y-4">
+      {monitoringPrompt}
       <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -3304,6 +3330,8 @@ function VehicleRegistrationSidebar({
               className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="+39">+39</option>
+              <option value="+43">+43</option>
+              <option value="+44">+44</option>
             </select>
           </div>
           <div className="space-y-1">
@@ -3454,7 +3482,7 @@ function VehicleRegistrationSidebar({
         {success && <p className="text-xs text-emerald-300">{success}</p>}
         <button
           type="button"
-          onClick={handleSubmit}
+          onClick={() => handleSubmit()}
           disabled={!canSubmit || submitting}
           className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
         >

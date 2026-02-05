@@ -4,6 +4,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { API_BASE_URL } from "../config";
@@ -113,6 +114,11 @@ type VehicleTableVehicle = {
   company?: string | null;
   customer?: string | null;
   tags?: string[];
+};
+
+type AdminCompanyOption = {
+  id: string;
+  name: string;
 };
 
 const formatDateLabel = (value?: string) => {
@@ -480,6 +486,40 @@ export function DriverBottomBar({
   vehicles,
   mode,
 }: DriverBottomBarProps) {
+  const [effectivePrivilege, setEffectivePrivilege] = React.useState<number | null>(null);
+  const canEditVehicles =
+    Number.isInteger(effectivePrivilege) && (effectivePrivilege as number) <= 1;
+  const canDeleteVehicles = Number.isInteger(effectivePrivilege) && effectivePrivilege === 0;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/session`, {
+          cache: "no-store" as RequestCache,
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        const privilegeValue = Number.isInteger(data?.user?.effectivePrivilege)
+          ? data.user.effectivePrivilege
+          : Number.isInteger(data?.user?.privilege)
+            ? data.user.privilege
+            : Number.isInteger(data?.user?.role)
+              ? data.user.role
+              : null;
+        if (!cancelled) {
+          setEffectivePrivilege(privilegeValue);
+        }
+      } catch (err) {
+        console.warn("[DriverBottomBar] session lookup failed", err);
+      }
+    };
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const title =
     mode === "fuel"
       ? "Dashboard carburante"
@@ -530,7 +570,11 @@ export function DriverBottomBar({
             selectedVehicle={selectedVehicle}
           />
         ) : mode === "vehicles" ? (
-          <VehicleTableDashboard vehicles={vehicles} />
+          <VehicleTableDashboard
+            vehicles={vehicles}
+            canEdit={canEditVehicles}
+            canDelete={canDeleteVehicles}
+          />
         ) : mode === "tacho" ? (
           <TachoFilesDashboard isOpen={isOpen} />
         ) : (
@@ -541,7 +585,15 @@ export function DriverBottomBar({
   );
 }
 
-function VehicleTableDashboard({ vehicles }: { vehicles: VehicleTableVehicle[] }) {
+function VehicleTableDashboard({
+  vehicles,
+  canEdit,
+  canDelete,
+}: {
+  vehicles: VehicleTableVehicle[];
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
   const rows = React.useMemo(() => {
     return [...vehicles].sort((a, b) => {
       const aLabel = (a.nickname || a.name || a.imei || "").toString();
@@ -550,8 +602,61 @@ function VehicleTableDashboard({ vehicles }: { vehicles: VehicleTableVehicle[] }
     });
   }, [vehicles]);
 
+  const [assignTarget, setAssignTarget] = React.useState<VehicleTableVehicle | null>(
+    null,
+  );
+  const [assignCompanies, setAssignCompanies] = React.useState<AdminCompanyOption[]>([]);
+  const [assignCompanyId, setAssignCompanyId] = React.useState("");
+  const [assignLoading, setAssignLoading] = React.useState(false);
+  const [assignError, setAssignError] = React.useState<string | null>(null);
+
   const resolveVehicleId = (vehicle: VehicleTableVehicle) =>
     vehicle.id || vehicle._id || vehicle.imei || null;
+
+  const resolveDevice = (vehicle: VehicleTableVehicle) => {
+    if (typeof window === "undefined") return null;
+    const imei = vehicle.imei || null;
+    if (!imei) return null;
+    const raw = (window as any).trucklyGetAvl?.(imei);
+    return raw?.data || raw || null;
+  };
+
+  const hasDriverAvailable = (vehicle: VehicleTableVehicle) => {
+    const device = resolveDevice(vehicle);
+    const io = device?.io || device?.data?.io || device?.data?.IOelement || null;
+    return Boolean(io?.tachoDriverIds || io?.driver1Id);
+  };
+
+  const openDriverReport = (vehicle: VehicleTableVehicle) => {
+    const imei = vehicle.imei || null;
+    if (!imei) return;
+    const device = resolveDevice(vehicle);
+    window.dispatchEvent(
+      new CustomEvent("truckly:driver-open", {
+        detail: { imei, device },
+      }),
+    );
+  };
+
+  const openFuelReport = (vehicle: VehicleTableVehicle) => {
+    const imei = vehicle.imei || null;
+    if (!imei) return;
+    window.dispatchEvent(
+      new CustomEvent("truckly:bottom-bar-toggle", {
+        detail: { mode: "fuel", imei },
+      }),
+    );
+  };
+
+  const openRoutesReport = (vehicle: VehicleTableVehicle) => {
+    const imei = vehicle.imei || null;
+    if (!imei) return;
+    window.dispatchEvent(
+      new CustomEvent("truckly:routes-open", {
+        detail: { imei },
+      }),
+    );
+  };
 
   const handleEdit = (vehicle: VehicleTableVehicle, focus?: "tags") => {
     window.dispatchEvent(
@@ -574,7 +679,7 @@ function VehicleTableDashboard({ vehicles }: { vehicles: VehicleTableVehicle[] }
     );
     if (!confirmed) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/dashboard/vehicles/delete`, {
+      const res = await fetch(`${API_BASE_URL}/api/vehicles/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -591,8 +696,120 @@ function VehicleTableDashboard({ vehicles }: { vehicles: VehicleTableVehicle[] }
     }
   };
 
+  const openAssign = async (vehicle: VehicleTableVehicle) => {
+    setAssignTarget(vehicle);
+    setAssignCompanyId("");
+    setAssignError(null);
+    setAssignLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/companies`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore caricamento aziende (${res.status})`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data?.companies) ? data.companies : [];
+      const mapped = list
+        .map((company: any) => ({
+          id: String(company?.id || company?._id || ""),
+          name: String(company?.name || ""),
+        }))
+        .filter((company: AdminCompanyOption) => company.id && company.name);
+      setAssignCompanies(mapped);
+    } catch (err: any) {
+      setAssignError(err?.message || "Errore caricamento aziende.");
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!assignTarget) return;
+    const vehicleId = resolveVehicleId(assignTarget);
+    if (!vehicleId || !assignCompanyId) return;
+    setAssignLoading(true);
+    setAssignError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/vehicles/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: vehicleId, companyId: assignCompanyId }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore assegnazione (${res.status})`);
+      }
+      window.dispatchEvent(new CustomEvent("truckly:vehicles-refresh"));
+      setAssignTarget(null);
+      setAssignCompanyId("");
+    } catch (err: any) {
+      setAssignError(err?.message || "Errore durante l'assegnazione.");
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      {assignTarget && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+            <div className="space-y-2">
+              <p className="text-sm uppercase tracking-[0.18em] text-white/60">
+                Assegna veicolo
+              </p>
+              <h3 className="text-lg font-semibold text-white">
+                {assignTarget.nickname
+                  || (typeof assignTarget.plate === "string"
+                    ? assignTarget.plate
+                    : assignTarget.plate?.v)
+                  || assignTarget.imei
+                  || "Veicolo"}
+              </h3>
+              <p className="text-sm text-white/70">
+                Seleziona l'azienda a cui assegnare questo veicolo.
+              </p>
+            </div>
+            <div className="mt-4 space-y-3">
+              <select
+                value={assignCompanyId}
+                onChange={(e) => setAssignCompanyId(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              >
+                <option value="">
+                  {assignLoading ? "Caricamento aziende..." : "Seleziona azienda"}
+                </option>
+                {assignCompanies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+              {assignError && <p className="text-xs text-red-400">{assignError}</p>}
+            </div>
+            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleAssign}
+                disabled={!assignCompanyId || assignLoading}
+                className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {assignLoading ? "Salvataggio..." : "Conferma"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssignTarget(null)}
+                className="rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Veicoli</p>
         <span className="text-xs text-white/50">{rows.length} veicoli</span>
@@ -655,30 +872,62 @@ function VehicleTableDashboard({ vehicles }: { vehicles: VehicleTableVehicle[] }
                     </span>
                     <span className="text-right">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="h-8 w-8 rounded-full border border-white/15 bg-white/5 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
-                            aria-label="Azioni veicolo"
-                          >
-                            <i className="fa fa-ellipsis-h" aria-hidden="true" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[180px]">
-                          <DropdownMenuItem onSelect={() => handleEdit(vehicle)}>
-                            Modifica
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => handleEdit(vehicle, "tags")}>
-                            Aggiungi tag
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() => handleDelete(vehicle)}
-                            className="text-white/80 hover:!bg-red-500/35 hover:text-red-100"
-                          >
-                            Elimina
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="h-8 w-8 rounded-full border border-white/15 bg-white/5 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                              aria-label="Azioni veicolo"
+                            >
+                              <i className="fa fa-ellipsis-h" aria-hidden="true" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[200px]">
+                            {hasDriverAvailable(vehicle) && (
+                              <DropdownMenuItem onSelect={() => openDriverReport(vehicle)}>
+                                <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
+                                Rapporti Autista
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onSelect={() => openFuelReport(vehicle)}>
+                              <i className="fa fa-tint mr-2 text-[12px]" aria-hidden="true" />
+                              Rapporti Carburante
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openRoutesReport(vehicle)}>
+                              <i className="fa fa-road mr-2 text-[12px]" aria-hidden="true" />
+                              Rapporti percorsi
+                            </DropdownMenuItem>
+                            {canEdit && (
+                              <DropdownMenuSeparator className="bg-white/15" />
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onSelect={() => handleEdit(vehicle)}>
+                                <i className="fa fa-pencil mr-2 text-[12px]" aria-hidden="true" />
+                                Modifica
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onSelect={() => handleEdit(vehicle, "tags")}>
+                                <i className="fa fa-tag mr-2 text-[12px]" aria-hidden="true" />
+                                Aggiungi tag
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit && (
+                              <DropdownMenuItem onSelect={() => openAssign(vehicle)}>
+                                <i className="fa fa-building-o mr-2 text-[12px]" aria-hidden="true" />
+                                Assegna
+                              </DropdownMenuItem>
+                            )}
+                            {canDelete && (
+                              <DropdownMenuItem
+                                onSelect={() => handleDelete(vehicle)}
+                                className="text-white/80 hover:!bg-red-500/35 hover:text-red-100"
+                              >
+                                <i className="fa fa-trash mr-2 text-[12px]" aria-hidden="true" />
+                                Elimina
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                     </span>
                   </div>
                 );

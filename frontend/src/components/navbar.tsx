@@ -196,6 +196,7 @@ export function Navbar() {
     );
   };
 
+
   React.useEffect(() => {
     const handler = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -492,85 +493,85 @@ export function Navbar() {
                     }}
                   >
                     <DropdownMenuItem asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
-                        onMouseDown={() => applyMarkerStyle("full")}
-                        data-marker-style="full"
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "full" ? "bg-orange-400" : "opacity-0"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        Completo
-                      </button>
-                    </DropdownMenuItem>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                          onMouseDown={() => applyMarkerStyle("full")}
+                          data-marker-style="full"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              markerStyle === "full" ? "bg-orange-400" : "opacity-0"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Completo
+                        </button>
+                      </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
-                        onMouseDown={() => applyMarkerStyle("compact")}
-                        data-marker-style="compact"
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        Compatto
-                      </button>
-                    </DropdownMenuItem>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                          onMouseDown={() => applyMarkerStyle("compact")}
+                          data-marker-style="compact"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Compatto
+                        </button>
+                      </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
-                        onMouseDown={() => applyMarkerStyle("plate")}
-                        data-marker-style="plate"
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        Solo targa
-                      </button>
-                    </DropdownMenuItem>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                          onMouseDown={() => applyMarkerStyle("plate")}
+                          data-marker-style="plate"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Solo targa
+                        </button>
+                      </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
-                        onMouseDown={() => applyMarkerStyle("name")}
-                        data-marker-style="name"
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "name" ? "bg-orange-400" : "opacity-0"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        Targa e direzione
-                      </button>
-                    </DropdownMenuItem>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                          onMouseDown={() => applyMarkerStyle("name")}
+                          data-marker-style="name"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              markerStyle === "name" ? "bg-orange-400" : "opacity-0"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Targa e direzione
+                        </button>
+                      </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
-                        onMouseDown={() => applyMarkerStyle("direction")}
-                        data-marker-style="direction"
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        Solo Direzione
-                      </button>
-                    </DropdownMenuItem>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                          onMouseDown={() => applyMarkerStyle("direction")}
+                          data-marker-style="direction"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Solo Direzione
+                        </button>
+                      </DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               </DropdownMenuContent>
@@ -877,71 +878,71 @@ export function Navbar() {
               <div className="pt-2 mt-2 border-t border-white/10 text-[11px] uppercase tracking-[0.2em] text-white/50">
                 Veicoli
               </div>
-              <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
-                onClick={() => applyMarkerStyle("full")}
-                data-marker-style="full"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "full" ? "bg-orange-400" : "opacity-0"
-                  }`}
-                  aria-hidden="true"
-                />
-                Completo
-              </button>
-              <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
-                onClick={() => applyMarkerStyle("compact")}
-                data-marker-style="compact"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
-                  }`}
-                  aria-hidden="true"
-                />
-                Compatto
-              </button>
-              <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
-                onClick={() => applyMarkerStyle("plate")}
-                data-marker-style="plate"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
-                  }`}
-                  aria-hidden="true"
-                />
-                Solo targa
-              </button>
-              <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
-                onClick={() => applyMarkerStyle("name")}
-                data-marker-style="name"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "name" ? "bg-orange-400" : "opacity-0"
-                  }`}
-                  aria-hidden="true"
-                />
-                Targa e direzione
-              </button>
-              <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
-                onClick={() => applyMarkerStyle("direction")}
-                data-marker-style="direction"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
-                  }`}
-                  aria-hidden="true"
-                />
-                Solo Direzione
-              </button>
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => applyMarkerStyle("full")}
+                  data-marker-style="full"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      markerStyle === "full" ? "bg-orange-400" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  Completo
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => applyMarkerStyle("compact")}
+                  data-marker-style="compact"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  Compatto
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => applyMarkerStyle("plate")}
+                  data-marker-style="plate"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  Solo targa
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => applyMarkerStyle("name")}
+                  data-marker-style="name"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      markerStyle === "name" ? "bg-orange-400" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  Targa e direzione
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => applyMarkerStyle("direction")}
+                  data-marker-style="direction"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  Solo Direzione
+                </button>
             </div>
           </details>
 

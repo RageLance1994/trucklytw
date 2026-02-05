@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { auth, imeiOwnership } = require('../utils/users');
 const { Vehicles, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
+const { _Devices } = require('../utils/database');
 const { decryptString, decryptJSON, encryptString, encryptJSON } = require('../utils/encryption');
 const { _Users } = require('../utils/database');
 const { SeepTrucker } = require('../utils/seep');
@@ -21,6 +22,40 @@ const getPrivilegeLevel = (user) => {
 
 const isSuperAdmin = (user) => getPrivilegeLevel(user) === 0;
 const canManageUsers = (user) => getPrivilegeLevel(user) <= 2;
+const canEditVehicles = (user) => getPrivilegeLevel(user) <= 1;
+
+const ensureVehicleOwnership = async (user, imei) => {
+  if (!user || !imei) return false;
+  try {
+    const vehicles = await user.vehicles.list();
+    return Array.isArray(vehicles) && vehicles.some((v) => `${v.imei}` === `${imei}`);
+  } catch (err) {
+    console.warn('[api] unable to verify vehicle ownership', err);
+    return false;
+  }
+};
+
+const normalizePlateForCollection = (value) => {
+  const raw = String(value || '').trim().toUpperCase();
+  const cleaned = raw.replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned || 'OLDPLATE';
+};
+
+const renameMonitoringCollection = async (imei, oldPlate) => {
+  const db = mongoose.connection?.db;
+  if (!db || !imei) return { skipped: true, reason: 'no-db' };
+  const from = `${imei}_monitoring`;
+  const targetBase = `${imei}_${normalizePlateForCollection(oldPlate)}_monitoring`;
+  const fromExists = await db.listCollections({ name: from }).hasNext();
+  if (!fromExists) return { skipped: true, reason: 'missing-source' };
+  let target = targetBase;
+  const targetExists = await db.listCollections({ name: target }).hasNext();
+  if (targetExists) {
+    target = `${targetBase}_${Date.now()}`;
+  }
+  await db.collection(from).rename(target);
+  return { renamed: true, to: target };
+};
 
 router.get('/session', async (req, res) => {
   const token = req.cookies?.auth_token;
@@ -718,13 +753,30 @@ router.get('/vehicles', auth, async (req, res) => {
 
         const decorated = decorateVehicle(vehicle);
 
-        // Do not send vehicles without decrypted core fields
-        if (!decorated.plate || !decorated.brand || !decorated.model || !decorated.details) {
-          console.warn(
-            '[api] /vehicles skipping vehicle missing decrypted fields',
-            vehicle._id?.toString?.() || vehicle._id
-          );
-          return null;
+        // Super admin should see all vehicles, even if decrypted fields are missing.
+        if (privilegeLevel !== 0) {
+          // Do not send vehicles without decrypted core fields for non-super admins.
+          if (!decorated.plate || !decorated.brand || !decorated.model || !decorated.details) {
+            console.warn(
+              '[api] /vehicles skipping vehicle missing decrypted fields',
+              vehicle._id?.toString?.() || vehicle._id
+            );
+            return null;
+          }
+        }
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          const fallback = decorated?.details?.lastPosition || null;
+          const toNumber = (val) => {
+            const num = Number(val);
+            return Number.isFinite(num) ? num : null;
+          };
+          const fLat = toNumber(fallback?.lat);
+          const fLon = toNumber(fallback?.lon);
+          if (fLat !== null && fLon !== null) {
+            lat = fLat;
+            lon = fLon;
+          }
         }
 
         return {
@@ -741,6 +793,167 @@ router.get('/vehicles', auth, async (req, res) => {
   } catch (err) {
     console.error('[api] /vehicles error:', err);
     return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/vehicles/update', auth, async (req, res) => {
+  try {
+    if (!canEditVehicles(req.user)) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Non sei autorizzato a modificare veicoli.' });
+    }
+
+    const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+    if (!vehicleId) {
+      return res.status(400).json({ message: 'ID veicolo richiesto.' });
+    }
+
+    const existing = await Vehicles.findById(vehicleId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    const ownsVehicle = await ensureVehicleOwnership(req.user, existing.imei);
+    if (!ownsVehicle) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    const oldPlate = decryptString(existing.plateEnc || '') || '';
+    const oldBrand = decryptString(existing.brandEnc || '') || '';
+    const oldModel = decryptString(existing.modelEnc || '') || '';
+
+    const nextPlate = typeof req.body.plate === 'string' ? req.body.plate.trim() : '';
+    const nextBrand = typeof req.body.brand === 'string' ? req.body.brand.trim() : '';
+    const nextModel = typeof req.body.model === 'string' ? req.body.model.trim() : '';
+
+    const plateChanged = nextPlate && nextPlate.toLowerCase() !== oldPlate.trim().toLowerCase();
+    const brandChanged = nextBrand && nextBrand.toLowerCase() !== oldBrand.trim().toLowerCase();
+    const modelChanged = nextModel && nextModel.toLowerCase() !== oldModel.trim().toLowerCase();
+    const monitoringPolicy =
+      req.body.monitoringPolicy === 'rename'
+        ? 'rename'
+        : req.body.monitoringPolicy === 'append'
+          ? 'append'
+          : null;
+
+    if ((plateChanged || brandChanged || modelChanged) && !monitoringPolicy) {
+      return res.status(409).send('Seleziona come gestire lo storico per targa/marca/modello aggiornati.');
+    }
+
+    if (monitoringPolicy === 'rename' && (plateChanged || brandChanged || modelChanged)) {
+      try {
+        await renameMonitoringCollection(existing.imei, oldPlate || nextPlate);
+      } catch (err) {
+        console.error('[api]/vehicles/update rename monitoring failed', err);
+        return res.status(500).json({ message: 'Impossibile rinominare lo storico.' });
+      }
+    }
+
+    const detailsPayload =
+      req.body.details && typeof req.body.details === 'object'
+        ? req.body.details
+        : null;
+    const normalizedTags = Array.isArray(req.body.tags)
+      ? req.body.tags.map((tag) => String(tag).trim()).filter(Boolean)
+      : [];
+
+    const update = {
+      nickname: typeof req.body.nickname === 'string' ? req.body.nickname.trim() : existing.nickname,
+      plateEnc: encryptString(nextPlate || oldPlate),
+      brandEnc: encryptString(nextBrand || oldBrand),
+      modelEnc: encryptString(nextModel || oldModel),
+      detailsEnc: detailsPayload ? encryptJSON(detailsPayload) : existing.detailsEnc,
+      deviceModel: typeof req.body.deviceModel === 'string' ? req.body.deviceModel.trim() : existing.deviceModel,
+      codec: typeof req.body.codec === 'string' ? req.body.codec.trim() : existing.codec,
+      tags: normalizedTags
+    };
+
+    const updated = await Vehicles.findByIdAndUpdate(vehicleId, { $set: update }, { new: true });
+    return res.status(200).json({ vehicle: updated });
+  } catch (err) {
+    console.error('[api]/vehicles/update error', err);
+    return res.status(500).json({ message: 'Errore interno' });
+  }
+});
+
+router.post('/vehicles/delete', auth, async (req, res) => {
+  try {
+    if (!isSuperAdmin(req.user)) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Non sei autorizzato a eliminare veicoli.' });
+    }
+    const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+    if (!vehicleId) {
+      return res.status(400).json({ message: 'ID veicolo richiesto.' });
+    }
+
+    const existing = await Vehicles.findById(vehicleId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    const ownsVehicle = await ensureVehicleOwnership(req.user, existing.imei);
+    if (!ownsVehicle) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    await Vehicles.findByIdAndDelete(vehicleId);
+    if (Array.isArray(existing.owner) && existing.owner.length) {
+      await UserModel.updateMany(
+        { _id: { $in: existing.owner } },
+        { $pull: { vehicles: vehicleId } }
+      );
+    }
+    if (existing.imei) {
+      await _Devices.unauthorize(existing.imei);
+    }
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[api]/vehicles/delete error', err);
+    return res.status(500).json({ message: 'Errore interno' });
+  }
+});
+
+router.post('/vehicles/assign', auth, async (req, res) => {
+  try {
+    if (!canEditVehicles(req.user)) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Non sei autorizzato ad assegnare veicoli.' });
+    }
+    const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+    const targetCompanyId = typeof req.body.companyId === 'string' ? req.body.companyId.trim() : '';
+    if (!vehicleId || !targetCompanyId) {
+      return res.status(400).json({ message: 'ID veicolo e azienda richiesti.' });
+    }
+    const existing = await Vehicles.findById(vehicleId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+    const owners = await UserModel.find(
+      { companyId: targetCompanyId },
+      { _id: 1 }
+    ).lean();
+    const ownerIds = owners.map((owner) => owner._id);
+    if (!ownerIds.length) {
+      return res.status(400).json({ message: 'Azienda selezionata senza utenti.' });
+    }
+    const previousOwners = Array.isArray(existing.owner) ? existing.owner : [];
+    if (previousOwners.length) {
+      await UserModel.updateMany(
+        { _id: { $in: previousOwners } },
+        { $pull: { vehicles: vehicleId } }
+      );
+    }
+    await UserModel.updateMany(
+      { _id: { $in: ownerIds } },
+      { $addToSet: { vehicles: vehicleId } }
+    );
+    const updated = await Vehicles.findByIdAndUpdate(
+      vehicleId,
+      { $set: { owner: ownerIds } },
+      { new: true }
+    );
+    return res.status(200).json({ vehicle: updated });
+  } catch (err) {
+    console.error('[api]/vehicles/assign error', err);
+    return res.status(500).json({ message: 'Errore interno' });
   }
 });
 
