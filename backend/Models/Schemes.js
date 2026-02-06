@@ -44,6 +44,7 @@ const VehicleSchema = new mongoose.Schema({
 const DriverSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   surname: { type: String, required: true, trim: true },
+  phone: { type: String, trim: true, default: null },
   dateOfBirth: { type: Date, default: null },
   licenseIssuedAt: { type: Date, default: null },
   licenseExpiresAt: { type: Date, default: null },

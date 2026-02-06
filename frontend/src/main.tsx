@@ -216,7 +216,7 @@ function DashboardPage() {
   const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(false);
   const [bottomBarState, setBottomBarState] = React.useState<{
     open: boolean;
-    mode: "driver" | "fuel" | "tacho" | "vehicles";
+    mode: "driver" | "fuel" | "tacho" | "vehicles" | "drivers";
   }>({ open: false, mode: "driver" });
   const [mobileMarkerPanel, setMobileMarkerPanel] = React.useState<{
     open: boolean;
@@ -261,12 +261,14 @@ function DashboardPage() {
   const [deleteChatId, setDeleteChatId] = React.useState<string | null>(null);
   const [selectedDriverImei, setSelectedDriverImei] = React.useState<string | null>(null);
   const [selectedDriverDevice, setSelectedDriverDevice] = React.useState<any | null>(null);
+  const [driverEditTarget, setDriverEditTarget] = React.useState<any | null>(null);
+  const [driverEditReadOnly, setDriverEditReadOnly] = React.useState(false);
   const [selectedFuelImei, setSelectedFuelImei] = React.useState<string | null>(null);
   const [selectedRouteImei, setSelectedRouteImei] = React.useState<string | null>(null);
   const [vehicleEditTarget, setVehicleEditTarget] = React.useState<Vehicle | null>(null);
   const [vehicleEditFocus, setVehicleEditFocus] = React.useState<"tags" | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<
-    "driver" | "routes" | "geofence" | "vehicle" | "admin"
+    "driver" | "routes" | "geofence" | "vehicle" | "admin" | "driver-register"
   >("driver");
   const [geofenceDraft, setGeofenceDraft] = React.useState<{
     geofenceId: string;
@@ -459,6 +461,7 @@ function DashboardPage() {
         detail?.mode === "fuel"
         || detail?.mode === "tacho"
         || detail?.mode === "vehicles"
+        || detail?.mode === "drivers"
           ? detail.mode
           : "driver";
       const imei = detail?.imei || null;
@@ -529,6 +532,31 @@ function DashboardPage() {
     };
     window.addEventListener("truckly:vehicle-register-open", handler);
     return () => window.removeEventListener("truckly:vehicle-register-open", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = () => {
+      setSidebarMode("driver-register");
+      setDriverEditTarget(null);
+      setDriverEditReadOnly(false);
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:driver-register-open", handler);
+    return () => window.removeEventListener("truckly:driver-register-open", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      setDriverEditTarget(detail?.driver || null);
+      setDriverEditReadOnly(detail?.readOnly === true);
+      setSidebarMode("driver-register");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:driver-edit-open", handler);
+    return () => window.removeEventListener("truckly:driver-edit-open", handler);
   }, []);
 
   React.useEffect(() => {
@@ -1135,6 +1163,8 @@ function DashboardPage() {
               selectedRouteImei={selectedRouteImei}
               selectedDriverDevice={selectedDriverDevice}
               mode={sidebarMode}
+              driverEditTarget={driverEditTarget}
+              driverEditReadOnly={driverEditReadOnly}
               vehicleEditTarget={vehicleEditTarget}
               vehicleEditFocus={vehicleEditFocus}
               geofenceDraft={geofenceDraft}

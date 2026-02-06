@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
 const { auth, imeiOwnership } = require('../utils/users');
-const { Vehicles, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
+const { Vehicles, Drivers, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
 const { _Devices } = require('../utils/database');
 const { decryptString, decryptJSON, encryptString, encryptJSON } = require('../utils/encryption');
 const { _Users } = require('../utils/database');
@@ -23,6 +23,82 @@ const getPrivilegeLevel = (user) => {
 const isSuperAdmin = (user) => getPrivilegeLevel(user) === 0;
 const canManageUsers = (user) => getPrivilegeLevel(user) <= 2;
 const canEditVehicles = (user) => getPrivilegeLevel(user) <= 1;
+const canManageDrivers = (user) => getPrivilegeLevel(user) <= 1;
+
+const normalizeCompanyName = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const resolveCompanyByTachoId = async (tachoCompanyId) => {
+  if (!tachoCompanyId) return null;
+  const rawId = String(tachoCompanyId).trim();
+  if (!rawId) return null;
+  if (mongoose.Types.ObjectId.isValid(rawId)) {
+    const local = await Companies.findById(rawId).lean();
+    if (local) return local;
+  }
+  const direct = await Companies.findOne({ tkCompanyId: rawId }).lean();
+  if (direct) return direct;
+  try {
+    const flat = await TachoSync.companiesFlat();
+    const list = Array.isArray(flat) ? flat : [];
+    const byId = new Map(list.map((company) => [String(company.id), company]));
+    let currentId = rawId;
+    const visited = new Set();
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const entry = byId.get(currentId);
+      if (!entry?.parentId) break;
+      const parentId = String(entry.parentId);
+      const parentMatch = await Companies.findOne({ tkCompanyId: parentId }).lean();
+      if (parentMatch) return parentMatch;
+      currentId = parentId;
+    }
+
+    const directEntry = byId.get(rawId);
+    const tachoName = directEntry?.name ? normalizeCompanyName(directEntry.name) : '';
+    if (tachoName) {
+      const locals = await Companies.find({}, { name: 1, tkCompanyId: 1 }).lean();
+      const matches = locals.filter(
+        (company) => normalizeCompanyName(company?.name) === tachoName
+      );
+      if (matches.length === 1) {
+        console.warn('[api] resolveCompanyByTachoId matched by name', {
+          tachoCompanyId: rawId,
+          companyId: matches[0]?._id?.toString?.() || matches[0]?._id || null,
+          name: matches[0]?.name || null,
+        });
+        return matches[0];
+      }
+      if (matches.length > 1) {
+        console.warn('[api] resolveCompanyByTachoId multiple name matches', {
+          tachoCompanyId: rawId,
+          name: directEntry?.name || null,
+          matches: matches.map((company) => company?._id?.toString?.() || company?._id),
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[api] unable to resolve tacho company parent', err?.message || err);
+  }
+  return null;
+};
+
+const resolveCompanyFromRequest = async (req, tachoCompanyId) => {
+  if (isSuperAdmin(req.user)) {
+    if (tachoCompanyId) {
+      const company = await resolveCompanyByTachoId(tachoCompanyId);
+      return company || null;
+    }
+    return null;
+  }
+  if (!req.user?.companyId) return null;
+  return Companies.findById(req.user.companyId).lean();
+};
 
 const ensureVehicleOwnership = async (user, imei) => {
   if (!user || !imei) return false;
@@ -334,15 +410,78 @@ router.get('/tacho/files', auth, async (req, res) => {
     const driverItems = Array.isArray(driverRes?.items) ? driverRes.items : [];
     const vehicleItems = Array.isArray(vehicleRes?.items) ? vehicleRes.items : [];
 
-    const normalize = (item, kind) => ({
-      id: item?.id,
-      fileName: item?.fileName || null,
-      downloadTime: item?.downloadTime || null,
-      company: item?.company || null,
-      driver: item?.driver || null,
-      vehicle: item?.vehicle || null,
-      source: kind,
-    });
+    try {
+      const dumpPath = path.join(process.cwd(), 'Files_info.json');
+      fs.writeFileSync(
+        dumpPath,
+        JSON.stringify(
+          {
+            fetchedAt: new Date().toISOString(),
+            source,
+            request: {
+              companyId,
+              from,
+              to,
+              contains,
+              pageNumber,
+              pageSize,
+            },
+            teltonikaParams: params,
+            driverSample: driverItems[0] || null,
+            vehicleSample: vehicleItems[0] || null,
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+      console.log('[api] dumped files info to', dumpPath);
+    } catch (err) {
+      console.warn('[api] failed to dump files info', err?.message || err);
+    }
+
+    const resolvePeriod = (item) => {
+      const schedule = item?.schedule || {};
+      const from =
+        item?.periodFrom ||
+        item?.from ||
+        item?.startDate ||
+        item?.startTime ||
+        item?.filePeriodFrom ||
+        schedule?.activitiesFrom ||
+        schedule?.periodFrom ||
+        schedule?.from ||
+        null;
+      const to =
+        item?.periodTo ||
+        item?.to ||
+        item?.endDate ||
+        item?.endTime ||
+        item?.filePeriodTo ||
+        schedule?.activitiesTo ||
+        schedule?.periodTo ||
+        schedule?.to ||
+        null;
+      if (from || to) return { from, to, source: 'period' };
+      const fallback = item?.downloadTime || null;
+      return { from: fallback, to: fallback, source: fallback ? 'downloadTime' : 'unknown' };
+    };
+
+    const normalize = (item, kind) => {
+      const period = resolvePeriod(item);
+      return {
+        id: item?.id,
+        fileName: item?.fileName || null,
+        downloadTime: item?.downloadTime || null,
+        periodFrom: period.from,
+        periodTo: period.to,
+        periodSource: period.source,
+        company: item?.company || null,
+        driver: item?.driver || null,
+        vehicle: item?.vehicle || null,
+        source: kind,
+      };
+    };
 
     const allItems = [
       ...driverItems.map((item) => normalize(item, 'driver')),
@@ -1010,6 +1149,473 @@ router.post('/vehicles/owners', auth, async (req, res) => {
   } catch (err) {
     console.error('[api]/vehicles/owners error', err);
     return res.status(500).json({ message: 'Errore interno' });
+  }
+});
+
+router.get('/drivers/companies', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  try {
+    if (isSuperAdmin(req.user)) {
+      const tachoCompanies = await TachoSync.companiesFlat();
+      const list = Array.isArray(tachoCompanies) ? tachoCompanies : [];
+      const payload = list
+        .map((company) => ({
+          id: company.id || company._id,
+          name: company.name,
+          parentId: company.parentId || null,
+          depth: Number.isFinite(company.depth) ? company.depth : 0,
+        }))
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "it", { sensitivity: "base" }));
+      return res.status(200).json({ companies: payload });
+    }
+
+    const localCompany = req.user?.companyId
+      ? await Companies.findById(req.user.companyId).lean()
+      : null;
+    if (!localCompany?.tkCompanyId) {
+      return res.status(200).json({ companies: [] });
+    }
+    return res.status(200).json({
+      companies: [
+        {
+          id: localCompany.tkCompanyId,
+          name: localCompany.name || 'Azienda',
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('[api] /drivers/companies error:', err?.message || err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/drivers/import-options', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const isAdmin = isSuperAdmin(req.user);
+  const tachoCompanyId = isAdmin && typeof req.query.companyId === 'string'
+    ? req.query.companyId.trim()
+    : '';
+  if (isAdmin && !tachoCompanyId) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'CompanyId richiesto.' });
+  }
+
+  try {
+    console.log('[api] /drivers/import-options', {
+      userId: req.user?._id?.toString?.() || req.user?.id || null,
+      isAdmin,
+      companyId: tachoCompanyId || null,
+    });
+    const company = await resolveCompanyFromRequest(req, isAdmin ? tachoCompanyId : null);
+    if (!company) {
+      console.warn('[api] /drivers/import-options invalid company', {
+        companyId: tachoCompanyId || null,
+      });
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+    }
+
+    const targetTachoCompanyId = company?.tkCompanyId || '';
+    if (!targetTachoCompanyId) {
+      console.warn('[api] /drivers/import-options missing tkCompanyId', {
+        companyId: company?._id?.toString?.() || company?._id || null,
+      });
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda senza collegamento servizio esterno.' });
+    }
+
+    const owners = await UserModel.find({ companyId: company._id }, { _id: 1 }).lean();
+      const ownerIds = owners.map((owner) => owner._id);
+      const existing = ownerIds.length
+        ? await Drivers.find({ owner: { $in: ownerIds } }, { tachoDriverId: 1 }).lean()
+        : [];
+      const existingIds = new Set(
+        existing.map((row) => String(row.tachoDriverId || '')).filter(Boolean)
+      );
+
+      console.log('[api] /drivers/import-options teltonika request', {
+        tkCompanyId: targetTachoCompanyId,
+      });
+      const drivers = await TachoSync.drivers(targetTachoCompanyId);
+      console.log('[api] /drivers/import-options teltonika response', {
+        count: Array.isArray(drivers) ? drivers.length : 0,
+      });
+      const filtered = (Array.isArray(drivers) ? drivers : []).filter((driver) => {
+        const cardNumber = driver?.cardNumber || driver?.driverCardId || driver?.driverId || '';
+        return cardNumber && !existingIds.has(String(cardNumber));
+      });
+
+      return res.status(200).json({ drivers: filtered });
+    } catch (err) {
+      console.error('[api] /drivers/import-options error:', err?.message || err);
+      return res.status(500).json({ error: 'INTERNAL_ERROR' });
+    }
+  });
+
+router.get('/tacho/drivers', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const isAdmin = isSuperAdmin(req.user);
+  const companyParam = isAdmin && typeof req.query.companyId === 'string'
+    ? req.query.companyId.trim()
+    : null;
+  if (isAdmin && !companyParam) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'CompanyId richiesto.' });
+  }
+  try {
+    const company = await resolveCompanyFromRequest(req, isAdmin ? companyParam : null);
+    if (!company) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+    }
+    const targetTachoCompanyId = company?.tkCompanyId || '';
+    if (!targetTachoCompanyId) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda senza collegamento servizio esterno.' });
+    }
+    const drivers = await TachoSync.drivers(targetTachoCompanyId);
+    return res.status(200).json({ drivers: Array.isArray(drivers) ? drivers : [] });
+  } catch (err) {
+    console.error('[api] /tacho/drivers error:', err?.message || err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.get('/drivers', auth, async (req, res) => {
+  try {
+    const isAdmin = isSuperAdmin(req.user);
+    let ownerIds = [];
+    if (!isAdmin) {
+      const companyId = req.user?.companyId || null;
+      if (!companyId) {
+        return res.status(200).json({ drivers: [] });
+      }
+      const owners = await UserModel.find({ companyId }, { _id: 1 }).lean();
+      ownerIds = owners.map((owner) => owner._id);
+      if (!ownerIds.length) {
+        return res.status(200).json({ drivers: [] });
+      }
+    }
+
+    const rows = await Drivers.find(
+      isAdmin ? {} : { owner: { $in: ownerIds } }
+    ).sort({ updatedAt: -1 }).lean();
+
+    const ownerIdList = rows
+      .map((row) => row.owner)
+      .filter(Boolean)
+      .map((id) => id.toString());
+    const owners = ownerIdList.length
+      ? await UserModel.find({ _id: { $in: ownerIdList } }, { _id: 1, companyId: 1 }).lean()
+      : [];
+    const companyIds = owners
+      .map((owner) => owner.companyId)
+      .filter(Boolean)
+      .map((id) => id.toString());
+    const companies = companyIds.length
+      ? await Companies.find({ _id: { $in: companyIds } }, { _id: 1, name: 1 }).lean()
+      : [];
+
+    const companyById = new Map(companies.map((company) => [String(company._id), company]));
+    const ownerCompanyById = new Map(
+      owners.map((owner) => [String(owner._id), String(owner.companyId || '')])
+    );
+
+    const drivers = rows.map((row) => {
+      const ownerId = row.owner ? String(row.owner) : '';
+      const companyId = ownerCompanyById.get(ownerId) || null;
+      const company = companyId ? companyById.get(String(companyId)) : null;
+      return {
+        ...row,
+        id: row._id?.toString?.() || row._id,
+        companyId,
+        companyName: company?.name || null,
+      };
+    });
+
+    return res.status(200).json({ drivers });
+  } catch (err) {
+    console.error('[api] /drivers list error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/drivers', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const {
+    name,
+    surname,
+    phone,
+    tachoDriverId,
+    companyId,
+    registerOnTacho,
+  } = req.body || {};
+
+  const isAdmin = isSuperAdmin(req.user);
+  const tachoCompanyId = isAdmin ? companyId : null;
+  const resolvedCompany = await resolveCompanyFromRequest(req, tachoCompanyId);
+  if (!resolvedCompany) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+  }
+  if (!name || !surname || !phone || !tachoDriverId) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Campi obbligatori mancanti.' });
+  }
+
+  try {
+    const owners = await UserModel.find({ companyId: resolvedCompany._id }, { _id: 1, privilege: 1 })
+      .sort({ privilege: 1 })
+      .lean();
+    if (!owners.length) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda selezionata senza utenti.' });
+    }
+    const ownerIds = owners.map((owner) => owner._id);
+    const existing = await Drivers.findOne({
+      owner: { $in: ownerIds },
+      tachoDriverId: String(tachoDriverId).trim(),
+    }).lean();
+    if (existing) {
+      return res.status(409).json({ error: 'CONFLICT', message: 'Autista già presente.' });
+    }
+
+    if (registerOnTacho) {
+      if (!resolvedCompany.tkCompanyId) {
+        return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda senza collegamento servizio esterno.' });
+      }
+      await TachoSync.createDriver({
+        companyId: resolvedCompany.tkCompanyId,
+        firstName: String(name).trim(),
+        lastName: String(surname).trim(),
+        cardNumber: String(tachoDriverId).trim(),
+        phone: String(phone).trim(),
+      });
+    }
+
+    const driver = await Drivers.create({
+      name: String(name).trim(),
+      surname: String(surname).trim(),
+      phone: String(phone).trim(),
+      tachoDriverId: String(tachoDriverId).trim(),
+      owner: owners[0]._id,
+    });
+    await UserModel.updateOne(
+      { _id: owners[0]._id },
+      { $addToSet: { drivers: driver._id } }
+    );
+
+    return res.status(200).json({
+      driver: {
+        ...driver.toObject(),
+        id: driver._id?.toString?.() || driver._id,
+        companyId: resolvedCompany._id?.toString?.() || resolvedCompany._id,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /drivers create error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.patch('/drivers/:id', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const driverId = req.params.id;
+  if (!driverId || !mongoose.Types.ObjectId.isValid(driverId)) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'ID autista non valido.' });
+  }
+
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const surname = typeof req.body?.surname === 'string' ? req.body.surname.trim() : '';
+  const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  const tachoDriverId = typeof req.body?.tachoDriverId === 'string' ? req.body.tachoDriverId.trim() : '';
+
+  if (!name || !surname || !phone || !tachoDriverId) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Campi obbligatori mancanti.' });
+  }
+
+  try {
+    const driver = await Drivers.findById(driverId).lean();
+    if (!driver) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+
+    const isAdmin = isSuperAdmin(req.user);
+    let companyId = null;
+    if (isAdmin) {
+      const ownerUser = await UserModel.findById(driver.owner, { companyId: 1 }).lean();
+      companyId = ownerUser?.companyId || null;
+    } else {
+      companyId = req.user?.companyId || null;
+    }
+    if (!companyId) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+    }
+
+    const owners = await UserModel.find({ companyId }, { _id: 1 }).lean();
+    const ownerIds = owners.map((owner) => owner._id);
+    if (!isAdmin) {
+      const ownerSet = new Set(ownerIds.map((id) => String(id)));
+      if (!ownerSet.has(String(driver.owner))) {
+        return res.status(403).json({ error: 'FORBIDDEN' });
+      }
+    }
+
+    if (tachoDriverId && tachoDriverId !== String(driver.tachoDriverId || '')) {
+      const existing = await Drivers.findOne({
+        _id: { $ne: driverId },
+        owner: { $in: ownerIds },
+        tachoDriverId,
+      }).lean();
+      if (existing) {
+        return res.status(409).json({ error: 'CONFLICT', message: 'Autista già presente.' });
+      }
+    }
+
+    const updated = await Drivers.findByIdAndUpdate(
+      driverId,
+      {
+        $set: {
+          name,
+          surname,
+          phone,
+          tachoDriverId,
+        },
+      },
+      { new: true },
+    ).lean();
+
+    return res.status(200).json({
+      driver: {
+        ...updated,
+        id: updated?._id?.toString?.() || updated?._id,
+        companyId: companyId?.toString?.() || companyId,
+      },
+    });
+  } catch (err) {
+    console.error('[api] /drivers update error:', err?.message || err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/drivers/delete', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const driverId = typeof req.body?.id === 'string' ? req.body.id.trim() : '';
+  if (!driverId || !mongoose.Types.ObjectId.isValid(driverId)) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'ID autista non valido.' });
+  }
+
+  try {
+    const driver = await Drivers.findById(driverId).lean();
+    if (!driver) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+
+    const isAdmin = isSuperAdmin(req.user);
+    let companyId = null;
+    if (isAdmin) {
+      const ownerUser = await UserModel.findById(driver.owner, { companyId: 1 }).lean();
+      companyId = ownerUser?.companyId || null;
+    } else {
+      companyId = req.user?.companyId || null;
+    }
+    if (!companyId) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+    }
+
+    const owners = await UserModel.find({ companyId }, { _id: 1 }).lean();
+    const ownerIds = owners.map((owner) => owner._id);
+    if (!isAdmin) {
+      const ownerSet = new Set(ownerIds.map((id) => String(id)));
+      if (!ownerSet.has(String(driver.owner))) {
+        return res.status(403).json({ error: 'FORBIDDEN' });
+      }
+    }
+
+    await Drivers.findByIdAndDelete(driverId);
+    await UserModel.updateMany(
+      { _id: { $in: ownerIds } },
+      { $pull: { drivers: driverId } },
+    );
+
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[api] /drivers delete error:', err?.message || err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/drivers/import', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+
+  const isAdmin = isSuperAdmin(req.user);
+  const tachoCompanyId = isAdmin ? req.body?.companyId : null;
+  const resolvedCompany = await resolveCompanyFromRequest(req, tachoCompanyId);
+  if (!resolvedCompany) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda non valida.' });
+  }
+  const list = Array.isArray(req.body?.drivers) ? req.body.drivers : [];
+  if (!list.length) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'Nessun autista da importare.' });
+  }
+
+  try {
+    console.log('[api] /drivers/import', {
+      userId: req.user?._id?.toString?.() || req.user?.id || null,
+      isAdmin,
+      companyId: tachoCompanyId || null,
+      count: list.length,
+    });
+    const owners = await UserModel.find({ companyId: resolvedCompany._id }, { _id: 1, privilege: 1 })
+      .sort({ privilege: 1 })
+      .lean();
+    if (!owners.length) {
+      console.warn('[api] /drivers/import no owners', {
+        companyId: resolvedCompany?._id?.toString?.() || resolvedCompany?._id || null,
+      });
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Azienda selezionata senza utenti.' });
+    }
+    const ownerId = owners[0]._id;
+    const ownerIds = owners.map((owner) => owner._id);
+    const tachoIds = list
+      .map((driver) => (driver?.tachoDriverId ? String(driver.tachoDriverId).trim() : ''))
+      .filter(Boolean);
+    const existing = tachoIds.length
+      ? await Drivers.find({ owner: { $in: ownerIds }, tachoDriverId: { $in: tachoIds } }, { tachoDriverId: 1 }).lean()
+      : [];
+    const existingIds = new Set(existing.map((row) => String(row.tachoDriverId || '')));
+
+    const payload = list
+      .map((driver) => ({
+        name: String(driver?.name || '').trim(),
+        surname: String(driver?.surname || '').trim(),
+        phone: String(driver?.phone || '').trim(),
+        tachoDriverId: String(driver?.tachoDriverId || '').trim(),
+        owner: ownerId,
+      }))
+      .filter((driver) => driver.name && driver.surname && driver.tachoDriverId && !existingIds.has(driver.tachoDriverId));
+
+    if (!payload.length) {
+      return res.status(200).json({ inserted: 0 });
+    }
+
+    const created = await Drivers.insertMany(payload, { ordered: false });
+    const createdIds = created.map((driver) => driver._id);
+    await UserModel.updateOne(
+      { _id: ownerId },
+      { $addToSet: { drivers: { $each: createdIds } } }
+    );
+
+    return res.status(200).json({ inserted: created.length });
+  } catch (err) {
+    console.error('[api] /drivers import error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 

@@ -9,7 +9,7 @@ import {
 } from "./ui/dropdown-menu";
 import { API_BASE_URL } from "../config";
 
-type BottomBarMode = "driver" | "fuel" | "tacho" | "vehicles";
+type BottomBarMode = "driver" | "fuel" | "tacho" | "vehicles" | "drivers";
 
 type DriverBottomBarProps = {
   isOpen: boolean;
@@ -125,6 +125,18 @@ type AdminCompanyOption = {
 type OwnerOption = {
   id: string;
   label: string;
+};
+
+type DriverTableRow = {
+  id?: string | null;
+  _id?: string | null;
+  name?: string | null;
+  surname?: string | null;
+  phone?: string | null;
+  tachoDriverId?: string | null;
+  companyId?: string | null;
+  companyName?: string | null;
+  updatedAt?: string | null;
 };
 
 const formatDateLabel = (value?: string) => {
@@ -527,23 +539,27 @@ export function DriverBottomBar({
     };
   }, []);
   const title =
-    mode === "fuel"
-      ? "Dashboard carburante"
-      : mode === "vehicles"
-        ? "Tabella veicoli"
-      : mode === "tacho"
-        ? "Scarico dati"
-        : "Attivita autista + tabelle";
-  const subtitle =
-    mode === "fuel"
-      ? `Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
-      : mode === "vehicles"
-        ? "Elenco completo dei veicoli registrati."
-      : mode === "tacho"
-        ? "Elenco file .ddd disponibili dal servizio."
-        : `Tabella autisti e report attivita. Selezione attuale: ${
-            selectedDriverImei || "nessuna"
-          }`;
+      mode === "fuel"
+        ? "Dashboard carburante"
+        : mode === "vehicles"
+          ? "Tabella veicoli"
+        : mode === "drivers"
+          ? "Tabella autisti"
+        : mode === "tacho"
+          ? "Scarico dati"
+          : "Attivita autista + tabelle";
+    const subtitle =
+      mode === "fuel"
+        ? `Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
+        : mode === "vehicles"
+          ? "Elenco completo dei veicoli registrati."
+        : mode === "drivers"
+          ? "Elenco completo degli autisti registrati."
+        : mode === "tacho"
+          ? "Elenco file .ddd disponibili dal servizio."
+          : `Tabella autisti e report attivita. Selezione attuale: ${
+              selectedDriverImei || "nessuna"
+            }`;
 
   return (
     <aside
@@ -575,18 +591,20 @@ export function DriverBottomBar({
             selectedVehicleImei={selectedVehicleImei}
             selectedVehicle={selectedVehicle}
           />
-        ) : mode === "vehicles" ? (
-          <VehicleTableDashboard
-            vehicles={vehicles}
-            canEdit={canEditVehicles}
-            canDelete={canDeleteVehicles}
-            canManageOwners={Number.isInteger(effectivePrivilege) && effectivePrivilege === 0}
-          />
-        ) : mode === "tacho" ? (
-          <TachoFilesDashboard isOpen={isOpen} />
-        ) : (
-          <DriverDashboard selectedDriverImei={selectedDriverImei} />
-        )}
+          ) : mode === "vehicles" ? (
+            <VehicleTableDashboard
+              vehicles={vehicles}
+              canEdit={canEditVehicles}
+              canDelete={canDeleteVehicles}
+              canManageOwners={Number.isInteger(effectivePrivilege) && effectivePrivilege === 0}
+            />
+          ) : mode === "drivers" ? (
+            <DriverTableDashboard isOpen={isOpen} />
+          ) : mode === "tacho" ? (
+            <TachoFilesDashboard isOpen={isOpen} />
+          ) : (
+            <DriverDashboard selectedDriverImei={selectedDriverImei} />
+          )}
       </div>
     </aside>
   );
@@ -851,7 +869,7 @@ function VehicleTableDashboard({
   };
 
   return (
-      <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         {assignTarget && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
             <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
@@ -1134,6 +1152,227 @@ function VehicleTableDashboard({
   );
 }
 
+function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
+  const [drivers, setDrivers] = React.useState<DriverTableRow[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
+
+  const openDriverSidebar = (driver: DriverTableRow, readOnly = false) => {
+    window.dispatchEvent(
+      new CustomEvent("truckly:driver-edit-open", {
+        detail: { driver, readOnly },
+      }),
+    );
+  };
+
+  const openDriverReport = (driver: DriverTableRow) => {
+    const id = driver.id || driver._id;
+    if (!id) return;
+    window.dispatchEvent(
+      new CustomEvent("truckly:driver-report-open", {
+        detail: { driverId: id },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("truckly:bottom-bar-toggle", {
+        detail: { mode: "driver" },
+      }),
+    );
+  };
+
+  const handleDeleteDriver = async (driver: DriverTableRow) => {
+    const id = driver.id || driver._id;
+    if (!id) return;
+    const label = `${driver?.name || ""} ${driver?.surname || ""}`.trim() || "autista";
+    const confirmed = window.confirm(
+      `Vuoi eliminare ${label}? Questa azione è definitiva.`,
+    );
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/drivers/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Errore eliminazione autista (${res.status})`);
+      }
+      window.dispatchEvent(new CustomEvent("truckly:drivers-refresh"));
+    } catch (err: any) {
+      console.error("[drivers.delete] failed", err);
+      window.alert(err?.message || "Errore durante l'eliminazione.");
+    }
+  };
+
+  const fetchDrivers = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/drivers`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data?.drivers) ? data.drivers : [];
+      setDrivers(list);
+    } catch (err: any) {
+      setDrivers([]);
+      setError(err?.message || "Errore durante il caricamento.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    fetchDrivers();
+  }, [fetchDrivers, isOpen]);
+
+  React.useEffect(() => {
+    const handler = () => {
+      void fetchDrivers();
+    };
+    window.addEventListener("truckly:drivers-refresh", handler);
+    return () => window.removeEventListener("truckly:drivers-refresh", handler);
+  }, [fetchDrivers]);
+
+  const filtered = React.useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return drivers;
+    return drivers.filter((driver) => {
+      const label = `${driver?.name || ""} ${driver?.surname || ""}`.trim();
+      const haystack = [
+        label,
+        driver?.phone || "",
+        driver?.tachoDriverId || "",
+        driver?.companyName || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [drivers, search]);
+
+  const formatUpdatedAt = (value?: string | null) => {
+    if (!value) return "--";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString("it-IT");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
+            Elenco autisti
+          </p>
+          <p className="text-sm text-white/70">
+            Gestisci e consulta gli autisti registrati.
+          </p>
+        </div>
+        <div className="flex flex-1 flex-col gap-2 sm:max-w-[360px] sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={fetchDrivers}
+            className="h-9 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80 hover:border-white/40 hover:text-white transition"
+          >
+            {loading ? "Caricamento..." : "Aggiorna"}
+          </button>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cerca autista..."
+            className="h-9 w-full rounded-full border border-white/10 bg-[#0d0d0f] px-4 text-sm text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30 sm:max-w-[220px]"
+          />
+        </div>
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+          <span>Autista</span>
+          <span>Cellulare</span>
+          <span>ID Carta</span>
+          <span>Azienda</span>
+          <span>Aggiornato</span>
+          <span className="text-right">Azioni</span>
+        </div>
+        <div className="divide-y divide-white/5">
+          {filtered.length ? (
+            filtered.map((driver) => {
+              const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim() || "--";
+              return (
+                <div
+                  key={driver.id || driver._id || `${name}-${driver?.tachoDriverId || ""}`}
+                  className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-sm text-white/80"
+                >
+                  <span className="truncate font-medium text-white">{name}</span>
+                  <span className="truncate">{driver?.phone || "--"}</span>
+                  <span className="truncate">{driver?.tachoDriverId || "--"}</span>
+                  <span className="truncate">{driver?.companyName || "--"}</span>
+                  <span className="truncate text-white/60">{formatUpdatedAt(driver?.updatedAt)}</span>
+                  <span className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="h-8 w-8 rounded-full border border-white/15 bg-white/5 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                          aria-label="Azioni autista"
+                        >
+                          <i className="fa fa-ellipsis-h" aria-hidden="true" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[200px]">
+                        <DropdownMenuItem onSelect={() => openDriverSidebar(driver, true)}>
+                          <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
+                          Apri scheda autista
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openDriverReport(driver)}>
+                          <i className="fa fa-line-chart mr-2 text-[12px]" aria-hidden="true" />
+                          Report autista
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => window.alert("Generazione LUL in sviluppo.")}>
+                          <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
+                          Genera LUL
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="bg-white/15" />
+                        <DropdownMenuItem onSelect={() => openDriverSidebar(driver, false)}>
+                          <i className="fa fa-pencil mr-2 text-[12px]" aria-hidden="true" />
+                          Modifica
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => handleDeleteDriver(driver)}
+                          className="text-white/80 hover:!bg-red-500/35 hover:text-red-100"
+                        >
+                          <i className="fa fa-trash mr-2 text-[12px]" aria-hidden="true" />
+                          Elimina
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </span>
+                </div>
+              );
+            })
+          ) : (
+            <div className="px-3 py-4 text-sm text-white/60">
+              {loading ? "Caricamento autisti..." : "Nessun autista disponibile."}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
   const [files, setFiles] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -1218,10 +1457,11 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
         {!accessDenied && error && <p className="text-xs text-red-400">{error}</p>}
 
         <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
             <span>File</span>
             <span>Origine</span>
             <span>Riferimento</span>
+            <span>Periodo</span>
             <span>Azienda</span>
             <span>Download</span>
             <span className="text-right">Azioni</span>
@@ -1238,6 +1478,22 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
                   file?.source === "driver"
                     ? file?.driver?.driverName || file?.driver?.cardNumber || "--"
                     : file?.vehicle?.number || file?.vehicle?.imei || "--";
+                const periodFrom = toTimestamp(file?.periodFrom);
+                const periodTo = toTimestamp(file?.periodTo);
+                const periodLabel =
+                  periodFrom && periodTo
+                    ? `${formatShortDateTime(periodFrom)} → ${formatShortDateTime(periodTo)}`
+                    : periodFrom
+                      ? `${formatShortDateTime(periodFrom)} → --`
+                      : periodTo
+                        ? `-- → ${formatShortDateTime(periodTo)}`
+                        : "N/D";
+                const periodHint =
+                  file?.periodSource === "downloadTime"
+                    ? "Orario scarico"
+                    : file?.periodSource === "period"
+                      ? "Periodo attività"
+                      : null;
                 const companyLabel = file?.company?.name || "--";
                 const name = file?.fileName || "file.ddd";
                 const downloadTs = toTimestamp(file?.downloadTime);
@@ -1247,14 +1503,22 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
                 return (
                   <div
                     key={file?.id}
-                    className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/10"
-                  >
-                    <span className="truncate">{name}</span>
-                    <span className="text-white/60">{sourceLabel}</span>
-                    <span className="truncate text-white/70">{refLabel}</span>
-                    <span className="truncate text-white/60">{companyLabel}</span>
-                    <span className="text-white/60">
-                      {downloadTs ? formatShortDateTime(downloadTs) : "N/D"}
+                  className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/10"
+                >
+                  <span className="truncate">{name}</span>
+                  <span className="text-white/60">{sourceLabel}</span>
+                  <span className="truncate text-white/70">{refLabel}</span>
+                  <span className="truncate text-white/70">
+                    {periodLabel}
+                    {periodHint && (
+                      <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-white/40">
+                        {periodHint}
+                      </span>
+                    )}
+                  </span>
+                  <span className="truncate text-white/60">{companyLabel}</span>
+                  <span className="text-white/60">
+                    {downloadTs ? formatShortDateTime(downloadTs) : "N/D"}
                     </span>
                     <div className="text-right">
                       <a
@@ -1290,6 +1554,17 @@ function DriverDashboard({
   const [hoverPos, setHoverPos] = React.useState({ x: 0, y: 0 });
   const [hoverBounds, setHoverBounds] = React.useState({ width: 0, height: 0 });
   const [expandedActivityDays, setExpandedActivityDays] = React.useState<Record<string, boolean>>({});
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      if (detail?.driverId) {
+        setDriverId(String(detail.driverId));
+      }
+    };
+    window.addEventListener("truckly:driver-report-open", handler as EventListener);
+    return () => window.removeEventListener("truckly:driver-report-open", handler as EventListener);
+  }, []);
 
   const runTest = async () => {
     setError(null);
