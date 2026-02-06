@@ -1,4 +1,18 @@
 import React from "react";
+
+// Polyfill for older browsers (Opera/Vista/7) missing AbortSignal.throwIfAborted
+if (typeof AbortSignal !== "undefined" && !AbortSignal.prototype.throwIfAborted) {
+  AbortSignal.prototype.throwIfAborted = function () {
+    if (this.aborted) {
+      if (typeof DOMException !== "undefined") {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      const err = new Error("Aborted");
+      (err as any).name = "AbortError";
+      throw err;
+    }
+  };
+}
 import ReactDOM from "react-dom/client";
 import {
   BrowserRouter,
