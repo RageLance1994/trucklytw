@@ -14,10 +14,15 @@ export const VEHICLES_PATH =
 // Backend WebSocket route is mounted at /ws/stream (see backend/routes/_websockets.js).
 export const WS_PATH = import.meta.env.VITE_WS_PATH || "/ws/stream";
 
+const resolveBrowserWsUrl = () => {
+  if (typeof window === "undefined") return WS_PATH;
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${window.location.host}${WS_PATH}`;
+};
+
 export const WS_URL =
   import.meta.env.VITE_WS_URL ||
-  // If API_BASE_URL is empty, this becomes a relative `/ws/stream` URL,
-  // which Vite's proxy maps to the Express /ws/stream endpoint in dev.
+  // If API_BASE_URL is empty, build from window location to avoid invalid relative WS URL in prod.
   (API_BASE_URL
     ? `${API_BASE_URL.replace(/^http/, "ws")}${WS_PATH}`
-    : WS_PATH);
+    : resolveBrowserWsUrl());
