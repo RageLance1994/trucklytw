@@ -4,6 +4,7 @@ const express = require('express');
 const path = require('path');
 require('dotenv').config()
 const {startDatabases} =  require('./utils/database')
+const { startSeepSync } = require("./utils/seep-sync");
 const fileUpload = require('express-fileupload');
 const app = express();
 const compression = require('compression')
@@ -100,6 +101,7 @@ startDatabases().then((data, err) => {
     app.listen(port,"0.0.0.0", () => {
       console.log(`🚀 Server avviato su http://localhost:${port}`);
     });
+    startSeepSync();
 
   }
 })

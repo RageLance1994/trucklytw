@@ -40,7 +40,7 @@
         "leaflet": "^1.9.4",
         "maplibre-gl": "^5.7.3",
         "mongoose": "^7.6.3",
-        "node-cron": "^3.0.2",
+        "node-cron": "^3.0.3",
         "node-html-parser": "^7.0.1",
         "nouislider": "^15.8.1",
         "openai": "^5.15.0",
