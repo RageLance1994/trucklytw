@@ -1196,7 +1196,6 @@ function DashboardPage() {
     || (mobileVehicle as { name?: string } | null)?.name
     || "";
   const mobileLabel = mobileNickname || mobilePlate || "Veicolo";
-  const mobilePlateSuffix = mobileNickname && mobilePlate ? ` | ${mobilePlate}` : "";
   const mobileStatus = getVehicleStatusMeta(mobileVehicle?.status);
 
   return (
@@ -1621,10 +1620,22 @@ function DashboardPage() {
                 <div className="relative flex items-center justify-between border-b border-white/10 px-4 py-3">
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
-                        {mobileLabel}
-                        {mobilePlateSuffix}
-                      </span>
+                      {mobileNickname ? (
+                        <>
+                          <span className="truncate max-w-[25%] text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                            {mobileNickname}
+                          </span>
+                          {mobilePlate ? (
+                            <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                              | {mobilePlate}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                          {mobileLabel}
+                        </span>
+                      )}
                       <span
                         className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${mobileStatus.className}`}
                       >

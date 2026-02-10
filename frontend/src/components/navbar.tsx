@@ -983,6 +983,49 @@ export function Navbar() {
               </button>
             </div>
           </details>
+
+          <div className="h-px bg-white/10 my-3" />
+
+          <details className="group" open={mobileSection === "account"}>
+            <summary
+              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none"
+              onClick={(event) => {
+                event.preventDefault();
+                setMobileSection((current) =>
+                  current === "account" ? null : "account",
+                );
+              }}
+            >
+              Account
+              <svg
+                viewBox="0 0 320 512"
+                className="h-3 w-3 text-white/50 transition-transform duration-200 group-open:rotate-90"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M96 64L256 256 96 448V64z" />
+              </svg>
+            </summary>
+            <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
+              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+                Profilo
+              </button>
+              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+                Fatture
+              </button>
+              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+                Report Fiscali
+              </button>
+              <button
+                className="w-full px-2 py-1 text-left text-red-200 hover:text-red-100 transition"
+                onClick={() => {
+                  window.location.href = `${API_BASE_URL}/logout`;
+                }}
+              >
+                Esci
+              </button>
+            </div>
+          </details>
         </div>
       </aside>
     </header>
