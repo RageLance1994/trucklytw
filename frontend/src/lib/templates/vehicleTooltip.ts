@@ -253,7 +253,7 @@ export function renderVehicleTooltip({
     ${SECTION_STYLES}
     <div class="truckly-tooltip" data-imei="${escapeHtml(vehicle.imei || "")}">
       <div class="truckly-tooltip__header">
-        <h1>${escapeHtml(vehicle.nickname || vehicle.name || "-")}</h1>
+        <h1>${escapeHtml(vehicle.nickname || vehicle.name || "-")}${plate ? ` · ${escapeHtml(plate)}` : ""}</h1>
         <span class="truckly-pill ${status.class || ""}">
           ${escapeHtml(status.status || "N/D")}
         </span>

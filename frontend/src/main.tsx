@@ -67,6 +67,38 @@ type Vehicle = {
   };
   tags?: string[];
   company?: string;
+  customer?: string;
+};
+
+const normalizeVehiclePlate = (plate: unknown) => {
+  if (!plate) return "";
+  if (typeof plate === "string") return plate;
+  if (typeof plate === "object") {
+    const value = (plate as { v?: string; value?: string }).v
+      || (plate as { v?: string; value?: string }).value;
+    return value || "";
+  }
+  return "";
+};
+
+const getVehicleStatusMeta = (status?: string | null) => {
+  const raw = typeof status === "string" ? status.toLowerCase() : "";
+  if (raw === "driving" || raw === "moving") {
+    return { label: "In marcia", className: "bg-emerald-400/40 text-emerald-100 ring-1 ring-emerald-300/40" };
+  }
+  if (raw === "working" || raw === "idle_on" || raw === "ignition_on" || raw === "quadro acceso") {
+    return { label: "Quadro acceso", className: "bg-amber-400/40 text-amber-100 ring-1 ring-amber-300/40" };
+  }
+  if (
+    raw === "resting"
+    || raw === "stopped"
+    || raw === "fermo"
+    || raw === "idle_off"
+    || raw === "ignition_off"
+  ) {
+    return { label: "Fermo", className: "bg-rose-400/40 text-rose-100 ring-1 ring-rose-300/40" };
+  }
+  return { label: "Fermo", className: "bg-rose-400/40 text-rose-100 ring-1 ring-rose-300/40" };
 };
 
 function LoginPage() {
@@ -1125,6 +1157,16 @@ function DashboardPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [assistantMessages, assistantOpen]);
 
+  const mobileVehicle = mobileMarkerPanel.vehicle;
+  const mobilePlate = normalizeVehiclePlate(mobileVehicle?.plate);
+  const mobileNickname =
+    mobileVehicle?.nickname
+    || (mobileVehicle as { name?: string } | null)?.name
+    || "";
+  const mobileLabel = mobileNickname || mobilePlate || "Veicolo";
+  const mobilePlateSuffix = mobileNickname && mobilePlate ? ` | ${mobilePlate}` : "";
+  const mobileStatus = getVehicleStatusMeta(mobileVehicle?.status);
+
   return (
     <div className="w-full h-screen flex flex-col bg-[#0a0a0a] text-[#f4f4f5]">
       <Navbar />
@@ -1545,11 +1587,19 @@ function DashboardPage() {
             <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
               <div className="truckly-mobile-panel flex h-[calc((100dvh-var(--truckly-nav-height,64px))*0.618)] flex-col border-t border-white/10 bg-[#0b0b0c] shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
                 <div className="relative flex items-center justify-between border-b border-white/10 px-4 py-3">
-                  <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
-                    {mobileMarkerPanel.vehicle?.nickname
-                      || mobileMarkerPanel.vehicle?.plate
-                      || "Veicolo"}
-                  </span>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                        {mobileLabel}
+                        {mobilePlateSuffix}
+                      </span>
+                      <span
+                        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${mobileStatus.className}`}
+                      >
+                        {mobileStatus.label}
+                      </span>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
