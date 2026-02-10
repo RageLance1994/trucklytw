@@ -875,6 +875,53 @@ router.post('/vehicles/update', auth, async (req, res) => {
   }
 });
 
+router.post('/vehicles/custom-fields', auth, async (req, res) => {
+  try {
+    if (!isSuperAdmin(req.user)) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Non sei autorizzato a modificare i campi.' });
+    }
+
+    const vehicleId = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+    if (!vehicleId || !mongoose.Types.ObjectId.isValid(vehicleId)) {
+      return res.status(400).json({ message: 'ID veicolo non valido.' });
+    }
+
+    const existing = await Vehicles.findById(vehicleId);
+    if (!existing) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    const ownsVehicle = await ensureVehicleOwnership(req.user, existing.imei);
+    if (!ownsVehicle) {
+      return res.status(404).json({ message: 'Veicolo non trovato.' });
+    }
+
+    const fieldsRaw = Array.isArray(req.body.fields) ? req.body.fields : [];
+    const normalized = fieldsRaw
+      .map((field) => {
+        const key = typeof field?.key === 'string' ? field.key.trim() : '';
+        const label = typeof field?.label === 'string' ? field.label.trim() : '';
+        const typeRaw = typeof field?.type === 'string' ? field.type.trim().toLowerCase() : '';
+        const type = typeRaw === 'number' || typeRaw === 'id' ? typeRaw : 'onoff';
+        if (!key || !label) return null;
+        return { key, label, type };
+      })
+      .filter(Boolean)
+      .slice(0, 12);
+
+    const updated = await Vehicles.findByIdAndUpdate(
+      vehicleId,
+      { $set: { customFields: normalized } },
+      { new: true }
+    );
+
+    return res.status(200).json({ customFields: updated?.customFields || [] });
+  } catch (err) {
+    console.error('[api]/vehicles/custom-fields error', err);
+    return res.status(500).json({ message: 'Errore interno' });
+  }
+});
+
 router.post('/vehicles/delete', auth, async (req, res) => {
   try {
     if (!isSuperAdmin(req.user)) {

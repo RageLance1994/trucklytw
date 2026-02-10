@@ -13,6 +13,14 @@ type DriverEvent = {
   to_state_name?: keyof typeof DRIVER_STATUSES;
 };
 
+type CustomFieldType = "onoff" | "number" | "id";
+
+type CustomFieldConfig = {
+  key: string;
+  label: string;
+  type: CustomFieldType;
+};
+
 export type TooltipContext = {
   vehicle?: Record<string, any>;
   device?: Record<string, any>;
@@ -20,6 +28,8 @@ export type TooltipContext = {
   fuelSummary?: FuelSummary;
   driverEvents?: DriverEvent[];
   formatDate?: (date: Date) => string;
+  customFields?: CustomFieldConfig[];
+  allowCustomize?: boolean;
 };
 
 const DRIVER_STATUSES = {
@@ -138,6 +148,158 @@ const SECTION_STYLES = `
   .truckly-card strong {
     font-size: 14px;
   }
+  .truckly-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .truckly-card__head h2 {
+    margin: 0;
+  }
+  .truckly-card__divider {
+    height: 1px;
+    background: rgba(248,250,252,0.08);
+    margin: 8px 0 6px;
+  }
+  .truckly-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(248,250,252,0.2);
+    background: rgba(248,250,252,0.06);
+    color: rgba(248,250,252,0.85);
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .truckly-icon-btn:hover {
+    background: rgba(248,250,252,0.12);
+    border-color: rgba(248,250,252,0.35);
+  }
+  .truckly-custom {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .truckly-custom__list {
+    display: grid;
+    gap: 8px;
+  }
+  .truckly-custom__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: rgba(248,250,252,0.75);
+  }
+  .truckly-custom__row strong {
+    color: rgba(248,250,252,0.95);
+    font-weight: 600;
+  }
+  .truckly-custom__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  .truckly-custom__status.on {
+    color: rgba(214, 255, 232, 0.98);
+  }
+  .truckly-custom__status.off {
+    color: rgba(255, 214, 214, 0.98);
+  }
+  .truckly-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(203, 213, 225, 0.9);
+    box-shadow:
+      0 0 10px rgba(203, 213, 225, 0.8),
+      0 0 18px rgba(203, 213, 225, 0.5);
+  }
+  .truckly-dot.pulse {
+    animation: truckly-dot-pulse 1.6s ease-in-out infinite;
+  }
+  .truckly-custom__status.on .truckly-dot {
+    background: rgba(34, 255, 136, 0.95);
+    box-shadow:
+      0 0 12px rgba(34, 255, 136, 0.9),
+      0 0 20px rgba(34, 255, 136, 0.65),
+      0 0 28px rgba(34, 255, 136, 0.4);
+  }
+  .truckly-custom__status.off .truckly-dot {
+    background: rgba(255, 80, 80, 0.95);
+    box-shadow:
+      0 0 12px rgba(255, 80, 80, 0.9),
+      0 0 20px rgba(255, 80, 80, 0.65),
+      0 0 28px rgba(255, 80, 80, 0.4);
+  }
+  @keyframes truckly-dot-pulse {
+    0% {
+      transform: scale(0.85);
+      box-shadow:
+        0 0 8px rgba(203, 213, 225, 0.65),
+        0 0 14px rgba(203, 213, 225, 0.45);
+      opacity: 0.7;
+    }
+    50% {
+      transform: scale(1.25);
+      box-shadow:
+        0 0 16px rgba(255, 255, 255, 0.85),
+        0 0 26px rgba(203, 213, 225, 0.65),
+        0 0 34px rgba(203, 213, 225, 0.45);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(0.85);
+      box-shadow:
+        0 0 8px rgba(203, 213, 225, 0.65),
+        0 0 14px rgba(203, 213, 225, 0.45);
+      opacity: 0.7;
+    }
+  }
+  .truckly-custom__empty {
+    font-size: 12px;
+    color: rgba(248,250,252,0.55);
+  }
+  .truckly-custom__form {
+    display: none;
+    gap: 8px;
+  }
+  .truckly-custom.is-open .truckly-custom__form {
+    display: grid;
+  }
+  .truckly-custom select,
+  .truckly-custom input {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid rgba(148,163,184,0.3);
+    background: rgba(10,10,12,0.9);
+    color: rgba(248,250,252,0.9);
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .truckly-custom__actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .truckly-custom__save {
+    border-radius: 999px;
+    border: 1px solid rgba(248,250,252,0.2);
+    background: rgba(248,250,252,0.08);
+    color: rgba(248,250,252,0.9);
+    padding: 6px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+  }
   .truckly-actions {
     display: grid;
     grid-template-columns: repeat(5, minmax(0,1fr));
@@ -172,6 +334,26 @@ const SECTION_STYLES = `
 </style>
 `;
 
+const IO_EXCLUDE_KEYS = new Set(["speed", "fuelLevel"]);
+
+const formatCustomValue = (raw: unknown, type: CustomFieldType) => {
+  if (type === "onoff") {
+    const isOn =
+      raw === true
+      || raw === 1
+      || raw === "1"
+      || raw === "true"
+      || raw === "on";
+    return isOn ? "ON" : "OFF";
+  }
+  if (type === "number") {
+    const num = Number(raw);
+    return Number.isFinite(num) ? String(num) : "-";
+  }
+  if (raw == null || raw === "") return "-";
+  return String(raw);
+};
+
 const icons = {
   clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
   gps: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="10" r="3"/><path d="M12 2v2m0 16v2m8-10h2M2 10H4"/><circle cx="12" cy="10" r="9"/></svg>`,
@@ -191,8 +373,11 @@ export function renderVehicleTooltip({
   fuelSummary,
   driverEvents = [],
   formatDate = defaultFormatDate,
+  customFields = [],
+  allowCustomize = false,
 }: TooltipContext): string {
   const gps = device?.data?.gps || device?.gps || {};
+  const io = device?.data?.io || device?.io || {};
   const timestamp = device?.data?.timestamp || device?.timestamp;
   const lastUpdate = timestamp ? formatDate(new Date(timestamp)) : "N/D";
   const hasDriver = Boolean(device?.data?.io?.tachoDriverIds);
@@ -249,6 +434,86 @@ export function renderVehicleTooltip({
       </div>`
     : "";
 
+  const customFieldRows = customFields
+    .map((field) => {
+      const raw = (io as Record<string, unknown>)[field.key];
+      const display = formatCustomValue(raw, field.type);
+      if (field.type === "onoff") {
+        const isOn = display === "ON";
+        return `
+        <div class="truckly-custom__row">
+          <span>${escapeHtml(field.label)}</span>
+          <span class="truckly-custom__status ${isOn ? "on" : "off"}">
+            <span class="truckly-dot pulse"></span>
+            ${isOn ? "ON" : "OFF"}
+          </span>
+        </div>`;
+      }
+      return `
+        <div class="truckly-custom__row">
+          <span>${escapeHtml(field.label)}</span>
+          <strong>${escapeHtml(display)}</strong>
+        </div>`;
+    })
+    .join("");
+
+  const availableIoFields = Object.keys(io || {})
+    .filter((key) => !IO_EXCLUDE_KEYS.has(key))
+    .filter((key) => !customFields.some((field) => field.key === key));
+
+  const customFieldOptions = availableIoFields.length
+    ? availableIoFields
+      .map((key) => `<option value="${escapeHtml(key)}">${escapeHtml(key)}</option>`)
+      .join("")
+    : `<option value="">Nessun campo disponibile</option>`;
+
+  const customCard = `
+    <div class="truckly-card">
+      <div class="truckly-card__head">
+        <h2>Campi personalizzati</h2>
+        ${
+          allowCustomize
+            ? `<button type="button" class="truckly-icon-btn" data-action="customize-toggle" aria-label="Aggiungi campo">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                   <path d="M12 5v14"/>
+                   <path d="M5 12h14"/>
+                 </svg>
+               </button>`
+            : ""
+        }
+      </div>
+      <div class="truckly-card__divider"></div>
+      <div class="truckly-custom">
+        ${
+          customFieldRows
+            ? `<div class="truckly-custom__list">${customFieldRows}</div>`
+            : `<div class="truckly-custom__empty">Nessun campo selezionato.</div>`
+        }
+        ${
+          allowCustomize
+            ? `<div class="truckly-custom__form">
+                 <select name="custom-io-field">
+                   ${customFieldOptions}
+                 </select>
+                 <input name="custom-label" type="text" placeholder="Etichetta" />
+                 <select name="custom-type">
+                   <option value="onoff">ON/OFF</option>
+                   <option value="number">Number</option>
+                   <option value="id">ID</option>
+                 </select>
+                 <div class="truckly-custom__actions">
+                   <button type="button" class="truckly-custom__save" data-action="customize-add" ${
+                     availableIoFields.length ? "" : "disabled"
+                   }>
+                     Aggiungi
+                   </button>
+                 </div>
+               </div>`
+            : ""
+        }
+      </div>
+    </div>`;
+
   return `
     ${SECTION_STYLES}
     <div class="truckly-tooltip" data-imei="${escapeHtml(vehicle.imei || "")}">
@@ -282,10 +547,7 @@ export function renderVehicleTooltip({
       </div>
 
       <div class="truckly-grid" style="border-bottom:none;margin-bottom:0;padding-bottom:0">
-        <div class="truckly-card">
-          <h2>Targa</h2>
-          <strong>${escapeHtml(plate)}</strong>
-        </div>
+        ${customCard}
         <div class="truckly-card truckly-card--tight">
           <h2>Serbatoio</h2>
           <div class="truckly-row" style="justify-content:space-between;">

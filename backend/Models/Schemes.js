@@ -25,6 +25,16 @@ const VehicleSchema = new mongoose.Schema({
   brandEnc: { type: String, default: null },
   modelEnc: { type: String, default: null },
   detailsEnc: { type: String, default: null },
+  customFields: {
+    type: [
+      {
+        key: { type: String, required: true, trim: true },
+        label: { type: String, required: true, trim: true },
+        type: { type: String, enum: ["onoff", "number", "id"], required: true },
+      },
+    ],
+    default: [],
+  },
   tags: { type: [String], default: [] },
   owner: {
     type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

@@ -4,7 +4,7 @@ import { TrucklyMap } from "./lib/truckly-map";
 import { WSClient } from "./lib/ws-client";
 import { renderVehicleTooltip } from "./lib/templates/vehicleTooltip";
 import { renderVehicleMarker } from "./lib/templates/vehicleMarker";
-import { WS_URL } from "./config";
+import { API_BASE_URL, WS_URL } from "./config";
 
 type Vehicle = {
   imei: string;
@@ -14,11 +14,32 @@ type Vehicle = {
   lon?: number | null;
   status?: string;
   angle?: number;
+  id?: string;
+  _id?: string;
+  customFields?: CustomTooltipField[];
+};
+
+type CustomTooltipField = {
+  key: string;
+  label: string;
+  type: "onoff" | "number" | "id";
 };
 
 interface MapContainerProps {
   vehicles: Vehicle[];
+  allowCustomize?: boolean;
 }
+
+const normalizeCustomFields = (fields?: CustomTooltipField[]) => {
+  if (!Array.isArray(fields)) return [];
+  return fields
+    .filter((item) => item && typeof item.key === "string")
+    .map((item) => ({
+      key: String(item.key),
+      label: String(item.label || item.key),
+      type: item.type === "number" || item.type === "id" ? item.type : "onoff",
+    })) as CustomTooltipField[];
+};
 
 const formatTooltipDate = (date: Date) =>
   new Intl.DateTimeFormat("it-IT", {
@@ -158,7 +179,7 @@ const isValidCoordinate = (lat: number | null, lon: number | null) => {
   return true;
 };
 
-export function MapContainer({ vehicles }: MapContainerProps) {
+export function MapContainer({ vehicles, allowCustomize = false }: MapContainerProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<TrucklyMap | null>(null);
   const wsRef = useRef<WSClient | null>(null);
@@ -172,10 +193,61 @@ export function MapContainer({ vehicles }: MapContainerProps) {
     "full" | "compact" | "plate" | "name" | "direction"
   >("full");
   const markerStyleRef = useRef(markerStyle);
+  const [customFieldsByImei, setCustomFieldsByImei] = useState<Record<string, CustomTooltipField[]>>(
+    () => {
+      const map: Record<string, CustomTooltipField[]> = {};
+      vehicles.forEach((vehicle) => {
+        if (vehicle?.imei) {
+          map[String(vehicle.imei)] = normalizeCustomFields(vehicle.customFields);
+        }
+      });
+      return map;
+    }
+  );
+  const editingImeisRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     markerStyleRef.current = markerStyle;
   }, [markerStyle]);
+
+  useEffect(() => {
+    const map: Record<string, CustomTooltipField[]> = {};
+    vehicles.forEach((vehicle) => {
+      if (vehicle?.imei) {
+        map[String(vehicle.imei)] = normalizeCustomFields(vehicle.customFields);
+      }
+    });
+    setCustomFieldsByImei(map);
+  }, [vehicles]);
+
+  const getVehicleCustomFields = useCallback(
+    (vehicle?: Vehicle | null) => {
+      const imei = vehicle?.imei ? String(vehicle.imei) : "";
+      if (!imei) return [];
+      return customFieldsByImei[imei] || [];
+    },
+    [customFieldsByImei]
+  );
+
+  const isEditingTooltip = useCallback((imei?: string | null) => {
+    if (!imei) return false;
+    const key = String(imei);
+    if (!editingImeisRef.current.has(key)) return false;
+    if (typeof document === "undefined" || !("querySelector" in document)) {
+      return true;
+    }
+    const escapeKey = (value: string) =>
+      (typeof CSS !== "undefined" && typeof CSS.escape === "function")
+        ? CSS.escape(value)
+        : value.replace(/["\\]/g, "\\$&");
+    const selector = `.truckly-tooltip[data-imei="${escapeKey(key)}"] .truckly-custom`;
+    const custom = document.querySelector(selector) as HTMLElement | null;
+    if (!custom || !custom.classList.contains("is-open")) {
+      editingImeisRef.current.delete(key);
+      return false;
+    }
+    return true;
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -212,22 +284,57 @@ export function MapContainer({ vehicles }: MapContainerProps) {
     };
   }, []);
 
-  const buildTooltipHtml = useCallback((vehicle: any, device: any) => {
-    const data = device?.data || device || {};
-    const gps = data?.gps || data?.data?.gps || data?.data || data || {};
-    const io = data?.io || data?.data?.io || {};
-    const calibratedCapacity = fuelCalibrationRef.current.get(vehicle?.imei) ?? null;
-    const statusInfo = data ? deriveMovementStatus({ gps, io }) : deriveStatusInfo(vehicle?.status);
-    const fuelSummary = computeFuelSummary(io, vehicle, calibratedCapacity);
-    return renderVehicleTooltip({
-      vehicle,
-      device: data ? { data } : undefined,
-      status: statusInfo,
-      fuelSummary,
-      driverEvents: data?.driverEvents,
-      formatDate: formatTooltipDate,
-    });
-  }, []);
+  const buildTooltipHtmlWithFields = useCallback(
+    (vehicle: any, device: any, fields: CustomTooltipField[]) => {
+      const data = device?.data || device || {};
+      const gps = data?.gps || data?.data?.gps || data?.data || data || {};
+      const io = data?.io || data?.data?.io || {};
+      const calibratedCapacity = fuelCalibrationRef.current.get(vehicle?.imei) ?? null;
+      const statusInfo = data ? deriveMovementStatus({ gps, io }) : deriveStatusInfo(vehicle?.status);
+      const fuelSummary = computeFuelSummary(io, vehicle, calibratedCapacity);
+      return renderVehicleTooltip({
+        vehicle,
+        device: data ? { data } : undefined,
+        status: statusInfo,
+        fuelSummary,
+        driverEvents: data?.driverEvents,
+        formatDate: formatTooltipDate,
+        customFields: fields,
+        allowCustomize,
+      });
+    },
+    [allowCustomize],
+  );
+
+  const buildTooltipHtml = useCallback(
+    (vehicle: any, device: any) =>
+      buildTooltipHtmlWithFields(vehicle, device, getVehicleCustomFields(vehicle)),
+    [buildTooltipHtmlWithFields, getVehicleCustomFields],
+  );
+
+  const updateTooltipForImei = useCallback(
+    (imei: string, vehicle: any, data: any, fields?: CustomTooltipField[]) => {
+      if (!imei) return;
+      const html = fields
+        ? buildTooltipHtmlWithFields(vehicle, data, fields)
+        : buildTooltipHtml(vehicle, data);
+      const marker = mapInstanceRef.current?.markers.get(imei);
+      const popup = marker?.getPopup?.();
+      if (popup) {
+        popup.setHTML(html);
+        (popup as any).__contentHTML = html;
+        (popup as any).__contentNode = null;
+      }
+      if (isMobileViewRef.current) {
+        window.dispatchEvent(
+          new CustomEvent("truckly:mobile-marker-update", {
+            detail: { imei, html, vehicle, device: data },
+          }),
+        );
+      }
+    },
+    [buildTooltipHtml, buildTooltipHtmlWithFields],
+  );
 
   const flyToMobileMarker = useCallback((marker: any) => {
     const map = mapInstanceRef.current?.map;
@@ -319,7 +426,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         fuelSummary: data?.fuelSummary,
         driverEvents: data?.driverEvents,
         formatDate: formatTooltipDate,
+        customFields: getVehicleCustomFields(vehicle),
+        allowCustomize,
       });
+      const shouldSkipTooltipUpdate = isEditingTooltip(vehicle?.imei || id);
 
       map.addOrUpdateMarker({
         id,
@@ -330,7 +440,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         status: statusInfo.class || statusClass,
         angle: gps?.angle ?? gps?.Angle ?? vehicle?.angle,
         html: buildMarkerHtml(vehicle, markerStatus, styleOverride),
-        tooltip: tooltipHtml,
+        tooltip: shouldSkipTooltipUpdate ? undefined : tooltipHtml,
         hasPopup: !isMobileViewRef.current,
       });
 
@@ -389,7 +499,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         },
         status: statusInfo,
         formatDate: formatTooltipDate,
+        customFields: getVehicleCustomFields(vehicle),
+        allowCustomize,
       });
+      const shouldSkipTooltipUpdate = isEditingTooltip(vehicle?.imei);
 
       map.addOrUpdateMarker({
         id: vehicle.imei,
@@ -399,7 +512,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         status: statusInfo.class,
         angle: vehicle.angle,
         html: markerHtml,
-        tooltip: tooltipHtml,
+        tooltip: shouldSkipTooltipUpdate ? undefined : tooltipHtml,
         hasPopup: !isMobileViewRef.current,
       });
     });
@@ -591,7 +704,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
           status: statusInfo,
           fuelSummary,
           formatDate: formatTooltipDate,
+          customFields: getVehicleCustomFields(vehicle),
+          allowCustomize,
         });
+        const shouldSkipTooltipUpdate = isEditingTooltip(imei);
         mapInstanceRef.current?.addOrUpdateMarker({
           id: imei,
           lng: gps?.Longitude ?? gps?.longitude ?? gps?.lon,
@@ -601,7 +717,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
           status: statusInfo.class,
           angle: heading,
           html: buildMarkerHtml(vehicle, statusInfo.class),
-          tooltip: tooltipHtml,
+          tooltip: shouldSkipTooltipUpdate ? undefined : tooltipHtml,
           hasPopup: !isMobileViewRef.current,
         });
         mapInstanceRef.current?.updateRouteMarker(imei, point, heading, statusClass);
@@ -685,7 +801,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             fuelSummary,
             driverEvents: data?.driverEvents,
             formatDate: formatTooltipDate,
+            customFields: getVehicleCustomFields(vehicle),
+            allowCustomize,
           });
+          const shouldSkipTooltipUpdate = isEditingTooltip(imei);
 
           mapInstanceRef.current?.addOrUpdateMarker({
             id: imei,
@@ -696,7 +815,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             status: statusInfo.class,
             angle: gps?.angle ?? gps?.Angle,
             html: markerHtml,
-            tooltip: tooltipHtml,
+            tooltip: shouldSkipTooltipUpdate ? undefined : tooltipHtml,
             hasPopup: !isMobileViewRef.current,
           });
         });
@@ -849,7 +968,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         device: { data },
         status: statusInfo,
         formatDate: formatTooltipDate,
+        customFields: getVehicleCustomFields(vehicle),
+        allowCustomize,
       });
+      const shouldSkipTooltipUpdate = isEditingTooltip(imei);
 
       const previewId = getPreviewId(imei);
       const isNew = !previewMarkersRef.current.has(previewId);
@@ -862,7 +984,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
         status: markerStatus,
         angle: gps?.angle ?? gps?.Angle,
         html: markerHtml,
-        tooltip: tooltipHtml,
+        tooltip: shouldSkipTooltipUpdate ? undefined : tooltipHtml,
         hasPopup: !isMobileViewRef.current,
         classlist: "custom-marker preview-marker",
       });
@@ -1058,7 +1180,10 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             fuelSummary,
             driverEvents: data?.driverEvents,
             formatDate: formatTooltipDate,
+            customFields: getVehicleCustomFields(vehicle),
+            allowCustomize,
           });
+          const shouldSkipTooltipUpdate = isEditingTooltip(imei);
 
           mapInstanceRef.current?.addOrUpdateMarker({
             id: imei,
@@ -1069,10 +1194,11 @@ export function MapContainer({ vehicles }: MapContainerProps) {
             status: statusInfo.class,
             angle: gps?.angle ?? gps?.Angle,
             html: markerHtml,
-            tooltip: tooltipHtml,
+            tooltip: shouldSkipTooltipUpdate ? undefined : tooltipHtml,
             hasPopup: !isMobileViewRef.current,
           });
           if (isMobileViewRef.current) {
+            if (shouldSkipTooltipUpdate) return;
             window.dispatchEvent(
               new CustomEvent("truckly:mobile-marker-update", {
                 detail: { imei, html: tooltipHtml, vehicle, device: data },
@@ -1104,12 +1230,78 @@ export function MapContainer({ vehicles }: MapContainerProps) {
     const handleTooltipAction = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
+      const customizeToggle = target.closest("[data-action='customize-toggle']") as HTMLElement | null;
+      const customizeAdd = target.closest("[data-action='customize-add']") as HTMLElement | null;
       const driverButton = target.closest("[data-action='driver']") as HTMLElement | null;
       const fuelButton = target.closest("[data-action='fuel']") as HTMLElement | null;
       const routesButton = target.closest("[data-action='routes']") as HTMLElement | null;
       const geofenceButton = target.closest("[data-action='geofence']") as HTMLElement | null;
 
-      if (!driverButton && !fuelButton && !routesButton && !geofenceButton) return;
+      if (!customizeToggle && !customizeAdd && !driverButton && !fuelButton && !routesButton && !geofenceButton) return;
+
+      if (customizeToggle && allowCustomize) {
+        const card = customizeToggle.closest(".truckly-card");
+        const custom = card?.querySelector(".truckly-custom") as HTMLElement | null;
+        const tooltip = customizeToggle.closest(".truckly-tooltip") as HTMLElement | null;
+        const imei = tooltip?.getAttribute("data-imei") || null;
+        if (custom) {
+          custom.classList.toggle("is-open");
+          if (imei) {
+            if (custom.classList.contains("is-open")) {
+              editingImeisRef.current.add(String(imei));
+            } else {
+              editingImeisRef.current.delete(String(imei));
+            }
+          }
+        }
+        return;
+      }
+
+      if (customizeAdd && allowCustomize) {
+        const card = customizeAdd.closest(".truckly-card") as HTMLElement | null;
+        const fieldSelect = card?.querySelector("select[name='custom-io-field']") as HTMLSelectElement | null;
+        const labelInput = card?.querySelector("input[name='custom-label']") as HTMLInputElement | null;
+        const typeSelect = card?.querySelector("select[name='custom-type']") as HTMLSelectElement | null;
+        const tooltip = customizeAdd.closest(".truckly-tooltip") as HTMLElement | null;
+        const imei = tooltip?.getAttribute("data-imei") || null;
+        const avlPayload = imei ? avlCacheRef.current.get(imei) : null;
+        const data = avlPayload?.data || avlPayload || null;
+        const key = fieldSelect?.value?.trim();
+        const label = labelInput?.value?.trim() || key;
+        const type = (typeSelect?.value || "onoff") as CustomTooltipField["type"];
+        if (!key) return;
+        if (!imei) return;
+        const vehicle = vehiclesRef.current.find((v) => String(v.imei) === String(imei));
+        const vehicleId = vehicle?.id || vehicle?._id || null;
+        if (!vehicleId) return;
+        const prevFields = getVehicleCustomFields(vehicle);
+        const nextFields = prevFields.some((item) => item.key === key)
+          ? prevFields
+          : [...prevFields, { key, label: label || key, type }];
+        setCustomFieldsByImei((prev) => ({
+          ...prev,
+          [String(imei)]: nextFields,
+        }));
+        updateTooltipForImei(String(imei), vehicle, data, nextFields);
+        void fetch(`${API_BASE_URL}/api/vehicles/custom-fields`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: vehicleId, fields: nextFields }),
+        }).catch((err) => {
+          console.error("[vehicles.custom-fields] update failed", err);
+        });
+        if (labelInput) labelInput.value = "";
+        if (card) {
+          const custom = card.querySelector(".truckly-custom") as HTMLElement | null;
+          if (custom) {
+            custom.classList.remove("is-open");
+          }
+        }
+        editingImeisRef.current.delete(String(imei));
+        refreshMarkers();
+        return;
+      }
 
       const tooltip = (driverButton || fuelButton || routesButton || geofenceButton)?.closest(".truckly-tooltip") as HTMLElement | null;
       const imei = tooltip?.getAttribute("data-imei") || null;
@@ -1152,7 +1344,7 @@ export function MapContainer({ vehicles }: MapContainerProps) {
     return () => {
       document.removeEventListener("click", handleTooltipAction, true);
     };
-  }, []);
+  }, [allowCustomize, refreshMarkers]);
 
   useEffect(() => {
     const handleRoutesOpen = (event: Event) => {

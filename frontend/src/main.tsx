@@ -53,6 +53,7 @@ type Vehicle = {
   lon?: number | null;
   status?: string;
   angle?: number;
+  customFields?: Array<{ key: string; label: string; type: "onoff" | "number" | "id" }>;
   details?: {
     tanks?: {
       primary?: { capacity?: number | null };
@@ -258,6 +259,7 @@ function DashboardPage() {
   const [vehicles, setVehicles] = React.useState<Vehicle[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [effectivePrivilege, setEffectivePrivilege] = React.useState<number | null>(null);
   const [isDriverSidebarOpen, setIsDriverSidebarOpen] = React.useState(false);
   const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(false);
   const [bottomBarState, setBottomBarState] = React.useState<{
@@ -1157,6 +1159,36 @@ function DashboardPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [assistantMessages, assistantOpen]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/session`, {
+          cache: "no-store" as RequestCache,
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        const privilegeValue = Number.isInteger(data?.user?.effectivePrivilege)
+          ? data.user.effectivePrivilege
+          : Number.isInteger(data?.user?.privilege)
+            ? data.user.privilege
+            : Number.isInteger(data?.user?.role)
+              ? data.user.role
+              : null;
+        if (!cancelled) {
+          setEffectivePrivilege(privilegeValue);
+        }
+      } catch (err) {
+        console.warn("[Dashboard] session check failed", err);
+      }
+    };
+    loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const mobileVehicle = mobileMarkerPanel.vehicle;
   const mobilePlate = normalizeVehiclePlate(mobileVehicle?.plate);
   const mobileNickname =
@@ -1178,7 +1210,7 @@ function DashboardPage() {
         </div>
       ) : (
         <div className="relative h-full w-full">
-          <MapContainer vehicles={vehicles} />
+          <MapContainer vehicles={vehicles} allowCustomize={effectivePrivilege === 0} />
           <QuickSidebar
             isOpen={isQuickSidebarOpen}
             onClose={() => setIsQuickSidebarOpen(false)}
