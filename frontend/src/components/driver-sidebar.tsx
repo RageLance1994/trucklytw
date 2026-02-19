@@ -16,7 +16,9 @@ type DriverSidebarProps = {
   selectedDriverImei?: string | null;
   selectedRouteImei?: string | null;
   selectedDriverDevice?: any | null;
-  mode?: "driver" | "routes" | "geofence" | "vehicle" | "admin";
+  mode?: "driver" | "routes" | "geofence" | "vehicle" | "admin" | "driver-register";
+  driverEditTarget?: DriverEditTarget | null;
+  driverEditReadOnly?: boolean;
   vehicleEditTarget?: VehicleEditTarget | null;
   vehicleEditFocus?: "tags" | null;
   geofenceDraft?: {
@@ -69,6 +71,26 @@ type AdminCompany = {
   updatedAt?: string | number | null;
   userCount: number;
   users: AdminUser[];
+};
+
+type TachoDriverOption = {
+  id: string;
+  name: string;
+  surname: string;
+  cardName?: string | null;
+  cardNumber?: string | null;
+  phone?: string | null;
+};
+
+type DriverEditTarget = {
+  id?: string | null;
+  _id?: string | null;
+  name?: string | null;
+  surname?: string | null;
+  phone?: string | null;
+  tachoDriverId?: string | null;
+  companyId?: string | null;
+  companyName?: string | null;
 };
 
 type AdminVehicleSummary = {
@@ -2495,9 +2517,12 @@ function AdminSidebar({
 export function DriverSidebar({
   isOpen,
   onClose,
+  selectedDriverImei,
   selectedRouteImei,
   selectedDriverDevice,
   mode = "driver",
+  driverEditTarget = null,
+  driverEditReadOnly = false,
   vehicleEditTarget = null,
   vehicleEditFocus = null,
   geofenceDraft,
@@ -2524,11 +2549,14 @@ export function DriverSidebar({
   const isGeofenceMode = mode === "geofence";
   const isVehicleMode = mode === "vehicle";
   const isAdminMode = mode === "admin";
+  const isDriverRegisterMode = mode === "driver-register";
   const sessionLoaded = effectivePrivilege !== null;
   const canManageVehicles =
     Number.isInteger(effectivePrivilege) && effectivePrivilege === 0;
   const canManageUsers =
     Number.isInteger(effectivePrivilege) && effectivePrivilege <= 2;
+  const canManageDrivers =
+    Number.isInteger(effectivePrivilege) && effectivePrivilege <= 1;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2615,28 +2643,32 @@ export function DriverSidebar({
           {!isAdminMode && (
             <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Pannello</p>
           )}
-          <h2 className="text-xl font-semibold leading-tight text-white">
-            {isGeofenceMode
-              ? "GeoFence"
-              : isRoutesMode
-              ? "Percorsi"
-              : isVehicleMode
-              ? "Nuovo veicolo"
-              : isAdminMode
-              ? "Utenti"
-              : "Autista"}
-          </h2>
-          {!isAdminMode && (
-            <p className="text-sm text-white/70">
+            <h2 className="text-xl font-semibold leading-tight text-white">
               {isGeofenceMode
-                ? "Configura la geofence appena creata."
+                ? "GeoFence"
                 : isRoutesMode
-                ? "Gestisci l'intervallo e scorri il percorso selezionato."
+                ? "Percorsi"
+                : isDriverRegisterMode
+                ? "Nuovo autista"
                 : isVehicleMode
-                ? "Inserisci i dati e visualizza l'anteprima sulla mappa principale."
-                : "Seleziona un autista dal tooltip del mezzo per vedere i dettagli qui."}
-            </p>
-          )}
+                ? "Nuovo veicolo"
+                : isAdminMode
+                ? "Utenti"
+                : "Autista"}
+            </h2>
+          {!isAdminMode && (
+              <p className="text-sm text-white/70">
+                {isGeofenceMode
+                  ? "Configura la geofence appena creata."
+                  : isRoutesMode
+                  ? "Gestisci l'intervallo e scorri il percorso selezionato."
+                  : isDriverRegisterMode
+                  ? "Registra o importa un autista per l'azienda selezionata."
+                  : isVehicleMode
+                  ? "Inserisci i dati e visualizza l'anteprima sulla mappa principale."
+                  : "Seleziona un autista dal tooltip del mezzo per vedere i dettagli qui."}
+              </p>
+            )}
         </div>
         {onClose && (
           <button
@@ -2649,16 +2681,37 @@ export function DriverSidebar({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0a0a0a]">
-        {isGeofenceMode ? (
-          <GeofenceSidebar geofenceDraft={geofenceDraft} />
-        ) : isRoutesMode ? (
-          <RoutesSidebar isOpen={isOpen} selectedVehicleImei={selectedRouteImei} />
-        ) : isVehicleMode ? (
-          !sessionLoaded ? (
-            <Section
-              title="Verifica permessi"
-              body="Caricamento autorizzazioni in corso..."
+        <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0a0a0a]">
+          {isGeofenceMode ? (
+            <GeofenceSidebar geofenceDraft={geofenceDraft} />
+          ) : isRoutesMode ? (
+            <RoutesSidebar isOpen={isOpen} selectedVehicleImei={selectedRouteImei} />
+          ) : isDriverRegisterMode ? (
+            !sessionLoaded ? (
+              <Section
+                title="Verifica permessi"
+                body="Caricamento autorizzazioni in corso..."
+              />
+            ) : canManageDrivers ? (
+              <DriverRegistrationSidebar
+                isOpen={isOpen}
+                isSuperAdmin={Number.isInteger(effectivePrivilege) && effectivePrivilege === 0}
+                sessionCompanyId={sessionCompanyId}
+                sessionCompanyName={sessionCompanyName}
+                initialDriver={driverEditTarget}
+                readOnly={driverEditReadOnly}
+              />
+            ) : (
+              <Section
+                title="Accesso limitato"
+                body="Non hai i permessi per registrare nuovi autisti."
+              />
+            )
+          ) : isVehicleMode ? (
+            !sessionLoaded ? (
+              <Section
+                title="Verifica permessi"
+                body="Caricamento autorizzazioni in corso..."
             />
           ) : canManageVehicles ? (
             <VehicleRegistrationSidebar
@@ -2760,6 +2813,545 @@ export function DriverSidebar({
         )}
       </div>
     </aside>
+  );
+}
+
+function DriverRegistrationSidebar({
+  isOpen,
+  isSuperAdmin,
+  sessionCompanyId,
+  sessionCompanyName,
+  initialDriver,
+  readOnly = false,
+}: {
+  isOpen: boolean;
+  isSuperAdmin: boolean;
+  sessionCompanyId: string | null;
+  sessionCompanyName: string | null;
+  initialDriver?: DriverEditTarget | null;
+  readOnly?: boolean;
+}) {
+  const [activeTab, setActiveTab] = React.useState<"manual" | "import">("manual");
+  const [companyOptions, setCompanyOptions] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [companyId, setCompanyId] = React.useState("");
+  const [companyName, setCompanyName] = React.useState<string | null>(null);
+  const [loadingCompanies, setLoadingCompanies] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const [surname, setSurname] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [cardId, setCardId] = React.useState("");
+  const [registerOnExternal, setRegisterOnExternal] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
+  const [editId, setEditId] = React.useState<string | null>(null);
+  const isEditMode = Boolean(initialDriver && (initialDriver.id || initialDriver._id));
+
+  const [tachoDrivers, setTachoDrivers] = React.useState<TachoDriverOption[]>([]);
+  const [tachoLoading, setTachoLoading] = React.useState(false);
+  const [tachoError, setTachoError] = React.useState<string | null>(null);
+  const [tachoSearch, setTachoSearch] = React.useState("");
+  const [tachoSelectedIds, setTachoSelectedIds] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (initialDriver) {
+      setActiveTab("manual");
+      setEditId(String(initialDriver.id || initialDriver._id || ""));
+      setName(String(initialDriver.name || ""));
+      setSurname(String(initialDriver.surname || ""));
+      setPhone(String(initialDriver.phone || ""));
+      setCardId(String(initialDriver.tachoDriverId || ""));
+      setCompanyId(String(initialDriver.companyId || ""));
+      setCompanyName(initialDriver.companyName || sessionCompanyName || null);
+      setRegisterOnExternal(false);
+      setError(null);
+      setSuccess(null);
+      setTachoSelectedIds([]);
+      return;
+    }
+    setEditId(null);
+  }, [initialDriver, isOpen, sessionCompanyName]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const loadCompanies = async () => {
+      setLoadingCompanies(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/drivers/companies`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data?.companies) ? data.companies : [];
+        const mapped = list
+          .map((company: any) => ({
+            id: String(company?.id || company?._id || ""),
+            name: String(company?.name || ""),
+          }))
+          .filter((company: { id: string; name: string }) => company.id && company.name);
+        if (!cancelled) {
+          setCompanyOptions(mapped);
+          if (initialDriver) {
+            setCompanyId(String(initialDriver.companyId || ""));
+            setCompanyName(initialDriver.companyName || null);
+            return;
+          }
+          if (!isSuperAdmin && mapped.length) {
+            setCompanyId(mapped[0].id);
+            setCompanyName(mapped[0].name);
+          }
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || "Errore caricamento aziende.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCompanies(false);
+        }
+      }
+    };
+    loadCompanies();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isSuperAdmin, initialDriver]);
+
+  React.useEffect(() => {
+    if (!isOpen || !activeTab || activeTab !== "import") return;
+    if (!companyId && !isSuperAdmin) return;
+    const targetCompanyId = isSuperAdmin ? companyId : sessionCompanyId;
+    if (!targetCompanyId) return;
+    let cancelled = false;
+    const loadTachoDrivers = async () => {
+      setTachoLoading(true);
+      setTachoError(null);
+      try {
+        const query = `?companyId=${encodeURIComponent(targetCompanyId)}`;
+        console.log("[tacho] import-options request", {
+          url: `${API_BASE_URL}/api/drivers/import-options${query}`,
+          companyId: targetCompanyId,
+          isSuperAdmin,
+        });
+        const res = await fetch(`${API_BASE_URL}/api/drivers/import-options${query}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          console.warn("[tacho] import-options error", {
+            status: res.status,
+            body: text,
+          });
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json().catch(() => ({}));
+        console.log("[tacho] import-options response", {
+          count: Array.isArray(data?.drivers) ? data.drivers.length : 0,
+        });
+        const list = Array.isArray(data?.drivers) ? data.drivers : [];
+        const mapped = list
+          .map((driver: any) => ({
+            id: String(driver?.id || driver?.cardNumber || driver?.driverId || driver?.driverCardId || ""),
+            name: String(driver?.firstName || driver?.name || ""),
+            surname: String(driver?.lastName || driver?.surname || ""),
+            cardName: driver?.cardName || driver?.driverCardName || driver?.fullName || driver?.driverName || null,
+            cardNumber: driver?.cardNumber || driver?.driverCardId || driver?.driverId || null,
+            phone: driver?.phone || driver?.phoneNumber || null,
+          }))
+          .filter((driver: TachoDriverOption) => driver.id);
+        if (!cancelled) {
+          setTachoDrivers(mapped);
+          setTachoSelectedIds([]);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setTachoError(err?.message || "Errore nel caricamento autisti.");
+        }
+      } finally {
+        if (!cancelled) {
+          setTachoLoading(false);
+        }
+      }
+    };
+    loadTachoDrivers();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, companyId, isOpen, isSuperAdmin, sessionCompanyId]);
+
+  const filteredTachoDrivers = React.useMemo(() => {
+    const query = tachoSearch.trim().toLowerCase();
+    if (!query) return tachoDrivers;
+    return tachoDrivers.filter((driver) => {
+      const label = `${driver.name} ${driver.surname} ${driver.cardName || ""} ${driver.cardNumber || ""} ${driver.phone || ""}`.toLowerCase();
+      return label.includes(query);
+    });
+  }, [tachoDrivers, tachoSearch]);
+
+  const toggleTachoDriver = (id: string) => {
+    setTachoSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id],
+    );
+  };
+
+  const handleManualSubmit = async () => {
+    setError(null);
+    setSuccess(null);
+    const targetCompanyId = isSuperAdmin ? companyId : sessionCompanyId;
+    if (!targetCompanyId) {
+      setError("Seleziona una azienda.");
+      return;
+    }
+    if (!name.trim() || !surname.trim() || !phone.trim() || !cardId.trim()) {
+      setError("Compila tutti i campi obbligatori.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/drivers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: name.trim(),
+          surname: surname.trim(),
+          phone: phone.trim(),
+          tachoDriverId: cardId.trim(),
+          companyId: targetCompanyId,
+          registerOnTacho: registerOnExternal,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      setSuccess("Autista registrato con successo.");
+      setName("");
+      setSurname("");
+      setPhone("");
+      setCardId("");
+      window.dispatchEvent(new CustomEvent("truckly:drivers-refresh"));
+    } catch (err: any) {
+      setError(err?.message || "Errore durante la registrazione.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateSubmit = async () => {
+    if (readOnly) return;
+    setError(null);
+    setSuccess(null);
+    if (!editId) {
+      setError("Autista non valido.");
+      return;
+    }
+    if (!name.trim() || !surname.trim() || !phone.trim() || !cardId.trim()) {
+      setError("Compila tutti i campi obbligatori.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/drivers/${encodeURIComponent(editId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: name.trim(),
+          surname: surname.trim(),
+          phone: phone.trim(),
+          tachoDriverId: cardId.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      setSuccess("Autista aggiornato con successo.");
+      window.dispatchEvent(new CustomEvent("truckly:drivers-refresh"));
+    } catch (err: any) {
+      setError(err?.message || "Errore durante l'aggiornamento.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleImportSubmit = async () => {
+    setError(null);
+    setSuccess(null);
+    const targetCompanyId = isSuperAdmin ? companyId : sessionCompanyId;
+    if (!targetCompanyId) {
+      setError("Seleziona una azienda.");
+      return;
+    }
+    if (!tachoSelectedIds.length) {
+      setError("Seleziona almeno un autista da importare.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const selected = tachoDrivers.filter((driver) => tachoSelectedIds.includes(driver.id));
+      const splitCardName = (value?: string | null) => {
+        const clean = String(value || "").trim();
+        if (!clean) return { first: "", last: "" };
+        const parts = clean.split(/\s+/);
+        if (parts.length === 1) return { first: parts[0], last: "" };
+        return { first: parts[0], last: parts.slice(1).join(" ") };
+      };
+      const payload = selected.map((driver) => ({
+        name: driver.name || splitCardName(driver.cardName).first || "",
+        surname: driver.surname || splitCardName(driver.cardName).last || "",
+        phone: driver.phone || "",
+        tachoDriverId: String(driver.cardNumber || driver.id || ""),
+      }));
+      console.log("[tacho] drivers/import request", {
+        companyId: targetCompanyId,
+        drivers: payload,
+      });
+      const res = await fetch(`${API_BASE_URL}/api/drivers/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          companyId: targetCompanyId,
+          drivers: payload,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.warn("[tacho] drivers/import error", {
+          status: res.status,
+          body: text,
+        });
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      console.log("[tacho] drivers/import success");
+      setSuccess("Import completato.");
+      setTachoSelectedIds([]);
+      window.dispatchEvent(new CustomEvent("truckly:drivers-refresh"));
+    } catch (err: any) {
+      setError(err?.message || "Errore durante l'import.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("manual")}
+            className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
+              activeTab === "manual"
+                ? "border-white/40 text-white"
+                : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+            }`}
+          >
+            Manuale
+          </button>
+          {!isEditMode && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("import")}
+              className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
+                activeTab === "import"
+                  ? "border-white/40 text-white"
+                  : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
+              }`}
+            >
+              Importa
+            </button>
+          )}
+        </div>
+
+        {isSuperAdmin && !isEditMode ? (
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Azienda</label>
+            <select
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            >
+              <option value="">
+                {loadingCompanies ? "Caricamento..." : "Seleziona azienda"}
+              </option>
+              {companyOptions.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/70">
+            Azienda: {companyName || sessionCompanyName || "--"}
+          </div>
+        )}
+
+        {activeTab === "manual" ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Nome</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={readOnly}
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Cognome</label>
+              <input
+                value={surname}
+                onChange={(e) => setSurname(e.target.value)}
+                disabled={readOnly}
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Cellulare</label>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                disabled={readOnly}
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">ID carta</label>
+              <input
+                value={cardId}
+                onChange={(e) => setCardId(e.target.value)}
+                disabled={readOnly}
+                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            {!isEditMode && (
+              <div className="sm:col-span-2 rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/70 flex items-center justify-between">
+                <span>Aggiungi su servizio esterno</span>
+                <label className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/60">
+                  <input
+                    type="checkbox"
+                    checked={registerOnExternal}
+                    onChange={(e) => setRegisterOnExternal(e.target.checked)}
+                    className="h-4 w-4 rounded border border-white/20 bg-[#0b0b0d]"
+                  />
+                  Attiva
+                </label>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <input
+              type="search"
+              value={tachoSearch}
+              onChange={(e) => setTachoSearch(e.target.value)}
+              placeholder="Cerca autista..."
+              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            />
+            <div className="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-[#0d0d0f]">
+              {tachoLoading ? (
+                <div className="px-3 py-3 text-xs text-white/60">Caricamento autisti...</div>
+              ) : filteredTachoDrivers.length ? (
+                filteredTachoDrivers.map((driver) => {
+                  const isSelected = tachoSelectedIds.includes(driver.id);
+                  const primaryLabel =
+                    `${driver.name} ${driver.surname}`.trim()
+                    || driver.cardName
+                    || driver.cardNumber
+                    || "--";
+                  return (
+                    <button
+                      key={driver.id}
+                      type="button"
+                      onClick={() => toggleTachoDriver(driver.id)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition ${
+                        isSelected
+                          ? "bg-white/10 text-white"
+                          : "text-white/80 hover:bg-white/5"
+                      }`}
+                    >
+                      <span className="grid w-full grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-center gap-3">
+                        <span className="min-w-[50%] truncate">{primaryLabel}</span>
+                        <span className="truncate text-right text-white/50">
+                          {driver.cardNumber || ""}
+                        </span>
+                      </span>
+                      <span
+                        className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
+                          isSelected
+                            ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200"
+                            : "border-white/20 text-white/40"
+                        }`}
+                        aria-hidden="true"
+                      >
+                        <i className="fa fa-check text-[10px]" />
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="px-3 py-3 text-xs text-white/60">
+                  Nessun autista trovato.
+                </div>
+              )}
+            </div>
+            {tachoError && <p className="text-xs text-red-400">{tachoError}</p>}
+          </div>
+        )}
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        {success && <p className="text-xs text-emerald-300">{success}</p>}
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={
+              activeTab === "manual"
+                ? isEditMode
+                  ? handleUpdateSubmit
+                  : handleManualSubmit
+                : handleImportSubmit
+            }
+            disabled={submitting || readOnly}
+            className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {submitting
+              ? "Salvataggio..."
+              : activeTab === "manual"
+                ? isEditMode
+                  ? "Aggiorna autista"
+                  : "Registra autista"
+                : "Importa autisti"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setName("");
+              setSurname("");
+              setPhone("");
+              setCardId("");
+              setRegisterOnExternal(false);
+              setTachoSelectedIds([]);
+              setError(null);
+              setSuccess(null);
+            }}
+            disabled={readOnly}
+            className="rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

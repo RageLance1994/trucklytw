@@ -54,6 +54,7 @@ const VehicleSchema = new mongoose.Schema({
 const DriverSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   surname: { type: String, required: true, trim: true },
+  phone: { type: String, trim: true, default: null },
   dateOfBirth: { type: Date, default: null },
   licenseIssuedAt: { type: Date, default: null },
   licenseExpiresAt: { type: Date, default: null },
@@ -162,6 +163,21 @@ const driverEventSchema = new mongoose.Schema({
   elapsed: { type: Number, required: true },
 }, { timestamps: false, versionKey: false });
 
+const SeepFileStatusSchema = new mongoose.Schema({
+  teltonikaFileId: { type: String, required: true, unique: true, index: true },
+  fileName: { type: String, default: null },
+  source: { type: String, enum: ["driver", "vehicle"], required: true },
+  companyId: { type: String, default: null }, // Teltonika company id
+  downloadTime: { type: Date, default: null },
+  periodFrom: { type: Date, default: null },
+  periodTo: { type: Date, default: null },
+  periodSource: { type: String, default: null },
+  seepUploaded: { type: Boolean, default: false },
+  seepFileId: { type: String, default: null },
+  lastCheckedAt: { type: Date, default: null },
+  uploadedAt: { type: Date, default: null },
+  error: { type: String, default: null },
+}, { timestamps: true });
 
 
 
@@ -194,6 +210,7 @@ const Companies = mongoose.model("Company", CompanySchema, "Company");
 const Vehicles = mongoose.model("Vehicle", VehicleSchema, "Vehicle");
 const Drivers = mongoose.model("Drivers", DriverSchema, "Drivers");
 const Sims = mongoose.model("Sims", SimSchema, "Sims");
+const SeepFileStatus = mongoose.model("SeepFileStatus", SeepFileStatusSchema, "SeepFileStatus");
 
 const refuelingAttachmentSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -234,6 +251,7 @@ module.exports = {
   Vehicles, VehicleSchema,
   Drivers, DriverSchema,
   Sims, SimSchema,
+  SeepFileStatus, SeepFileStatusSchema,
   Companies, CompanySchema,
   UserModel,
   UserChatsModel,

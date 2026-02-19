@@ -1,10 +1,13 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const DEFAULT_PAGE_SIZE = 100;
 
 const normalizeCompanyList = (payload) => {
   if (!payload) return [];
   if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.companies)) return payload.companies;
   if (Array.isArray(payload)) return payload;
   return [payload];
 };
@@ -22,8 +25,15 @@ const flattenCompanyTree = (payload) => {
       depth,
       raw: company,
     });
-    if (Array.isArray(company.childCompanies)) {
-      company.childCompanies.forEach((child) => walk(child, depth + 1, company.id));
+    const children = Array.isArray(company.childCompanies)
+      ? company.childCompanies
+      : Array.isArray(company.companies)
+        ? company.companies
+        : Array.isArray(company.children)
+          ? company.children
+          : [];
+    if (children.length) {
+      children.forEach((child) => walk(child, depth + 1, company.id));
     }
   };
 
@@ -66,16 +76,31 @@ const TachoSync = new class {
     return res;
   }
 
-  async drivers(companyId) {
-    const res = await this._request('get', '/Drivers', {
-      params: {
-        PageNumber: 1,
-        PageSize: DEFAULT_PAGE_SIZE,
-        CompanyId: companyId,
-      },
-    });
-    return Array.isArray(res.data?.items) ? res.data.items : Array.isArray(res.data) ? res.data : [];
-  }
+    async drivers(companyId) {
+      const res = await this._request('get', '/Drivers', {
+        params: {
+          PageNumber: 1,
+          PageSize: DEFAULT_PAGE_SIZE,
+          CompanyId: companyId,
+        },
+      });
+      return Array.isArray(res.data?.items) ? res.data.items : Array.isArray(res.data) ? res.data : [];
+    }
+
+    async createDriver({ companyId, firstName, lastName, cardNumber, phone } = {}) {
+      if (!companyId) throw new Error('companyId is required');
+      if (!firstName || !lastName || !cardNumber) throw new Error('firstName, lastName, cardNumber are required');
+      const res = await this._request('post', '/Drivers', {
+        data: {
+          companyId,
+          firstName,
+          lastName,
+          cardNumber,
+          phone: phone || null,
+        },
+      });
+      return res.data;
+    }
 
   async companies() {
     const res = await this._request('get', '/Companies');
@@ -84,7 +109,19 @@ const TachoSync = new class {
 
   async companiesFlat() {
     const res = await this._request('get', '/Companies');
-    return flattenCompanyTree(res.data);
+    const flattened = flattenCompanyTree(res.data);
+    try {
+      const dumpPath = path.join(process.cwd(), 'Tacho_companies.json');
+      fs.writeFileSync(dumpPath, JSON.stringify({
+        fetchedAt: new Date().toISOString(),
+        raw: res.data,
+        flattened,
+      }, null, 2), 'utf8');
+      console.log('[tacho] dumped companies to', dumpPath);
+    } catch (err) {
+      console.warn('[tacho] failed to dump companies', err?.message || err);
+    }
+    return flattened;
   }
 
   async listDriverFiles(options = {}) {
@@ -120,6 +157,20 @@ const TachoSync = new class {
     const params = new URLSearchParams();
     (Array.isArray(ids) ? ids : [ids]).forEach((id) => params.append('Ids', id));
     if (fileFormat) params.append('FileFormat', fileFormat);
+    try {
+      const dumpPath = path.join(process.cwd(), 'Files_info.json');
+      const payload = {
+        fetchedAt: new Date().toISOString(),
+        type: 'driver',
+        ids: Array.isArray(ids) ? ids : [ids],
+        fileFormat,
+        url: `${this.baseurl}/DriverFiles/Download?${params.toString()}`,
+      };
+      fs.writeFileSync(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
+      console.log('[tacho] dumped files info to', dumpPath);
+    } catch (err) {
+      console.warn('[tacho] failed to dump files info', err?.message || err);
+    }
     return this._request('get', `/DriverFiles/Download?${params.toString()}`, {
       responseType: 'arraybuffer',
     });
@@ -129,6 +180,20 @@ const TachoSync = new class {
     const params = new URLSearchParams();
     (Array.isArray(ids) ? ids : [ids]).forEach((id) => params.append('Ids', id));
     if (fileFormat) params.append('FileFormat', fileFormat);
+    try {
+      const dumpPath = path.join(process.cwd(), 'Files_info.json');
+      const payload = {
+        fetchedAt: new Date().toISOString(),
+        type: 'vehicle',
+        ids: Array.isArray(ids) ? ids : [ids],
+        fileFormat,
+        url: `${this.baseurl}/VehicleFiles/Download?${params.toString()}`,
+      };
+      fs.writeFileSync(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
+      console.log('[tacho] dumped files info to', dumpPath);
+    } catch (err) {
+      console.warn('[tacho] failed to dump files info', err?.message || err);
+    }
     return this._request('get', `/VehicleFiles/Download?${params.toString()}`, {
       responseType: 'arraybuffer',
     });

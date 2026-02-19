@@ -314,22 +314,36 @@ export function Navbar() {
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
 
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>
-                      <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
-                      Autisti
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuItem>
-                        <i className="fa fa-plus mr-2 text-[12px]" aria-hidden="true" />
-                        Registra nuovo
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <i className="fa fa-table mr-2 text-[12px]" aria-hidden="true" />
-                        Tabelle
-                      </DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
+                        Autisti
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            window.dispatchEvent(
+                              new CustomEvent("truckly:driver-register-open"),
+                            )
+                          }
+                        >
+                          <i className="fa fa-plus mr-2 text-[12px]" aria-hidden="true" />
+                          Registra nuovo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            window.dispatchEvent(
+                              new CustomEvent("truckly:bottom-bar-toggle", {
+                                detail: { mode: "drivers" },
+                              }),
+                            )
+                          }
+                        >
+                          <i className="fa fa-table mr-2 text-[12px]" aria-hidden="true" />
+                          Tabelle
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
 
                   <DropdownMenuSeparator />
 
@@ -723,9 +737,18 @@ export function Navbar() {
               <button className="w-full px-2 py-1 text-left hover:text-white transition">
                 Veicoli
               </button>
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
-                Autisti
-              </button>
+                <button
+                  className="w-full px-2 py-1 text-left hover:text-white transition"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("truckly:bottom-bar-toggle", {
+                        detail: { mode: "drivers" },
+                      }),
+                    )
+                  }
+                >
+                  Autisti
+                </button>
               <div className="px-2 py-1 text-white/40">
                 Rotte
                 <div className="text-[11px] text-white/40">Disponibile a breve</div>

@@ -1,0 +1,163 @@
+{
+  "fetchedAt": "2026-02-06T17:34:59.906Z",
+  "raw": {
+    "id": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+    "name": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+    "comment": "",
+    "parentCompanyId": null,
+    "parentCompanyName": null,
+    "automaticDriverRegistrationEnabled": true,
+    "autoAssignGlobalScheduleToVehicle": true,
+    "autoAssignGlobalScheduleToDriver": true,
+    "autoAssignVrn": false,
+    "childCompanies": [
+      {
+        "id": "3a433f07-1091-49d2-a5d6-58d45d59194e",
+        "name": "Gruppo Bolvino s.a.s.",
+        "comment": null,
+        "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "automaticDriverRegistrationEnabled": false,
+        "autoAssignGlobalScheduleToVehicle": false,
+        "autoAssignGlobalScheduleToDriver": false,
+        "autoAssignVrn": false,
+        "childCompanies": []
+      },
+      {
+        "id": "81665a0f-86dd-46d8-8bbf-51fd871a86dc",
+        "name": "Pedone s.r.l.",
+        "comment": "",
+        "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "automaticDriverRegistrationEnabled": true,
+        "autoAssignGlobalScheduleToVehicle": true,
+        "autoAssignGlobalScheduleToDriver": true,
+        "autoAssignVrn": false,
+        "childCompanies": []
+      },
+      {
+        "id": "d2d1d721-e33e-4f44-9326-8ec485606950",
+        "name": "Landi s.r.l.",
+        "comment": "",
+        "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "automaticDriverRegistrationEnabled": true,
+        "autoAssignGlobalScheduleToVehicle": true,
+        "autoAssignGlobalScheduleToDriver": true,
+        "autoAssignVrn": false,
+        "childCompanies": []
+      }
+    ]
+  },
+  "flattened": [
+    {
+      "id": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+      "name": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+      "parentId": null,
+      "depth": 0,
+      "raw": {
+        "id": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "name": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "comment": "",
+        "parentCompanyId": null,
+        "parentCompanyName": null,
+        "automaticDriverRegistrationEnabled": true,
+        "autoAssignGlobalScheduleToVehicle": true,
+        "autoAssignGlobalScheduleToDriver": true,
+        "autoAssignVrn": false,
+        "childCompanies": [
+          {
+            "id": "3a433f07-1091-49d2-a5d6-58d45d59194e",
+            "name": "Gruppo Bolvino s.a.s.",
+            "comment": null,
+            "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+            "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+            "automaticDriverRegistrationEnabled": false,
+            "autoAssignGlobalScheduleToVehicle": false,
+            "autoAssignGlobalScheduleToDriver": false,
+            "autoAssignVrn": false,
+            "childCompanies": []
+          },
+          {
+            "id": "81665a0f-86dd-46d8-8bbf-51fd871a86dc",
+            "name": "Pedone s.r.l.",
+            "comment": "",
+            "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+            "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+            "automaticDriverRegistrationEnabled": true,
+            "autoAssignGlobalScheduleToVehicle": true,
+            "autoAssignGlobalScheduleToDriver": true,
+            "autoAssignVrn": false,
+            "childCompanies": []
+          },
+          {
+            "id": "d2d1d721-e33e-4f44-9326-8ec485606950",
+            "name": "Landi s.r.l.",
+            "comment": "",
+            "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+            "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+            "automaticDriverRegistrationEnabled": true,
+            "autoAssignGlobalScheduleToVehicle": true,
+            "autoAssignGlobalScheduleToDriver": true,
+            "autoAssignVrn": false,
+            "childCompanies": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "3a433f07-1091-49d2-a5d6-58d45d59194e",
+      "name": "Gruppo Bolvino s.a.s.",
+      "parentId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+      "depth": 1,
+      "raw": {
+        "id": "3a433f07-1091-49d2-a5d6-58d45d59194e",
+        "name": "Gruppo Bolvino s.a.s.",
+        "comment": null,
+        "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "automaticDriverRegistrationEnabled": false,
+        "autoAssignGlobalScheduleToVehicle": false,
+        "autoAssignGlobalScheduleToDriver": false,
+        "autoAssignVrn": false,
+        "childCompanies": []
+      }
+    },
+    {
+      "id": "81665a0f-86dd-46d8-8bbf-51fd871a86dc",
+      "name": "Pedone s.r.l.",
+      "parentId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+      "depth": 1,
+      "raw": {
+        "id": "81665a0f-86dd-46d8-8bbf-51fd871a86dc",
+        "name": "Pedone s.r.l.",
+        "comment": "",
+        "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "automaticDriverRegistrationEnabled": true,
+        "autoAssignGlobalScheduleToVehicle": true,
+        "autoAssignGlobalScheduleToDriver": true,
+        "autoAssignVrn": false,
+        "childCompanies": []
+      }
+    },
+    {
+      "id": "d2d1d721-e33e-4f44-9326-8ec485606950",
+      "name": "Landi s.r.l.",
+      "parentId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+      "depth": 1,
+      "raw": {
+        "id": "d2d1d721-e33e-4f44-9326-8ec485606950",
+        "name": "Landi s.r.l.",
+        "comment": "",
+        "parentCompanyId": "b849fee7-8b8c-40fc-b45c-d63eea1fe481",
+        "parentCompanyName": "ATS - SOCIETA' A RESPONSABILITA' LIMITATA",
+        "automaticDriverRegistrationEnabled": true,
+        "autoAssignGlobalScheduleToVehicle": true,
+        "autoAssignGlobalScheduleToDriver": true,
+        "autoAssignVrn": false,
+        "childCompanies": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "fetchedAt": "2026-02-06T17:49:45.062Z",
+  "source": "all",
+  "request": {
+    "companyId": null,
+    "from": null,
+    "to": null,
+    "contains": null,
+    "pageNumber": 1,
+    "pageSize": 50
+  },
+  "teltonikaParams": {
+    "PageNumber": 1,
+    "PageSize": 50,
+    "OrderBy": "downloadTime",
+    "Descending": true,
+    "AllCompanies": true
+  },
+  "driverSample": {
+    "id": "5e90cd39-b613-4bf5-bfbe-065fd6ef2016",
+    "downloadTime": "2026-02-05T23:21:00Z",
+    "fileName": "C_20260205_2321_D_DAMBELE_I100000289410000.DDD",
+    "vehicleImei": "864275071761426",
+    "driver": {
+      "driverId": "bdd2c792-f24b-4652-b39e-91fc1feb3145",
+      "driverName": "DABY DAMBELE",
+      "cardNumber": "I100000289410000"
+    },
+    "company": {
+      "id": "d2d1d721-e33e-4f44-9326-8ec485606950",
+      "name": "Landi s.r.l."
+    },
+    "schedule": {
+      "id": "d9653a01-cb43-4ed5-aa18-812acf39b99e",
+      "name": "Global schedule",
+      "created": "2025-10-28T21:28:18Z",
+      "repeat": "Daily",
+      "fileTypes": [
+        "DriverCard"
+      ]
+    }
+  },
+  "vehicleSample": {
+    "id": "c5c7068f-510e-4930-a9ae-2c415e079564",
+    "fileName": "M_20260205_1252_FW546FD_WJMM62AVZ0C434727.DDD",
+    "vehicle": {
+      "id": "fb20cded-d09a-49f3-ac77-3bdf444d7435",
+      "number": "FW546FD",
+      "imei": "864275071761426"
+    },
+    "schedule": {
+      "id": "fea67391-2600-4abd-9328-b2a07fd0a5c7",
+      "name": "Global schedule",
+      "created": "2025-10-28T11:16:45Z",
+      "repeat": "Daily",
+      "fileTypes": [
+        "Overview",
+        "Activities",
+        "EventsAndFaults",
+        "DetailedSpeed",
+        "TechnicalData"
+      ],
+      "activitiesFrom": "2026-02-04T00:00:00Z",
+      "activitiesTo": "2026-02-04T00:00:00Z"
+    },
+    "s3FileKey": "d2d1d721-e33e-4f44-9326-8ec485606950/Vehicles/fb20cded-d09a-49f3-ac77-3bdf444d7435/M_20260205_1252_FW546FD_WJMM62AVZ0C434727.DDD",
+    "downloadTime": "2026-02-05T12:52:00Z",
+    "company": {
+      "id": "d2d1d721-e33e-4f44-9326-8ec485606950",
+      "name": "Landi s.r.l."
+    }
+  }
+}
