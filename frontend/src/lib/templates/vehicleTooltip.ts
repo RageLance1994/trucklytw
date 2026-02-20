@@ -19,6 +19,7 @@ type CustomFieldConfig = {
   key: string;
   label: string;
   type: CustomFieldType;
+  icon?: string;
 };
 
 export type TooltipContext = {
@@ -190,14 +191,56 @@ const SECTION_STYLES = `
   }
   .truckly-custom__row {
     display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     font-size: 12px;
     color: rgba(248,250,252,0.75);
   }
+  .truckly-custom__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+  .truckly-custom__field-icon {
+    width: 16px;
+    text-align: center;
+    color: rgba(248,250,252,0.75);
+  }
+  .truckly-custom__value {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
   .truckly-custom__row strong {
     color: rgba(248,250,252,0.95);
     font-weight: 600;
+  }
+  .truckly-custom__manage {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .truckly-custom__manage-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    border: 1px solid rgba(248,250,252,0.18);
+    background: rgba(248,250,252,0.06);
+    color: rgba(248,250,252,0.9);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .truckly-custom__manage-btn:hover {
+    border-color: rgba(248,250,252,0.38);
+    background: rgba(248,250,252,0.12);
   }
   .truckly-custom__status {
     display: inline-flex;
@@ -300,6 +343,17 @@ const SECTION_STYLES = `
     letter-spacing: 0.2em;
     cursor: pointer;
   }
+  .truckly-custom__cancel {
+    border-radius: 999px;
+    border: 1px solid rgba(248,250,252,0.2);
+    background: transparent;
+    color: rgba(248,250,252,0.78);
+    padding: 6px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    cursor: pointer;
+  }
   .truckly-actions {
     display: grid;
     grid-template-columns: repeat(5, minmax(0,1fr));
@@ -365,6 +419,19 @@ const icons = {
   alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0Z"/></svg>`,
   geofence: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>`,
 };
+
+const CUSTOM_FIELD_ICON_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "fa fa-tag", label: "Tag" },
+  { value: "fa fa-bolt", label: "Bolt" },
+  { value: "fa fa-thermometer-half", label: "Temp" },
+  { value: "fa fa-tint", label: "Fuel" },
+  { value: "fa fa-plug", label: "Plug" },
+  { value: "fa fa-wrench", label: "Tool" },
+  { value: "fa fa-id-card", label: "ID" },
+  { value: "fa fa-hashtag", label: "#" },
+  { value: "fa fa-toggle-on", label: "ON/OFF" },
+  { value: "fa fa-tachometer", label: "Speed" },
+];
 
 export function renderVehicleTooltip({
   vehicle = {},
@@ -435,24 +502,48 @@ export function renderVehicleTooltip({
     : "";
 
   const customFieldRows = customFields
-    .map((field) => {
+    .map((field, index) => {
       const raw = (io as Record<string, unknown>)[field.key];
       const display = formatCustomValue(raw, field.type);
+      const iconClass = field.icon || "fa fa-tag";
+      const manageControls = allowCustomize
+        ? `<span class="truckly-custom__manage">
+             <button type="button" class="truckly-custom__manage-btn" data-action="customize-up" data-key="${escapeHtml(field.key)}" ${
+               index === 0 ? "disabled" : ""
+             }>↑</button>
+             <button type="button" class="truckly-custom__manage-btn" data-action="customize-down" data-key="${escapeHtml(field.key)}" ${
+               index === customFields.length - 1 ? "disabled" : ""
+             }>↓</button>
+             <button type="button" class="truckly-custom__manage-btn" data-action="customize-delete" data-key="${escapeHtml(field.key)}">×</button>
+           </span>`
+        : "";
       if (field.type === "onoff") {
         const isOn = display === "ON";
         return `
         <div class="truckly-custom__row">
-          <span>${escapeHtml(field.label)}</span>
-          <span class="truckly-custom__status ${isOn ? "on" : "off"}">
-            <span class="truckly-dot pulse"></span>
-            ${isOn ? "ON" : "OFF"}
+          <span class="truckly-custom__label">
+            <i class="${escapeHtml(iconClass)} truckly-custom__field-icon" aria-hidden="true"></i>
+            <span>${escapeHtml(field.label)}</span>
+          </span>
+          <span class="truckly-custom__value">
+            <span class="truckly-custom__status ${isOn ? "on" : "off"}">
+              <span class="truckly-dot pulse"></span>
+              ${isOn ? "ON" : "OFF"}
+            </span>
+            ${manageControls}
           </span>
         </div>`;
       }
       return `
         <div class="truckly-custom__row">
-          <span>${escapeHtml(field.label)}</span>
-          <strong>${escapeHtml(display)}</strong>
+          <span class="truckly-custom__label">
+            <i class="${escapeHtml(iconClass)} truckly-custom__field-icon" aria-hidden="true"></i>
+            <span>${escapeHtml(field.label)}</span>
+          </span>
+          <span class="truckly-custom__value">
+            <strong>${escapeHtml(display)}</strong>
+            ${manageControls}
+          </span>
         </div>`;
     })
     .join("");
@@ -466,6 +557,10 @@ export function renderVehicleTooltip({
       .map((key) => `<option value="${escapeHtml(key)}">${escapeHtml(key)}</option>`)
       .join("")
     : `<option value="">Nessun campo disponibile</option>`;
+
+  const customIconOptions = CUSTOM_FIELD_ICON_OPTIONS
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+    .join("");
 
   const customCard = `
     <div class="truckly-card">
@@ -496,12 +591,18 @@ export function renderVehicleTooltip({
                    ${customFieldOptions}
                  </select>
                  <input name="custom-label" type="text" placeholder="Etichetta" />
+                 <select name="custom-icon">
+                   ${customIconOptions}
+                 </select>
                  <select name="custom-type">
                    <option value="onoff">ON/OFF</option>
                    <option value="number">Number</option>
                    <option value="id">ID</option>
                  </select>
                  <div class="truckly-custom__actions">
+                   <button type="button" class="truckly-custom__cancel" data-action="customize-close">
+                     Chiudi
+                   </button>
                    <button type="button" class="truckly-custom__save" data-action="customize-add" ${
                      availableIoFields.length ? "" : "disabled"
                    }>

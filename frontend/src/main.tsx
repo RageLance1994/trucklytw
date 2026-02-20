@@ -53,7 +53,7 @@ type Vehicle = {
   lon?: number | null;
   status?: string;
   angle?: number;
-  customFields?: Array<{ key: string; label: string; type: "onoff" | "number" | "id" }>;
+  customFields?: Array<{ key: string; label: string; type: "onoff" | "number" | "id"; icon?: string }>;
   details?: {
     tanks?: {
       primary?: { capacity?: number | null };

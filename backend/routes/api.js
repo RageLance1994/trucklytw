@@ -1036,14 +1036,30 @@ router.post('/vehicles/custom-fields', auth, async (req, res) => {
     }
 
     const fieldsRaw = Array.isArray(req.body.fields) ? req.body.fields : [];
+    const allowedIcons = new Set([
+      'fa fa-tag',
+      'fa fa-bolt',
+      'fa fa-thermometer-half',
+      'fa fa-tint',
+      'fa fa-plug',
+      'fa fa-wrench',
+      'fa fa-id-card',
+      'fa fa-hashtag',
+      'fa fa-toggle-on',
+      'fa fa-tachometer',
+    ]);
+    const seenKeys = new Set();
     const normalized = fieldsRaw
       .map((field) => {
         const key = typeof field?.key === 'string' ? field.key.trim() : '';
         const label = typeof field?.label === 'string' ? field.label.trim() : '';
         const typeRaw = typeof field?.type === 'string' ? field.type.trim().toLowerCase() : '';
+        const iconRaw = typeof field?.icon === 'string' ? field.icon.trim() : '';
         const type = typeRaw === 'number' || typeRaw === 'id' ? typeRaw : 'onoff';
-        if (!key || !label) return null;
-        return { key, label, type };
+        if (!key || !label || seenKeys.has(key)) return null;
+        seenKeys.add(key);
+        const icon = allowedIcons.has(iconRaw) ? iconRaw : 'fa fa-tag';
+        return { key, label, type, icon };
       })
       .filter(Boolean)
       .slice(0, 12);

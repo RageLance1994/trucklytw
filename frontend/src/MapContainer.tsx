@@ -23,7 +23,21 @@ type CustomTooltipField = {
   key: string;
   label: string;
   type: "onoff" | "number" | "id";
+  icon?: string;
 };
+
+const CUSTOM_FIELD_ICONS = new Set([
+  "fa fa-tag",
+  "fa fa-bolt",
+  "fa fa-thermometer-half",
+  "fa fa-tint",
+  "fa fa-plug",
+  "fa fa-wrench",
+  "fa fa-id-card",
+  "fa fa-hashtag",
+  "fa fa-toggle-on",
+  "fa fa-tachometer",
+]);
 
 interface MapContainerProps {
   vehicles: Vehicle[];
@@ -38,6 +52,7 @@ const normalizeCustomFields = (fields?: CustomTooltipField[]) => {
       key: String(item.key),
       label: String(item.label || item.key),
       type: item.type === "number" || item.type === "id" ? item.type : "onoff",
+      icon: typeof item.icon === "string" && CUSTOM_FIELD_ICONS.has(item.icon) ? item.icon : "fa fa-tag",
     })) as CustomTooltipField[];
 };
 
@@ -1239,12 +1254,51 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       if (!target) return;
       const customizeToggle = target.closest("[data-action='customize-toggle']") as HTMLElement | null;
       const customizeAdd = target.closest("[data-action='customize-add']") as HTMLElement | null;
+      const customizeClose = target.closest("[data-action='customize-close']") as HTMLElement | null;
+      const customizeDelete = target.closest("[data-action='customize-delete']") as HTMLElement | null;
+      const customizeUp = target.closest("[data-action='customize-up']") as HTMLElement | null;
+      const customizeDown = target.closest("[data-action='customize-down']") as HTMLElement | null;
       const driverButton = target.closest("[data-action='driver']") as HTMLElement | null;
       const fuelButton = target.closest("[data-action='fuel']") as HTMLElement | null;
       const routesButton = target.closest("[data-action='routes']") as HTMLElement | null;
       const geofenceButton = target.closest("[data-action='geofence']") as HTMLElement | null;
 
-      if (!customizeToggle && !customizeAdd && !driverButton && !fuelButton && !routesButton && !geofenceButton) return;
+      if (
+        !customizeToggle &&
+        !customizeAdd &&
+        !customizeClose &&
+        !customizeDelete &&
+        !customizeUp &&
+        !customizeDown &&
+        !driverButton &&
+        !fuelButton &&
+        !routesButton &&
+        !geofenceButton
+      ) return;
+
+      const persistCustomFields = (
+        imei: string,
+        vehicle: Vehicle | undefined,
+        data: any,
+        nextFields: CustomTooltipField[],
+      ) => {
+        if (!imei || !vehicle) return;
+        const vehicleId = vehicle.id || vehicle._id || null;
+        if (!vehicleId) return;
+        setCustomFieldsByImei((prev) => ({
+          ...prev,
+          [String(imei)]: nextFields,
+        }));
+        updateTooltipForImei(String(imei), vehicle, data, nextFields);
+        void fetch(`${API_BASE_URL}/api/vehicles/custom-fields`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: vehicleId, fields: nextFields }),
+        }).catch((err) => {
+          console.error("[vehicles.custom-fields] update failed", err);
+        });
+      };
 
       if (customizeToggle && allowCustomize) {
         const card = customizeToggle.closest(".truckly-card");
@@ -1269,6 +1323,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         const fieldSelect = card?.querySelector("select[name='custom-io-field']") as HTMLSelectElement | null;
         const labelInput = card?.querySelector("input[name='custom-label']") as HTMLInputElement | null;
         const typeSelect = card?.querySelector("select[name='custom-type']") as HTMLSelectElement | null;
+        const iconSelect = card?.querySelector("select[name='custom-icon']") as HTMLSelectElement | null;
         const tooltip = customizeAdd.closest(".truckly-tooltip") as HTMLElement | null;
         const imei = tooltip?.getAttribute("data-imei") || null;
         const avlPayload = imei ? avlCacheRef.current.get(imei) : null;
@@ -1276,28 +1331,16 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         const key = fieldSelect?.value?.trim();
         const label = labelInput?.value?.trim() || key;
         const type = (typeSelect?.value || "onoff") as CustomTooltipField["type"];
+        const iconRaw = iconSelect?.value?.trim() || "fa fa-tag";
+        const icon = CUSTOM_FIELD_ICONS.has(iconRaw) ? iconRaw : "fa fa-tag";
         if (!key) return;
         if (!imei) return;
         const vehicle = vehiclesRef.current.find((v) => String(v.imei) === String(imei));
-        const vehicleId = vehicle?.id || vehicle?._id || null;
-        if (!vehicleId) return;
         const prevFields = getVehicleCustomFields(vehicle);
         const nextFields = prevFields.some((item) => item.key === key)
           ? prevFields
-          : [...prevFields, { key, label: label || key, type }];
-        setCustomFieldsByImei((prev) => ({
-          ...prev,
-          [String(imei)]: nextFields,
-        }));
-        updateTooltipForImei(String(imei), vehicle, data, nextFields);
-        void fetch(`${API_BASE_URL}/api/vehicles/custom-fields`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: vehicleId, fields: nextFields }),
-        }).catch((err) => {
-          console.error("[vehicles.custom-fields] update failed", err);
-        });
+          : [...prevFields, { key, label: label || key, type, icon }];
+        persistCustomFields(String(imei), vehicle, data, nextFields);
         if (labelInput) labelInput.value = "";
         if (card) {
           const custom = card.querySelector(".truckly-custom") as HTMLElement | null;
@@ -1306,6 +1349,52 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
           }
         }
         editingImeisRef.current.delete(String(imei));
+        refreshMarkers();
+        return;
+      }
+
+      if (customizeClose && allowCustomize) {
+        const card = customizeClose.closest(".truckly-card");
+        const custom = card?.querySelector(".truckly-custom") as HTMLElement | null;
+        const tooltip = customizeClose.closest(".truckly-tooltip") as HTMLElement | null;
+        const imei = tooltip?.getAttribute("data-imei") || null;
+        if (custom) {
+          custom.classList.remove("is-open");
+        }
+        if (imei) {
+          editingImeisRef.current.delete(String(imei));
+        }
+        return;
+      }
+
+      if ((customizeDelete || customizeUp || customizeDown) && allowCustomize) {
+        const actionNode = customizeDelete || customizeUp || customizeDown;
+        const key = actionNode?.getAttribute("data-key")?.trim();
+        const tooltip = actionNode?.closest(".truckly-tooltip") as HTMLElement | null;
+        const imei = tooltip?.getAttribute("data-imei") || null;
+        if (!key || !imei) return;
+        const vehicle = vehiclesRef.current.find((v) => String(v.imei) === String(imei));
+        if (!vehicle) return;
+        const avlPayload = avlCacheRef.current.get(imei);
+        const data = avlPayload?.data || avlPayload || null;
+        const prevFields = getVehicleCustomFields(vehicle);
+        const index = prevFields.findIndex((field) => field.key === key);
+        if (index < 0) return;
+        const nextFields = [...prevFields];
+        if (customizeDelete) {
+          nextFields.splice(index, 1);
+        } else if (customizeUp && index > 0) {
+          const swap = nextFields[index - 1];
+          nextFields[index - 1] = nextFields[index];
+          nextFields[index] = swap;
+        } else if (customizeDown && index < nextFields.length - 1) {
+          const swap = nextFields[index + 1];
+          nextFields[index + 1] = nextFields[index];
+          nextFields[index] = swap;
+        } else {
+          return;
+        }
+        persistCustomFields(String(imei), vehicle, data, nextFields);
         refreshMarkers();
         return;
       }
