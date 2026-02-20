@@ -34,6 +34,15 @@ export class TrucklyMap {
 
       this.map.on('zoom', (ev) => {
         const zoom = this.map.getZoom()
+        console.log(zoom)
+        console.log('[maps.js][zoom->updateClusters] zoom=', zoom);
+        const zoomValue = Number(zoom?.toFixed?.(3) ?? zoom);
+        console.info('[TrucklyMap][zoom]', zoomValue);
+        try {
+          if (window.parent && window.parent !== window && window.parent.console) {
+            window.parent.console.info('[TrucklyMap][zoom][from-iframe]', zoomValue);
+          }
+        } catch {}
         if (!this.hoveringMarker) {
           var markers = document.querySelectorAll('.custom-marker')
           markers.forEach((m) => {
@@ -369,6 +378,7 @@ export class TrucklyMap {
   }
 
   updateClusters() {
+    console.log('[maps.js][updateClusters] called');
     if (!this.map || typeof this.map.getZoom !== 'function') return;
     if (this.markers.size <= 1) {
       this.resetClusterState({ animate: true });

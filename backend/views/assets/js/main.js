@@ -87,6 +87,21 @@ const map = new TrucklyMap({
   theme: "dark",
 });
 
+try {
+  map?.map?.on?.('zoom', () => {
+    const z = map?.map?.getZoom?.();
+    const v = Number.isFinite(z) ? Number(z.toFixed(3)) : z;
+    console.log(z);
+    console.info('[main.js][zoom]', v);
+
+    try {
+      if (window.parent && window.parent !== window && window.parent.console) {
+        window.parent.console.info('[main.js][zoom][from-iframe]', v);
+      }
+    } catch {}
+  });
+} catch {}
+
 window.__trucklyMap = map;
 const tooltipStore = window.__tooltipStore = window.__tooltipStore || new Map();
 window.__vrecBroadcasted = false;

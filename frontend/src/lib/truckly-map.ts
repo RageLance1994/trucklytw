@@ -55,7 +55,8 @@ export type TrucklyMapOptions = {
 };
 
 const MAX_ZOOM = 15;
-const MAX_MAP_ZOOM = 19;
+const MAX_MAP_ZOOM = 18.5;
+const MIN_MAP_ZOOM = 2;
 const CLUSTER_MIN_ZOOM = 12;
 const CLUSTER_BASE_KM = 0.4;
 const REGEX_ESCAPE = /[.*+?^${}()|[\]\\]/g;
@@ -138,10 +139,13 @@ export class TrucklyMap {
       center,
       zoom,
       maxZoom: MAX_MAP_ZOOM,
+      minZoom: MIN_MAP_ZOOM,
       attributionControl: false,
     });
 
     this.map.on("zoom", () => {
+      this._enforceZoomBounds();
+      console.log("[frontend][zoom]", this.map.getZoom());
       this._updateMarkerCollapseState();
       this._scheduleUpdateClusters();
     });
@@ -158,6 +162,18 @@ export class TrucklyMap {
     this.markers.forEach((m) => m.remove());
     this.markers.clear();
     this.map?.remove();
+  }
+
+  _enforceZoomBounds() {
+    const zoom = this.map?.getZoom?.();
+    if (!Number.isFinite(zoom)) return;
+    if (zoom > MAX_MAP_ZOOM) {
+      this.map.setZoom(MAX_MAP_ZOOM);
+      return;
+    }
+    if (zoom < MIN_MAP_ZOOM) {
+      this.map.setZoom(MIN_MAP_ZOOM);
+    }
   }
 
   setBaseStyle(mode: "base" | "light" | "dark" | "satellite") {
@@ -1109,6 +1125,7 @@ export class TrucklyMap {
   updateClusters() {
     if (typeof window !== "undefined" && (window as any).rewinding) return;
     if (!this.map || typeof this.map.getZoom !== "function") return;
+    console.log("[frontend][updateClusters] zoom=", this.map.getZoom());
     if (this.markers.size <= 1) {
       this.resetClusterState({ animate: true });
       return;
