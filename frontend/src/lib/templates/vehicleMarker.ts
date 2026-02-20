@@ -9,7 +9,7 @@ const escapeHtml = (value: unknown) =>
 type MarkerContext = {
   vehicle?: Record<string, any>;
   status?: string;
-  variant?: "full" | "compact" | "plate" | "name" | "direction";
+  variant?: "pin" | "full" | "compact" | "plate" | "name" | "direction";
 };
 
 const buildTruckIcon = (strokeColor: string) => `
@@ -59,7 +59,9 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
   const arrowIcon = `<svg data-role="marker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>`;
 
   const normalizedVariant =
-    variant === "plate"
+    variant === "pin"
+      ? "pin"
+      : variant === "plate"
       ? "plateonly"
       : variant === "direction"
       ? "direction"
@@ -68,6 +70,20 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
       : variant === "name"
       ? "nameonly"
       : "complete";
+
+  if (normalizedVariant === "pin") {
+    return `
+      <div class="truckly-marker truckly-marker--pin">
+        <div class="truckly-marker__icon" ${iconStyle}>
+          ${truckIcon}
+        </div>
+        <span class="truckly-marker__orbit" data-role="marker-arrow">
+          <i class="fa fa-caret-up truckly-marker__arrow-caret" aria-hidden="true"></i>
+        </span>
+        <span class="truckly-marker__tail" aria-hidden="true"></span>
+      </div>
+    `;
+  }
 
   return `
     <div class="truckly-marker truckly-marker--${normalizedVariant}">
@@ -79,6 +95,7 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
         <span class="truckly-marker__plate">${escapeHtml(plate || "-")}</span>
       </div>
       <span class="truckly-marker__arrow">${arrowIcon}</span>
+      <span class="truckly-marker__tail" aria-hidden="true"></span>
     </div>
   `;
 }

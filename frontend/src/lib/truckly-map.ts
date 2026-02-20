@@ -55,7 +55,7 @@ export type TrucklyMapOptions = {
 };
 
 const MAX_ZOOM = 15;
-const MAX_MAP_ZOOM = 18.5;
+const MAX_MAP_ZOOM = 18;
 const MIN_MAP_ZOOM = 2;
 const CLUSTER_MIN_ZOOM = 12;
 const CLUSTER_BASE_KM = 0.4;
@@ -145,7 +145,6 @@ export class TrucklyMap {
 
     this.map.on("zoom", () => {
       this._enforceZoomBounds();
-      console.log("[frontend][zoom]", this.map.getZoom());
       this._updateMarkerCollapseState();
       this._scheduleUpdateClusters();
     });
@@ -1125,7 +1124,6 @@ export class TrucklyMap {
   updateClusters() {
     if (typeof window !== "undefined" && (window as any).rewinding) return;
     if (!this.map || typeof this.map.getZoom !== "function") return;
-    console.log("[frontend][updateClusters] zoom=", this.map.getZoom());
     if (this.markers.size <= 1) {
       this.resetClusterState({ animate: true });
       return;

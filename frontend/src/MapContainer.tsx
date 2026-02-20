@@ -190,8 +190,8 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
   const [isMobileView, setIsMobileView] = useState(false);
   const isMobileViewRef = useRef(false);
   const [markerStyle, setMarkerStyle] = useState<
-    "full" | "compact" | "plate" | "name" | "direction"
-  >("full");
+    "pin" | "full" | "compact" | "plate" | "name" | "direction"
+  >("pin");
   const markerStyleRef = useRef(markerStyle);
   const [customFieldsByImei, setCustomFieldsByImei] = useState<Record<string, CustomTooltipField[]>>(
     () => {
@@ -385,7 +385,9 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
     if (!map) return;
     const resolvedStyle = styleOverride || markerStyleRef.current;
     const variantClass =
-      resolvedStyle === "full"
+      resolvedStyle === "pin"
+        ? "truckly-marker--pin"
+        : resolvedStyle === "full"
         ? "truckly-marker--complete"
         : resolvedStyle === "compact"
         ? "truckly-marker--compact"
@@ -449,6 +451,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       const inner = markerEl.querySelector(".truckly-marker") as HTMLElement | null;
       if (inner) {
         inner.classList.remove(
+          "truckly-marker--pin",
           "truckly-marker--complete",
           "truckly-marker--compact",
           "truckly-marker--plateonly",
@@ -465,7 +468,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
   const handleMarkerStyle = useCallback((event: Event) => {
     const detail = (event as CustomEvent).detail || {};
     const style = detail?.style;
-    if (style === "full" || style === "compact" || style === "plate" || style === "name" || style === "direction") {
+    if (style === "pin" || style === "full" || style === "compact" || style === "plate" || style === "name" || style === "direction") {
       setMarkerStyle(style);
       try {
         window.localStorage.setItem("truckly:marker-style", style);
@@ -634,16 +637,18 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         } catch {}
       };
 
-      (window as any).trucklySetMarkerStyle = (style: "full" | "compact" | "plate" | "name" | "direction") => {
+      (window as any).trucklySetMarkerStyle = (style: "pin" | "full" | "compact" | "plate" | "name" | "direction") => {
         setMarkerStyle(style);
         try {
           window.localStorage.setItem("truckly:marker-style", style);
         } catch {}
         refreshMarkers(style);
       };
-      (window as any).trucklyForceMarkerClass = (style: "full" | "compact" | "plate" | "name" | "direction") => {
+      (window as any).trucklyForceMarkerClass = (style: "pin" | "full" | "compact" | "plate" | "name" | "direction") => {
         const variantClass =
-          style === "full"
+          style === "pin"
+            ? "truckly-marker--pin"
+            : style === "full"
             ? "truckly-marker--complete"
             : style === "compact"
             ? "truckly-marker--compact"
@@ -654,6 +659,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
             : "truckly-marker--direction";
         document.querySelectorAll<HTMLElement>(".truckly-marker").forEach((el) => {
           el.classList.remove(
+            "truckly-marker--pin",
             "truckly-marker--complete",
             "truckly-marker--compact",
             "truckly-marker--plateonly",
@@ -663,7 +669,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
           el.classList.add(variantClass);
         });
       };
-      (window as any).trucklyRefreshMarkers = (style?: "full" | "compact" | "plate" | "name" | "direction") => {
+      (window as any).trucklyRefreshMarkers = (style?: "pin" | "full" | "compact" | "plate" | "name" | "direction") => {
         refreshMarkers(style);
       };
 
@@ -882,13 +888,14 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
 
       try {
         const savedMarker = window.localStorage.getItem("truckly:marker-style") as
+          | "pin"
           | "full"
           | "compact"
           | "plate"
           | "name"
           | "direction"
           | null;
-        if (savedMarker && ["full", "compact", "plate", "name", "direction"].includes(savedMarker)) {
+        if (savedMarker && ["pin", "full", "compact", "plate", "name", "direction"].includes(savedMarker)) {
           setMarkerStyle(savedMarker);
         }
       } catch {}

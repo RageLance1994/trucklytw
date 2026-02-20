@@ -27,8 +27,8 @@ export function Navbar() {
     "base" | "light" | "dark" | "satellite"
   >("base");
   const [markerStyle, setMarkerStyle] = React.useState<
-    "full" | "compact" | "plate" | "name" | "direction"
-  >("full");
+    "pin" | "full" | "compact" | "plate" | "name" | "direction"
+  >("pin");
   const timeoutRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
@@ -48,6 +48,7 @@ export function Navbar() {
     try {
       const savedMarker = window.localStorage.getItem("truckly:marker-style");
       if (
+        savedMarker === "pin" ||
         savedMarker === "full" ||
         savedMarker === "compact" ||
         savedMarker === "plate" ||
@@ -73,6 +74,7 @@ export function Navbar() {
     const handleMarkerStyle = (event: Event) => {
       const detail = (event as CustomEvent).detail || {};
       const style =
+        detail?.style === "pin" ||
         detail?.style === "full" ||
         detail?.style === "compact" ||
         detail?.style === "plate" ||
@@ -166,7 +168,7 @@ export function Navbar() {
     }
   };
 
-  const applyMarkerStyle = (style: "full" | "compact" | "plate" | "name" | "direction") => {
+  const applyMarkerStyle = (style: "pin" | "full" | "compact" | "plate" | "name" | "direction") => {
     if (typeof window === "undefined") return;
     setMarkerStyle(style);
     try {
@@ -205,6 +207,7 @@ export function Navbar() {
       const style = el?.getAttribute("data-marker-style");
       if (!style) return;
       if (
+        style === "pin" ||
         style === "full" ||
         style === "compact" ||
         style === "plate" ||
@@ -496,6 +499,7 @@ export function Navbar() {
                       const el = target?.closest("[data-marker-style]") as HTMLElement | null;
                       const style = el?.getAttribute("data-marker-style");
                       if (
+                        style === "pin" ||
                         style === "full" ||
                         style === "compact" ||
                         style === "plate" ||
@@ -506,6 +510,22 @@ export function Navbar() {
                       }
                     }}
                   >
+                    <DropdownMenuItem asChild>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-sm"
+                          onMouseDown={() => applyMarkerStyle("pin")}
+                          data-marker-style="pin"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              markerStyle === "pin" ? "bg-orange-400" : "opacity-0"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          Pin
+                        </button>
+                      </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                         <button
                           type="button"
@@ -901,6 +921,19 @@ export function Navbar() {
               <div className="pt-2 mt-2 border-t border-white/10 text-[11px] uppercase tracking-[0.2em] text-white/50">
                 Veicoli
               </div>
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  onClick={() => applyMarkerStyle("pin")}
+                  data-marker-style="pin"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      markerStyle === "pin" ? "bg-orange-400" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  Pin
+                </button>
                 <button
                   className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
                   onClick={() => applyMarkerStyle("full")}
