@@ -1059,7 +1059,11 @@ router.post('/vehicles/custom-fields', auth, async (req, res) => {
         if (!key || !label || seenKeys.has(key)) return null;
         seenKeys.add(key);
         const icon = allowedIcons.has(iconRaw) ? iconRaw : 'fa fa-tag';
-        return { key, label, type, icon };
+        const factorRaw = Number(field?.normalizationFactor);
+        const normalizationFactor = type === 'number' && Number.isFinite(factorRaw) && factorRaw !== 0
+          ? factorRaw
+          : 1;
+        return { key, label, type, icon, normalizationFactor };
       })
       .filter(Boolean)
       .slice(0, 12);

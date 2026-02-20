@@ -24,6 +24,7 @@ type CustomTooltipField = {
   label: string;
   type: "onoff" | "number" | "id";
   icon?: string;
+  normalizationFactor?: number;
 };
 
 const CUSTOM_FIELD_ICONS = new Set([
@@ -53,6 +54,10 @@ const normalizeCustomFields = (fields?: CustomTooltipField[]) => {
       label: String(item.label || item.key),
       type: item.type === "number" || item.type === "id" ? item.type : "onoff",
       icon: typeof item.icon === "string" && CUSTOM_FIELD_ICONS.has(item.icon) ? item.icon : "fa fa-tag",
+      normalizationFactor:
+        item.type === "number" && Number.isFinite(Number(item.normalizationFactor)) && Number(item.normalizationFactor) !== 0
+          ? Number(item.normalizationFactor)
+          : 1,
     })) as CustomTooltipField[];
 };
 
@@ -220,19 +225,28 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
     }
   );
   const editingImeisRef = useRef<Set<string>>(new Set());
+  const pendingCustomFieldsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     markerStyleRef.current = markerStyle;
   }, [markerStyle]);
 
   useEffect(() => {
-    const map: Record<string, CustomTooltipField[]> = {};
-    vehicles.forEach((vehicle) => {
-      if (vehicle?.imei) {
-        map[String(vehicle.imei)] = normalizeCustomFields(vehicle.customFields);
-      }
+    setCustomFieldsByImei((prev) => {
+      const next: Record<string, CustomTooltipField[]> = {};
+      vehicles.forEach((vehicle) => {
+        const imei = vehicle?.imei ? String(vehicle.imei) : "";
+        if (!imei) return;
+        const incoming = normalizeCustomFields(vehicle.customFields);
+        const hasPendingLocal = pendingCustomFieldsRef.current.has(imei);
+        if (hasPendingLocal && prev[imei]) {
+          next[imei] = prev[imei];
+          return;
+        }
+        next[imei] = incoming;
+      });
+      return next;
     });
-    setCustomFieldsByImei(map);
   }, [vehicles]);
 
   const getVehicleCustomFields = useCallback(
@@ -1285,19 +1299,35 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         if (!imei || !vehicle) return;
         const vehicleId = vehicle.id || vehicle._id || null;
         if (!vehicleId) return;
+        const imeiKey = String(imei);
+        pendingCustomFieldsRef.current.add(imeiKey);
         setCustomFieldsByImei((prev) => ({
           ...prev,
-          [String(imei)]: nextFields,
+          [imeiKey]: nextFields,
         }));
-        updateTooltipForImei(String(imei), vehicle, data, nextFields);
+        updateTooltipForImei(imeiKey, vehicle, data, nextFields);
         void fetch(`${API_BASE_URL}/api/vehicles/custom-fields`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: vehicleId, fields: nextFields }),
-        }).catch((err) => {
-          console.error("[vehicles.custom-fields] update failed", err);
-        });
+        })
+          .then(async (res) => {
+            const payload = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(payload?.message || "custom fields update failed");
+            const serverFields = normalizeCustomFields(payload?.customFields);
+            setCustomFieldsByImei((prev) => ({
+              ...prev,
+              [imeiKey]: serverFields.length ? serverFields : nextFields,
+            }));
+            pendingCustomFieldsRef.current.delete(imeiKey);
+            updateTooltipForImei(imeiKey, vehicle, data, serverFields.length ? serverFields : nextFields);
+            refreshMarkers();
+          })
+          .catch((err) => {
+            pendingCustomFieldsRef.current.delete(imeiKey);
+            console.error("[vehicles.custom-fields] update failed", err);
+          });
       };
 
       if (customizeToggle && allowCustomize) {
@@ -1324,6 +1354,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         const labelInput = card?.querySelector("input[name='custom-label']") as HTMLInputElement | null;
         const typeSelect = card?.querySelector("select[name='custom-type']") as HTMLSelectElement | null;
         const iconSelect = card?.querySelector("select[name='custom-icon']") as HTMLSelectElement | null;
+        const factorInput = card?.querySelector("input[name='custom-normalization']") as HTMLInputElement | null;
         const tooltip = customizeAdd.closest(".truckly-tooltip") as HTMLElement | null;
         const imei = tooltip?.getAttribute("data-imei") || null;
         const avlPayload = imei ? avlCacheRef.current.get(imei) : null;
@@ -1333,15 +1364,19 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         const type = (typeSelect?.value || "onoff") as CustomTooltipField["type"];
         const iconRaw = iconSelect?.value?.trim() || "fa fa-tag";
         const icon = CUSTOM_FIELD_ICONS.has(iconRaw) ? iconRaw : "fa fa-tag";
+        const factorRaw = Number((factorInput?.value || "").replace(",", "."));
+        const normalizationFactor =
+          type === "number" && Number.isFinite(factorRaw) && factorRaw !== 0 ? factorRaw : 1;
         if (!key) return;
         if (!imei) return;
         const vehicle = vehiclesRef.current.find((v) => String(v.imei) === String(imei));
         const prevFields = getVehicleCustomFields(vehicle);
         const nextFields = prevFields.some((item) => item.key === key)
           ? prevFields
-          : [...prevFields, { key, label: label || key, type, icon }];
+          : [...prevFields, { key, label: label || key, type, icon, normalizationFactor }];
         persistCustomFields(String(imei), vehicle, data, nextFields);
         if (labelInput) labelInput.value = "";
+        if (factorInput) factorInput.value = "1";
         if (card) {
           const custom = card.querySelector(".truckly-custom") as HTMLElement | null;
           if (custom) {

@@ -32,6 +32,7 @@ const VehicleSchema = new mongoose.Schema({
         label: { type: String, required: true, trim: true },
         type: { type: String, enum: ["onoff", "number", "id"], required: true },
         icon: { type: String, trim: true, default: "fa fa-tag" },
+        normalizationFactor: { type: Number, default: 1 },
       },
     ],
     default: [],

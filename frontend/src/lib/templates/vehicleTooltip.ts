@@ -20,6 +20,7 @@ type CustomFieldConfig = {
   label: string;
   type: CustomFieldType;
   icon?: string;
+  normalizationFactor?: number;
 };
 
 export type TooltipContext = {
@@ -390,7 +391,7 @@ const SECTION_STYLES = `
 
 const IO_EXCLUDE_KEYS = new Set(["speed", "fuelLevel"]);
 
-const formatCustomValue = (raw: unknown, type: CustomFieldType) => {
+const formatCustomValue = (raw: unknown, type: CustomFieldType, normalizationFactor = 1) => {
   if (type === "onoff") {
     const isOn =
       raw === true
@@ -402,7 +403,14 @@ const formatCustomValue = (raw: unknown, type: CustomFieldType) => {
   }
   if (type === "number") {
     const num = Number(raw);
-    return Number.isFinite(num) ? String(num) : "-";
+    if (!Number.isFinite(num)) return "-";
+    const factor =
+      Number.isFinite(Number(normalizationFactor)) && Number(normalizationFactor) !== 0
+        ? Number(normalizationFactor)
+        : 1;
+    const normalized = num * factor;
+    if (!Number.isFinite(normalized)) return "-";
+    return normalized.toFixed(1);
   }
   if (raw == null || raw === "") return "-";
   return String(raw);
@@ -504,7 +512,7 @@ export function renderVehicleTooltip({
   const customFieldRows = customFields
     .map((field, index) => {
       const raw = (io as Record<string, unknown>)[field.key];
-      const display = formatCustomValue(raw, field.type);
+      const display = formatCustomValue(raw, field.type, field.normalizationFactor);
       const iconClass = field.icon || "fa fa-tag";
       const manageControls = allowCustomize
         ? `<span class="truckly-custom__manage">
@@ -599,6 +607,7 @@ export function renderVehicleTooltip({
                    <option value="number">Number</option>
                    <option value="id">ID</option>
                  </select>
+                 <input name="custom-normalization" type="number" step="any" placeholder="Fattore (es. 0.001)" value="1" />
                  <div class="truckly-custom__actions">
                    <button type="button" class="truckly-custom__cancel" data-action="customize-close">
                      Chiudi
