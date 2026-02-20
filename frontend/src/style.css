@@ -778,6 +778,36 @@
   display: none;
 }
 
+.truckly-marker--pin .truckly-marker__hover-plate {
+  position: absolute;
+  left: 50%;
+  top: -28px;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 4px 8px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+  z-index: 8;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.truckly-marker--pin:hover .truckly-marker__hover-plate {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.truckly-marker--pin.clustered-marker .truckly-marker__hover-plate {
+  display: none !important;
+}
+
 .truckly-marker--pin .truckly-marker__orbit {
   position: absolute;
   left: 50%;

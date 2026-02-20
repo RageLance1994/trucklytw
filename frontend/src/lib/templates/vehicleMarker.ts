@@ -78,6 +78,7 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
         <div class="truckly-marker__icon" ${iconStyle}>
           ${truckIcon}
         </div>
+        <span class="truckly-marker__hover-plate">${escapeHtml(plate || "-")}</span>
         <span class="truckly-marker__orbit" data-role="marker-arrow">
           <i class="fa fa-caret-up truckly-marker__arrow-caret" aria-hidden="true"></i>
         </span>
