@@ -20,7 +20,13 @@
       "type": "raster",
       "source": "osm-tiles",
       "minzoom": 0,
-      "maxzoom": 19
+      "maxzoom": 19,
+      "paint": {
+        "raster-contrast": 0.18,
+        "raster-saturation": 0.06,
+        "raster-brightness-min": 0.02,
+        "raster-brightness-max": 0.98
+      }
     }
   ]
 }
