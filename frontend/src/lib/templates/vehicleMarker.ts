@@ -54,6 +54,7 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
   }
 
   const iconStyle = tvColor ? `style="background:${tvColor};"` : "";
+  const pinColor = tvColor || "#64748b";
   const strokeColor = "white";
   const truckIcon = buildTruckIcon(strokeColor);
   const arrowIcon = `<svg data-role="marker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>`;
@@ -73,7 +74,7 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
 
   if (normalizedVariant === "pin") {
     return `
-      <div class="truckly-marker truckly-marker--pin">
+      <div class="truckly-marker truckly-marker--pin" style="--pin-color:${pinColor};">
         <div class="truckly-marker__icon" ${iconStyle}>
           ${truckIcon}
         </div>

@@ -695,6 +695,9 @@
   font-weight: 600;
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 12px 18px rgba(0, 0, 0, 0.4);
+  transform: scale(var(--truckly-marker-scale, 1));
+  transform-origin: center bottom;
+  transition: transform 80ms linear;
 }
 
 .truckly-marker__icon {
@@ -754,9 +757,21 @@
 
 .truckly-marker--pin {
   position: relative;
-  border-radius: 14px;
-  padding: 6px 8px;
-  gap: 6px;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--pin-color, #64748b);
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+}
+
+.truckly-marker--pin .truckly-marker__icon {
+  position: relative;
+  z-index: 2;
+  border: 1px solid #000;
 }
 
 .truckly-marker--pin .truckly-marker__text {
@@ -773,6 +788,7 @@
   margin-top: -23px;
   pointer-events: none;
   color: #22d3ee;
+  z-index: 5;
 }
 
 .truckly-marker--pin .truckly-marker__arrow-caret {
@@ -785,19 +801,58 @@
   font-weight: 900;
   letter-spacing: -0.06em;
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+  z-index: 6;
 }
 
 .truckly-marker--pin .truckly-marker__tail {
   display: block;
   position: absolute;
   left: 50%;
-  bottom: -17px;
+  bottom: -15px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.truckly-marker--pin .truckly-marker__tail::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -18px;
   transform: translateX(-50%);
   width: 0;
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-top: 18px solid rgba(0, 0, 0, 0.85);
+  border-top: 18px solid #000;
+}
+
+.truckly-marker--pin .truckly-marker__tail::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -17px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 16px solid var(--pin-color, #64748b);
+}
+
+.truckly-marker--pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 999px;
+  background: var(--pin-color, #64748b);
+  z-index: 3;
 }
 
 .truckly-marker--compact .truckly-marker__text {

@@ -59,6 +59,8 @@ const MAX_MAP_ZOOM = 18;
 const MIN_MAP_ZOOM = 2;
 const CLUSTER_MIN_ZOOM = 12;
 const CLUSTER_BASE_KM = 0.4;
+const MARKER_SCALE_AT_MIN_ZOOM = 0.9;
+const MARKER_SCALE_AT_MAX_ZOOM = 1.25;
 const REGEX_ESCAPE = /[.*+?^${}()|[\]\\]/g;
 const escapeRegex = (value = "") => value.replace(REGEX_ESCAPE, "\\$&");
 
@@ -75,6 +77,7 @@ export class TrucklyMap {
   hoveringMarker = false;
   onMarkerSelect?: (marker: ManagedMarker) => void;
   _lastMarkerCollapseValue: "true" | "false" | null = null;
+  _lastMarkerScaleValue: string | null = null;
   _hiddenMarkers: Set<string> = new Set();
   _geofenceLayers: Map<
     string,
@@ -145,11 +148,13 @@ export class TrucklyMap {
 
     this.map.on("zoom", () => {
       this._enforceZoomBounds();
+      this._updateMarkerScaleState();
       this._updateMarkerCollapseState();
       this._scheduleUpdateClusters();
     });
 
     this.map.on("moveend", () => {
+      this._updateMarkerScaleState(true);
       this._updateMarkerCollapseState(true);
       this._scheduleUpdateClusters({ force: true });
     });
@@ -173,6 +178,38 @@ export class TrucklyMap {
     if (zoom < MIN_MAP_ZOOM) {
       this.map.setZoom(MIN_MAP_ZOOM);
     }
+  }
+
+  _computeMarkerScale(zoom: number) {
+    if (!Number.isFinite(zoom)) return 1;
+    const min = MIN_MAP_ZOOM;
+    const max = MAX_MAP_ZOOM;
+    const clamped = Math.min(max, Math.max(min, zoom));
+    const span = max - min || 1;
+    const t = (clamped - min) / span;
+    return MARKER_SCALE_AT_MIN_ZOOM + (MARKER_SCALE_AT_MAX_ZOOM - MARKER_SCALE_AT_MIN_ZOOM) * t;
+  }
+
+  _setMarkerScale(element: HTMLElement | null, forcedScale?: number) {
+    if (!element) return;
+    const zoom = this.map?.getZoom?.();
+    const scale = Number.isFinite(forcedScale)
+      ? (forcedScale as number)
+      : this._computeMarkerScale(Number.isFinite(zoom) ? (zoom as number) : MIN_MAP_ZOOM);
+    element.style.setProperty("--truckly-marker-scale", scale.toFixed(3));
+  }
+
+  _updateMarkerScaleState(force = false) {
+    const zoom = this.map?.getZoom?.();
+    if (!Number.isFinite(zoom)) return;
+    const scaleValue = this._computeMarkerScale(zoom as number).toFixed(3);
+    if (!force && this._lastMarkerScaleValue === scaleValue) return;
+    this._lastMarkerScaleValue = scaleValue;
+    this.markers.forEach((marker) => {
+      const element = marker.getElement ? marker.getElement() : marker._element;
+      if (!element) return;
+      element.style.setProperty("--truckly-marker-scale", scaleValue);
+    });
   }
 
   setBaseStyle(mode: "base" | "light" | "dark" | "satellite") {
@@ -1001,6 +1038,7 @@ export class TrucklyMap {
 
       const latestElement = marker!.getElement?.() ?? marker!._element;
       if (latestElement) {
+        this._setMarkerScale(latestElement);
         if (marker!._baseHTML === undefined) {
           marker!._baseHTML = latestElement.innerHTML;
         }
