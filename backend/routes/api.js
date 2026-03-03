@@ -287,6 +287,7 @@ const buildLulPreviewHtml = ({
     <style>
       :root { --ink:#0f172a; --muted:#475569; --line:#d4d4d8; --accent:#ff6a00; --accent-soft:#ffedd5; --bg:#ffffff; }
       html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,Arial,sans-serif;}
+      *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
       .page{padding:24px;}
       .head{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:14px;margin-bottom:16px;}
       .brand-block{display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
@@ -299,14 +300,19 @@ const buildLulPreviewHtml = ({
       .section{margin-top:12px;}
       .section h2{margin:0 0 8px;font-size:14px;}
       table{width:100%;border-collapse:collapse;font-size:12px;}
-      thead th{background:var(--accent);color:#111827;border:1px solid #f59e0b;padding:6px;text-align:left;font-weight:800;white-space:nowrap;}
+      thead th{background:var(--accent) !important;color:#111827;border:1px solid #f59e0b;padding:6px;text-align:left;font-weight:800;white-space:nowrap;}
       tbody td{border:1px solid var(--line);padding:6px;white-space:nowrap;}
       tbody tr:nth-child(even){background:#fafafa;}
       .small{font-size:12px;color:var(--muted);}
-      .totals-table tbody td{font-weight:800;background:var(--accent-soft);}
+      .totals-table tbody td{font-weight:800;background:var(--accent-soft) !important;}
       .weekly-table{margin-bottom:14px;}
-      .week-total-label{font-weight:800;background:var(--accent);color:#111827;border-color:#f59e0b;}
-      .week-total-value{font-weight:800;background:var(--accent-soft);}
+      .week-total-label{font-weight:800;background:var(--accent) !important;color:#111827;border-color:#f59e0b;}
+      .week-total-value{font-weight:800;background:var(--accent-soft) !important;}
+      @page{size:A4 portrait;margin:10mm;}
+      @media print{
+        html,body{background:#fff !important;}
+        .page{padding:0;}
+      }
     </style>
   </head>
   <body>
