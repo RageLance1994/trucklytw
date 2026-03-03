@@ -108,6 +108,57 @@ const getVehicleStatusMeta = (status?: string | null) => {
   return { label: "Fermo", className: "bg-rose-400/40 text-rose-100 ring-1 ring-rose-300/40" };
 };
 
+const toTelemetryNumber = (value: unknown) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    const direct = Number(normalized);
+    if (Number.isFinite(direct)) return direct;
+    const match = normalized.match(/-?\d+(\.\d+)?/);
+    if (match) {
+      const parsed = Number(match[0]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const getVehicleStatusMetaFromLive = (status?: string | null, device?: any | null) => {
+  const data = device?.data || device || {};
+  const gps = data?.gps || data?.data?.gps || {};
+  const io = data?.io || data?.data?.io || {};
+  const speed = toTelemetryNumber(
+    gps?.Speed
+      ?? gps?.speed
+      ?? gps?.speedKmh
+      ?? gps?.speed_kmh
+      ?? io?.speed
+      ?? io?.vehicle_speed
+      ?? io?.vehicleSpeed,
+  );
+  const ignition = toTelemetryNumber(
+    io?.ignition
+      ?? io?.Ignition
+      ?? io?.ign
+      ?? io?.Ign
+      ?? io?.ignitionStatus
+      ?? io?.engineStatus,
+  );
+
+  if (speed != null && speed > 5) {
+    return { label: "In marcia", className: "bg-emerald-400/40 text-emerald-100 ring-1 ring-emerald-300/40" };
+  }
+  if ((speed == null || speed <= 5) && ignition === 1) {
+    return { label: "Quadro acceso", className: "bg-amber-400/40 text-amber-100 ring-1 ring-amber-300/40" };
+  }
+  if (speed != null || ignition != null) {
+    return { label: "Fermo", className: "bg-rose-400/40 text-rose-100 ring-1 ring-rose-300/40" };
+  }
+  return getVehicleStatusMeta(status);
+};
+
 function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -1230,7 +1281,7 @@ function DashboardPage() {
     || (mobileVehicle as { name?: string } | null)?.name
     || "";
   const mobileLabel = mobileNickname || mobilePlate || "Veicolo";
-  const mobileStatus = getVehicleStatusMeta(mobileVehicle?.status);
+  const mobileStatus = getVehicleStatusMetaFromLive(mobileVehicle?.status, mobileMarkerPanel.device);
 
   return (
     <div className="w-full h-screen flex flex-col bg-[#0a0a0a] text-[#f4f4f5]">

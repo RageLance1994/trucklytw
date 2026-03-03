@@ -10,6 +10,39 @@ const SYNC_INTERVAL = "*/5 * * * *";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 50;
 
+const syncState = {
+  enabled: false,
+  interval: SYNC_INTERVAL,
+  running: false,
+  startedAt: null,
+  endedAt: null,
+  lastSuccessAt: null,
+  lastError: null,
+  trigger: null,
+  counters: {
+    totalSeen: 0,
+    pending: 0,
+    uploaded: 0,
+    failed: 0,
+    skipped: 0,
+  },
+};
+
+let syncTask = null;
+
+const cloneState = () => ({
+  ...syncState,
+  counters: { ...syncState.counters },
+});
+
+const resetCounters = () => ({
+  totalSeen: 0,
+  pending: 0,
+  uploaded: 0,
+  failed: 0,
+  skipped: 0,
+});
+
 const toDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -56,7 +89,6 @@ const resolvePeriod = (item) => {
     return { from: toDate(from), to: toDate(to), source: "period" };
   }
 
-  // Fallback: derive from filename timestamp or download time.
   const fromName = parseDateFromFilename(item?.fileName);
   const fallback = fromName || toDate(item?.downloadTime) || null;
   return {
@@ -155,11 +187,23 @@ const uploadOne = async (item, kind) => {
       error: null,
     });
 
+    console.info("[seep-sync] uploaded", {
+      teltonikaFileId,
+      source: kind,
+      fileName: baseEntry.fileName,
+      seepFileId,
+    });
     return { uploaded: true, seepFileId };
   } catch (err) {
     const message = err?.message || String(err);
     await upsertStatus(baseEntry, {
       seepUploaded: false,
+      error: message,
+    });
+    console.warn("[seep-sync] upload failed", {
+      teltonikaFileId,
+      source: kind,
+      fileName: baseEntry.fileName,
       error: message,
     });
     return { error: message };
@@ -170,7 +214,18 @@ const uploadOne = async (item, kind) => {
   }
 };
 
-const runSync = async () => {
+const runSync = async ({ trigger = "cron" } = {}) => {
+  if (syncState.running) {
+    return { alreadyRunning: true, state: cloneState() };
+  }
+
+  syncState.running = true;
+  syncState.trigger = trigger;
+  syncState.startedAt = new Date();
+  syncState.endedAt = null;
+  syncState.lastError = null;
+  syncState.counters = resetCounters();
+
   try {
     const [driverItems, vehicleItems] = await Promise.all([
       listTeltonikaFiles("driver"),
@@ -182,6 +237,8 @@ const runSync = async () => {
       ...vehicleItems.map((item) => ({ item, kind: "vehicle" })),
     ];
 
+    syncState.counters.totalSeen = allItems.length;
+
     const ids = allItems.map(({ item }) => String(item?.id || "")).filter(Boolean);
     const existing = await SeepFileStatus.find({ teltonikaFileId: { $in: ids } }).lean();
     const existingMap = new Map(existing.map((row) => [row.teltonikaFileId, row]));
@@ -192,36 +249,72 @@ const runSync = async () => {
       return !row || !row.seepUploaded;
     });
 
-    if (!pending.length) return;
+    syncState.counters.pending = pending.length;
+
+    if (!pending.length) {
+      syncState.lastSuccessAt = new Date();
+      return { uploaded: 0, failed: 0, skipped: 0, pending: 0, totalSeen: allItems.length };
+    }
 
     await telegramNotify(`[seep-sync] Nuovi file da caricare: ${pending.length}`);
 
     for (const entry of pending) {
       const result = await uploadOne(entry.item, entry.kind);
-      if (result?.error) {
+      if (result?.uploaded) {
+        syncState.counters.uploaded += 1;
+      } else if (result?.error) {
+        syncState.counters.failed += 1;
         await telegramNotify(`[seep-sync] Upload fallito ${entry.item?.fileName}: ${result.error}`);
+      } else {
+        syncState.counters.skipped += 1;
       }
     }
+
+    syncState.lastSuccessAt = new Date();
+    return { ...syncState.counters };
   } catch (err) {
+    syncState.lastError = err?.message || String(err);
     console.error("[seep-sync] error", err);
-    await telegramNotify(`[seep-sync] Errore: ${err?.message || err}`);
+    await telegramNotify(`[seep-sync] Errore: ${syncState.lastError}`);
+    throw err;
+  } finally {
+    syncState.running = false;
+    syncState.endedAt = new Date();
   }
 };
 
+const getSyncStatus = () => {
+  const taskRunning = Boolean(syncTask && typeof syncTask.getStatus === "function" && syncTask.getStatus() === "scheduled");
+  return {
+    ...cloneState(),
+    schedulerRunning: taskRunning,
+  };
+};
+
 const startSeepSync = () => {
-  const enabled =
-    String(process.env.SEEP_SYNC_ENABLED || "true").toLowerCase() !== "false";
+  const enabled = String(process.env.SEEP_SYNC_ENABLED || "true").toLowerCase() !== "false";
+  syncState.enabled = enabled;
   if (!enabled) {
     console.log("[seep-sync] disabled");
     return;
   }
-  cron.schedule(SYNC_INTERVAL, () => {
-    runSync();
+
+  syncTask = cron.schedule(SYNC_INTERVAL, () => {
+    runSync({ trigger: "cron" }).catch(() => {});
   });
   console.log(`[seep-sync] scheduled every 5 minutes (${SYNC_INTERVAL})`);
+
+  const runOnBoot = String(process.env.SEEP_SYNC_RUN_ON_BOOT || "false").toLowerCase() === "true";
+  if (runOnBoot) {
+    runSync({ trigger: "boot" }).catch((err) => {
+      console.warn("[seep-sync] bootstrap run failed", err?.message || err);
+    });
+  }
 };
 
 module.exports = {
   startSeepSync,
   runSync,
+  getSyncStatus,
+  SYNC_INTERVAL,
 };

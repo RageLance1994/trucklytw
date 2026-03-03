@@ -310,6 +310,14 @@ const getVehicleStatusMeta = (status?: string | null) => {
   return { label: status || "Online", className: "bg-white/10 text-white/70" };
 };
 
+const LUL_REPORT_OPTIONS = [
+  { code: "D01", label: "D01 - Report di attività e infrazioni" },
+  { code: "D02", label: "D02 - Dichiarazione di attività" },
+  { code: "D03", label: "D03 - Report dei tempi di attività" },
+  { code: "D04", label: "D04 - Rapporto dei tempi di lavoro" },
+  { code: "D05", label: "D05 - Report tessere inserite" },
+];
+
 
 const normalizeFuelEvents = (events: any[] = []): FuelEvent[] => {
   return events
@@ -1157,6 +1165,22 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
+  const [lulBusyDriverId, setLulBusyDriverId] = React.useState<string | null>(null);
+  const [lulModalOpen, setLulModalOpen] = React.useState(false);
+  const [lulPreviewLoading, setLulPreviewLoading] = React.useState(false);
+  const [lulPreviewError, setLulPreviewError] = React.useState<string | null>(null);
+  const [lulPreviewHtml, setLulPreviewHtml] = React.useState<string>("");
+  const [lulFormat, setLulFormat] = React.useState<"pdf" | "xlsx">("pdf");
+  const [lulReportCode, setLulReportCode] = React.useState<string>("D04");
+  const [lulStartDate, setLulStartDate] = React.useState<string>(() => {
+    const now = new Date();
+    const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return from.toISOString().slice(0, 10);
+  });
+  const [lulEndDate, setLulEndDate] = React.useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [lulDriverSearch, setLulDriverSearch] = React.useState<string>("");
+  const [lulSelectedDriverId, setLulSelectedDriverId] = React.useState<string>("");
+  const [showLulDriverSuggestions, setShowLulDriverSuggestions] = React.useState(false);
 
   const openDriverSidebar = (driver: DriverTableRow, readOnly = false) => {
     window.dispatchEvent(
@@ -1171,7 +1195,7 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
     if (!id) return;
     window.dispatchEvent(
       new CustomEvent("truckly:driver-report-open", {
-        detail: { driverId: id },
+        detail: { driverId: id, tachoDriverId: driver?.tachoDriverId || null },
       }),
     );
     window.dispatchEvent(
@@ -1234,6 +1258,162 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
     fetchDrivers();
   }, [fetchDrivers, isOpen]);
 
+  const getDriverLabel = React.useCallback((driver: DriverTableRow) => {
+    const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim() || "Autista";
+    const mongoId = String(driver?.id || driver?._id || "").trim();
+    const cardId = String(driver?.tachoDriverId || "").trim();
+    const parts = [name];
+    if (mongoId) parts.push(`Mongo: ${mongoId}`);
+    if (cardId) parts.push(`Carta: ${cardId}`);
+    return parts.join(" | ");
+  }, []);
+
+  const findDriverByQuery = React.useCallback(
+    (query: string) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return null;
+      const exact = drivers.find((driver) => {
+        const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+        const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+        const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
+        return mongoId === q || cardId === q || name === q;
+      });
+      if (exact) return exact;
+      const matches = drivers.filter((driver) => {
+        const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+        const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+        const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
+        return mongoId.includes(q) || cardId.includes(q) || name.includes(q);
+      });
+      return matches.length ? matches[0] : null;
+    },
+    [drivers],
+  );
+
+  const loadLulPreview = React.useCallback(async () => {
+    const selected =
+      drivers.find((driver) => String(driver?.id || driver?._id || "") === lulSelectedDriverId) ||
+      findDriverByQuery(lulDriverSearch);
+    if (!selected) {
+      setLulPreviewError("Seleziona un autista valido.");
+      return;
+    }
+    const localDriverId = String(selected?.id || selected?._id || "");
+    if (!localDriverId) {
+      setLulPreviewError("Autista non valido.");
+      return;
+    }
+    setLulPreviewLoading(true);
+    setLulPreviewError(null);
+    try {
+      const baseUrl = resolveBackendBaseUrl();
+      const res = await fetch(`${baseUrl}/api/seep/lul/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          localDriverId,
+          tachoDriverId: selected?.tachoDriverId || null,
+          startDate: `${lulStartDate}T00:00:00.000Z`,
+          endDate: `${lulEndDate}T23:59:59.000Z`,
+          timezone: "Europe/Rome",
+          reportCode: lulReportCode,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || `Errore preview LUL (${res.status})`);
+      }
+      const data = await res.json();
+      setLulPreviewHtml(String(data?.html || ""));
+      setLulSelectedDriverId(localDriverId);
+      setLulDriverSearch(getDriverLabel(selected));
+    } catch (err: any) {
+      setLulPreviewError(err?.message || "Errore durante la generazione anteprima.");
+      setLulPreviewHtml("");
+    } finally {
+      setLulPreviewLoading(false);
+    }
+  }, [drivers, lulSelectedDriverId, findDriverByQuery, lulDriverSearch, lulStartDate, lulEndDate, lulReportCode, getDriverLabel]);
+
+  const openLulModal = async (driver: DriverTableRow) => {
+    const id = String(driver?.id || driver?._id || "");
+    if (!id) return;
+    setLulBusyDriverId(id);
+    setLulModalOpen(true);
+    setLulFormat("pdf");
+    setLulReportCode("D04");
+    setLulSelectedDriverId(id);
+    setLulDriverSearch(getDriverLabel(driver));
+    setShowLulDriverSuggestions(false);
+    setLulPreviewHtml("");
+    setLulPreviewError(null);
+    setTimeout(() => {
+      void loadLulPreview();
+    }, 0);
+    setLulBusyDriverId(null);
+  };
+
+  const generateLulOutput = () => {
+    if (!lulPreviewHtml) {
+      setLulPreviewError("Genera prima l'anteprima.");
+      return;
+    }
+    if (lulFormat === "xlsx") {
+      window.alert("Export XLSX non ancora disponibile.");
+      return;
+    }
+    setLulPreviewError(null);
+
+    try {
+      const iframe = document.createElement("iframe");
+      iframe.setAttribute("aria-hidden", "true");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.style.opacity = "0";
+
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          // fallback handled below
+        } finally {
+          window.setTimeout(() => {
+            iframe.remove();
+          }, 1000);
+        }
+      };
+
+      iframe.srcdoc = lulPreviewHtml;
+      document.body.appendChild(iframe);
+      return;
+    } catch {
+      // fall through to popup fallback
+    }
+
+    const printWin = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWin) {
+      setLulPreviewError("Impossibile avviare la stampa: popup bloccato dal browser.");
+      return;
+    }
+    printWin.document.open();
+    printWin.document.write(lulPreviewHtml);
+    printWin.document.close();
+    window.setTimeout(() => {
+      try {
+        printWin.focus();
+        printWin.print();
+      } catch {
+        setLulPreviewError("Impossibile avviare la stampa.");
+      }
+    }, 250);
+  };
+
   React.useEffect(() => {
     const handler = () => {
       void fetchDrivers();
@@ -1241,6 +1421,27 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
     window.addEventListener("truckly:drivers-refresh", handler);
     return () => window.removeEventListener("truckly:drivers-refresh", handler);
   }, [fetchDrivers]);
+
+  React.useEffect(() => {
+    const handler = (evt: Event) => {
+      const detail = (evt as CustomEvent)?.detail || {};
+      const localDriverId = String(detail?.localDriverId || "").trim();
+      const tachoDriverId = String(detail?.tachoDriverId || "").trim();
+      let selected =
+        drivers.find((driver) => String(driver?.id || driver?._id || "") === localDriverId) ||
+        null;
+      if (!selected && tachoDriverId) {
+        selected =
+          drivers.find((driver) => String(driver?.tachoDriverId || "").trim() === tachoDriverId) ||
+          null;
+      }
+      if (selected) {
+        void openLulModal(selected);
+      }
+    };
+    window.addEventListener("truckly:lul-open", handler as EventListener);
+    return () => window.removeEventListener("truckly:lul-open", handler as EventListener);
+  }, [drivers, openLulModal]);
 
   const filtered = React.useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -1258,6 +1459,19 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
       return haystack.includes(query);
     });
   }, [drivers, search]);
+
+  const filteredLulDrivers = React.useMemo(() => {
+    const q = lulDriverSearch.trim().toLowerCase();
+    if (!q) return drivers.slice(0, 20);
+    return drivers
+      .filter((driver) => {
+        const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
+        const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+        const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+        return name.includes(q) || mongoId.includes(q) || cardId.includes(q);
+      })
+      .slice(0, 20);
+  }, [drivers, lulDriverSearch]);
 
   const formatUpdatedAt = (value?: string | null) => {
     if (!value) return "--";
@@ -1340,9 +1554,17 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
                           <i className="fa fa-line-chart mr-2 text-[12px]" aria-hidden="true" />
                           Report autista
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => window.alert("Generazione LUL in sviluppo.")}>
+                        <DropdownMenuItem
+                          disabled={lulBusyDriverId === String(driver.id || driver._id || "")}
+                          onSelect={(ev) => {
+                            ev.preventDefault();
+                            openLulModal(driver);
+                          }}
+                        >
                           <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
-                          Genera LUL
+                          {lulBusyDriverId === String(driver.id || driver._id || "")
+                            ? "Apro generatore..."
+                            : "Genera LUL"}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/15" />
                         <DropdownMenuItem onSelect={() => openDriverSidebar(driver, false)}>
@@ -1369,6 +1591,70 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
           )}
         </div>
       </div>
+      {lulModalOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm p-4 md:p-8">
+          <div className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0b0c10] shadow-[0_25px_90px_rgba(0,0,0,0.65)]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Generatore LUL</h3>
+                <p className="text-xs text-white/60">Compila i parametri e verifica la preview prima di generare il PDF.</p>
+              </div>
+              <button type="button" onClick={() => setLulModalOpen(false)} className="h-8 w-8 rounded-full border border-white/20 text-white/70 hover:border-white/40 hover:text-white" aria-label="Chiudi Generatore LUL">
+                <i className="fa fa-close" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[380px_1fr]">
+              <div className="space-y-4 overflow-y-auto border-r border-white/10 px-5 py-4">
+                <div className="flex items-center gap-6">
+                  <label className="inline-flex items-center gap-2 text-sm text-white/85"><input type="radio" checked={lulFormat === "pdf"} onChange={() => setLulFormat("pdf")} />PDF</label>
+                  <label className="inline-flex items-center gap-2 text-sm text-white/85"><input type="radio" checked={lulFormat === "xlsx"} onChange={() => setLulFormat("xlsx")} />XLSX (Excel)</label>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-[0.12em] text-white/60">Autista</label>
+                  <div className="relative">
+                    <input value={lulDriverSearch} onChange={(e) => { setLulDriverSearch(e.target.value); setLulSelectedDriverId(""); setShowLulDriverSuggestions(true); }} onFocus={() => setShowLulDriverSuggestions(true)} onBlur={() => setTimeout(() => setShowLulDriverSuggestions(false), 120)} placeholder="Cerca per nome, ID mongo o ID carta..." className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white" />
+                    {showLulDriverSuggestions && filteredLulDrivers.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#09090c]">
+                        {filteredLulDrivers.map((driver) => {
+                          const id = String(driver?.id || driver?._id || "");
+                          const label = getDriverLabel(driver);
+                          return <button key={id || label} type="button" onMouseDown={(ev) => ev.preventDefault()} onClick={() => { setLulSelectedDriverId(id); setLulDriverSearch(label); setShowLulDriverSuggestions(false); }} className="w-full px-3 py-2 text-left text-xs text-white/85 hover:bg-white/10">{label}</button>;
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-[0.12em] text-white/60">Tipo di rapporto</label>
+                  <select value={lulReportCode} onChange={(e) => setLulReportCode(e.target.value)} className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white">
+                    {LUL_REPORT_OPTIONS.map((opt) => <option key={opt.code} value={opt.code}>{opt.label}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase tracking-[0.12em] text-white/60">Da</label>
+                    <input type="date" value={lulStartDate} onChange={(e) => setLulStartDate(e.target.value)} className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase tracking-[0.12em] text-white/60">A</label>
+                    <input type="date" value={lulEndDate} onChange={(e) => setLulEndDate(e.target.value)} className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white" />
+                  </div>
+                </div>
+                {lulPreviewError && <p className="text-sm text-red-400">{lulPreviewError}</p>}
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button type="button" onClick={() => void loadLulPreview()} disabled={lulPreviewLoading} className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-50">{lulPreviewLoading ? "Genero anteprima..." : "Aggiorna anteprima"}</button>
+                  <button type="button" onClick={generateLulOutput} className="rounded-lg border border-orange-400/30 bg-orange-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-orange-100">Genera LUL</button>
+                </div>
+              </div>
+              <div className="min-h-0 bg-[#07080b] p-4">
+                <div className="h-full overflow-hidden rounded-xl border border-white/10 bg-white">
+                  {lulPreviewLoading ? <div className="flex h-full items-center justify-center text-sm text-slate-700">Caricamento preview...</div> : lulPreviewHtml ? <iframe title="Anteprima LUL" className="h-full w-full" srcDoc={lulPreviewHtml} /> : <div className="flex h-full items-center justify-center text-sm text-slate-600">Nessuna anteprima disponibile.</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1379,6 +1665,10 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
   const [error, setError] = React.useState<string | null>(null);
   const [accessDenied, setAccessDenied] = React.useState(false);
   const [search, setSearch] = React.useState("");
+  const [sortKey, setSortKey] = React.useState<
+    "fileName" | "source" | "reference" | "periodFrom" | "company" | "syncState" | "downloadTime"
+  >("downloadTime");
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
 
   const fetchFiles = React.useCallback(async () => {
     setLoading(true);
@@ -1417,11 +1707,59 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
     fetchFiles();
   }, [fetchFiles, isOpen]);
 
+  const sortBy = React.useCallback(
+    (key: "fileName" | "source" | "reference" | "periodFrom" | "company" | "syncState" | "downloadTime") => {
+      if (sortKey === key) {
+        setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+        return;
+      }
+      setSortKey(key);
+      setSortDir("asc");
+    },
+    [sortKey],
+  );
+
+  const getSortIcon = React.useCallback(
+    (key: "fileName" | "source" | "reference" | "periodFrom" | "company" | "syncState" | "downloadTime") => {
+      if (sortKey !== key) return "fa-sort";
+      return sortDir === "asc" ? "fa-sort-up" : "fa-sort-down";
+    },
+    [sortDir, sortKey],
+  );
+
+  const sortedFiles = React.useMemo(() => {
+    const list = Array.isArray(files) ? [...files] : [];
+    const valueOf = (row: any, key: string) => {
+      if (!row) return "";
+      if (key === "source") return row?.source === "driver" ? "Autista" : "Veicolo";
+      if (key === "reference") {
+        return row?.source === "driver"
+          ? row?.driver?.driverName || row?.driver?.cardNumber || ""
+          : row?.vehicle?.number || row?.vehicle?.imei || "";
+      }
+      if (key === "company") return row?.company?.name || "";
+      if (key === "periodFrom") return toTimestamp(row?.periodFrom) || 0;
+      if (key === "downloadTime") return toTimestamp(row?.downloadTime) || 0;
+      if (key === "syncState") return row?.syncState || "pending";
+      if (key === "fileName") return row?.fileName || "";
+      return row?.[key] || "";
+    };
+    list.sort((a, b) => {
+      const av = valueOf(a, sortKey);
+      const bv = valueOf(b, sortKey);
+      let cmp = 0;
+      if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+      else cmp = String(av).localeCompare(String(bv), "it-IT", { sensitivity: "base" });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }, [files, sortDir, sortKey]);
+
   const baseUrl = resolveBackendBaseUrl();
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="h-full min-h-0">
+      <div className="h-full min-h-0 rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
@@ -1456,82 +1794,143 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
         )}
         {!accessDenied && error && <p className="text-xs text-red-400">{error}</p>}
 
-        <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
-            <span>File</span>
-            <span>Origine</span>
-            <span>Riferimento</span>
-            <span>Periodo</span>
-            <span>Azienda</span>
-            <span>Download</span>
-            <span className="text-right">Azioni</span>
-          </div>
-          <div className="max-h-[360px] overflow-y-auto">
-            {files.length === 0 && !loading ? (
-              <div className="px-3 py-3 text-xs text-white/60">
-                Nessun file disponibile.
-              </div>
-            ) : (
-              files.map((file) => {
-                const sourceLabel = file?.source === "driver" ? "Autista" : "Veicolo";
-                const refLabel =
-                  file?.source === "driver"
-                    ? file?.driver?.driverName || file?.driver?.cardNumber || "--"
-                    : file?.vehicle?.number || file?.vehicle?.imei || "--";
-                const periodFrom = toTimestamp(file?.periodFrom);
-                const periodTo = toTimestamp(file?.periodTo);
-                const periodLabel =
-                  periodFrom && periodTo
-                    ? `${formatShortDateTime(periodFrom)} → ${formatShortDateTime(periodTo)}`
-                    : periodFrom
-                      ? `${formatShortDateTime(periodFrom)} → --`
-                      : periodTo
-                        ? `-- → ${formatShortDateTime(periodTo)}`
-                        : "N/D";
-                const periodHint =
-                  file?.periodSource === "downloadTime"
-                    ? "Orario scarico"
-                    : file?.periodSource === "period"
-                      ? "Periodo attività"
-                      : null;
-                const companyLabel = file?.company?.name || "--";
-                const name = file?.fileName || "file.ddd";
-                const downloadTs = toTimestamp(file?.downloadTime);
-                const downloadUrl = `${baseUrl}/api/tacho/files/download?source=${encodeURIComponent(
-                  file?.source || "vehicle",
-                )}&id=${encodeURIComponent(file?.id || "")}&name=${encodeURIComponent(name)}`;
-                return (
-                  <div
-                    key={file?.id}
-                  className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/10"
-                >
-                  <span className="truncate">{name}</span>
-                  <span className="text-white/60">{sourceLabel}</span>
-                  <span className="truncate text-white/70">{refLabel}</span>
-                  <span className="truncate text-white/70">
-                    {periodLabel}
-                    {periodHint && (
-                      <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-white/40">
-                        {periodHint}
-                      </span>
-                    )}
-                  </span>
-                  <span className="truncate text-white/60">{companyLabel}</span>
-                  <span className="text-white/60">
-                    {downloadTs ? formatShortDateTime(downloadTs) : "N/D"}
-                    </span>
-                    <div className="text-right">
-                      <a
-                        href={downloadUrl}
-                        className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-                      >
-                        Scarica
-                      </a>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+        <div className="flex-1 min-h-[320px] rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+          <div className="h-full overflow-auto">
+            <table className="w-full table-fixed border-separate border-spacing-0 text-xs text-white/80">
+              <colgroup>
+                <col className="w-[24%]" />
+                <col className="w-[10%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-[#0d0d0f]">
+                <tr className="text-[10px] uppercase tracking-[0.2em] text-white/55">
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("fileName")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      File <i className={`fa ${getSortIcon("fileName")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("source")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      Origine <i className={`fa ${getSortIcon("source")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("reference")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      Riferimento <i className={`fa ${getSortIcon("reference")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("periodFrom")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      Periodo <i className={`fa ${getSortIcon("periodFrom")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("company")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      Azienda <i className={`fa ${getSortIcon("company")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("syncState")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      Sync Seep <i className={`fa ${getSortIcon("syncState")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-left">
+                    <button type="button" onClick={() => sortBy("downloadTime")} className="inline-flex items-center gap-1 hover:text-white transition">
+                      Download <i className={`fa ${getSortIcon("downloadTime")} text-[10px]`} aria-hidden="true" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 border-b border-white/10 text-right">Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedFiles.length === 0 && !loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-4 text-xs text-white/60">
+                      Nessun file disponibile.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedFiles.map((file) => {
+                    const sourceLabel = file?.source === "driver" ? "Autista" : "Veicolo";
+                    const refLabel =
+                      file?.source === "driver"
+                        ? file?.driver?.driverName || file?.driver?.cardNumber || "--"
+                        : file?.vehicle?.number || file?.vehicle?.imei || "--";
+                    const periodFrom = toTimestamp(file?.periodFrom);
+                    const periodTo = toTimestamp(file?.periodTo);
+                    const periodFromLabel = periodFrom ? formatShortDateTime(periodFrom) : "--";
+                    const periodToLabel = periodTo ? formatShortDateTime(periodTo) : "--";
+                    const hasPeriod = Boolean(periodFrom || periodTo);
+                    const periodHint =
+                      file?.periodSource === "downloadTime"
+                        ? "Orario scarico"
+                        : file?.periodSource === "period"
+                          ? "Periodo attivita"
+                          : null;
+                    const companyLabel = file?.company?.name || "--";
+                    const name = file?.fileName || "file.ddd";
+                    const downloadTs = toTimestamp(file?.downloadTime);
+                    const downloadUrl = `${baseUrl}/api/tacho/files/download?source=${encodeURIComponent(
+                      file?.source || "vehicle",
+                    )}&id=${encodeURIComponent(file?.id || "")}&name=${encodeURIComponent(name)}`;
+                    return (
+                      <tr key={file?.id}>
+                        <td className="px-3 py-2 border-b border-white/10 truncate">{name}</td>
+                        <td className="px-3 py-2 border-b border-white/10 text-white/60">{sourceLabel}</td>
+                        <td className="px-3 py-2 border-b border-white/10 truncate text-white/70">{refLabel}</td>
+                        <td className="px-3 py-2 border-b border-white/10 truncate text-white/70">
+                          {hasPeriod ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span>{periodFromLabel}</span>
+                              <i className="fa fa-arrow-right text-[10px] text-white/45" aria-hidden="true" />
+                              <span>{periodToLabel}</span>
+                            </span>
+                          ) : (
+                            "N/D"
+                          )}
+                          {periodHint && (
+                            <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-white/40">
+                              {periodHint}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 border-b border-white/10 truncate text-white/60">{companyLabel}</td>
+                        <td className="px-3 py-2 border-b border-white/10">
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+                              file?.syncState === "uploaded"
+                                ? "border-emerald-400/40 text-emerald-300"
+                                : file?.syncState === "error"
+                                  ? "border-red-400/40 text-red-300"
+                                  : "border-white/20 text-white/60"
+                            }`}
+                            title={file?.error || ""}
+                          >
+                            {file?.syncState || "pending"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 border-b border-white/10 text-white/60">
+                          {downloadTs ? formatShortDateTime(downloadTs) : "N/D"}
+                        </td>
+                        <td className="px-3 py-2 border-b border-white/10 text-right">
+                          <a
+                            href={downloadUrl}
+                            className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
+                          >
+                            Scarica
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1544,34 +1943,141 @@ function DriverDashboard({
 }: {
   selectedDriverImei?: string | null;
 }) {
-  const [driverId, setDriverId] = React.useState("196301e2-2010-4f42-a405-5e6ce839c101");
+  const [driverOptions, setDriverOptions] = React.useState<DriverTableRow[]>([]);
+  const [driverSearch, setDriverSearch] = React.useState("");
+  const [selectedDriverId, setSelectedDriverId] = React.useState("");
+  const [showDriverSuggestions, setShowDriverSuggestions] = React.useState(false);
   const [startDate, setStartDate] = React.useState("2025-10-25T00:00");
   const [endDate, setEndDate] = React.useState("2025-10-26T23:59");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [driverResolution, setDriverResolution] = React.useState<string | null>(null);
   const [days, setDays] = React.useState<DayGraph[]>([]);
   const [hoveredDay, setHoveredDay] = React.useState<DayGraph | null>(null);
   const [hoverPos, setHoverPos] = React.useState({ x: 0, y: 0 });
   const [hoverBounds, setHoverBounds] = React.useState({ width: 0, height: 0 });
   const [expandedActivityDays, setExpandedActivityDays] = React.useState<Record<string, boolean>>({});
 
+  const getDriverLabel = React.useCallback((driver: DriverTableRow) => {
+    const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim() || "--";
+    const mongoId = driver?.id || driver?._id || "--";
+    const cardId = driver?.tachoDriverId || "--";
+    return `${name} - Mongo: ${mongoId} - Carta: ${cardId}`;
+  }, []);
+
+  const findDriverById = React.useCallback(
+    (id: string) => driverOptions.find((d) => String(d?.id || d?._id || "") === String(id || "")) || null,
+    [driverOptions],
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const fetchDrivers = async () => {
+      try {
+        const baseUrl = resolveBackendBaseUrl();
+        const res = await fetch(`${baseUrl}/api/drivers`, { credentials: "include" });
+        if (!res.ok) return;
+        const payload = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setDriverOptions(Array.isArray(payload?.drivers) ? payload.drivers : []);
+      } catch {
+        if (cancelled) return;
+        setDriverOptions([]);
+      }
+    };
+    fetchDrivers();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!selectedDriverId) return;
+    const selected = findDriverById(selectedDriverId);
+    if (!selected) return;
+    setDriverSearch(getDriverLabel(selected));
+  }, [findDriverById, getDriverLabel, selectedDriverId]);
+
+  const filteredDrivers = React.useMemo(() => {
+    const query = driverSearch.trim().toLowerCase();
+    const list = Array.isArray(driverOptions) ? driverOptions : [];
+    if (!query) return list.slice(0, 8);
+    return list
+      .filter((driver) => {
+        const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
+        const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+        const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+        return name.includes(query) || mongoId.includes(query) || cardId.includes(query);
+      })
+      .slice(0, 8);
+  }, [driverOptions, driverSearch]);
+
+  const selectDriver = React.useCallback(
+    (driver: DriverTableRow) => {
+      const id = String(driver?.id || driver?._id || "");
+      if (!id) return;
+      setSelectedDriverId(id);
+      setDriverSearch(getDriverLabel(driver));
+      setShowDriverSuggestions(false);
+      setError(null);
+    },
+    [getDriverLabel],
+  );
+
   React.useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail || {};
       if (detail?.driverId) {
-        setDriverId(String(detail.driverId));
+        const incomingId = String(detail.driverId);
+        setSelectedDriverId(incomingId);
+        const selected = findDriverById(incomingId);
+        if (selected) {
+          setDriverSearch(getDriverLabel(selected));
+        } else {
+          setDriverSearch(incomingId);
+        }
       }
     };
     window.addEventListener("truckly:driver-report-open", handler as EventListener);
     return () => window.removeEventListener("truckly:driver-report-open", handler as EventListener);
-  }, []);
+  }, [findDriverById, getDriverLabel]);
 
-  const runTest = async () => {
+  const runReport = async () => {
     setError(null);
+    setDriverResolution(null);
+
+    const query = driverSearch.trim().toLowerCase();
+    let selectedDriver = selectedDriverId ? findDriverById(selectedDriverId) : null;
+    if (!selectedDriver && query) {
+      selectedDriver =
+        driverOptions.find((driver) => {
+          const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+          const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+          return mongoId === query || cardId === query;
+        }) || null;
+    }
+    if (!selectedDriver && query) {
+      const matches = driverOptions.filter((driver) => {
+        const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
+        const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+        const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+        return name.includes(query) || mongoId.includes(query) || cardId.includes(query);
+      });
+      if (matches.length === 1) selectedDriver = matches[0];
+    }
+    if (!selectedDriver) {
+      setError("Seleziona un autista valido dalla ricerca.");
+      return;
+    }
+
+    const resolvedLocalDriverId = String(selectedDriver?.id || selectedDriver?._id || "");
+    const resolvedTachoDriverId = String(selectedDriver?.tachoDriverId || "").trim();
+
     setLoading(true);
     try {
       const body = {
-        driverId,
+        localDriverId: resolvedLocalDriverId || undefined,
+        tachoDriverId: resolvedTachoDriverId || undefined,
         startDate: toIso(startDate),
         endDate: toIso(endDate),
         timezone: "UTC",
@@ -1581,9 +2087,11 @@ function DriverDashboard({
         ignoreCountrySelectedInfringements: false,
       };
 
-      const res = await fetch("/api/seep/test", {
+      const baseUrl = resolveBackendBaseUrl();
+      const res = await fetch(`${baseUrl}/api/seep/driver-graphs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -1591,29 +2099,83 @@ function DriverDashboard({
         throw new Error(txt || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      const weeks = data?.analysis?.activityAnalysis?.weeks || [];
-      const flatDays: DayGraph[] = [];
-      weeks.forEach((week: any) => {
-        (week?.days || []).forEach((day: any) => {
-          if (day?.graph) {
-            flatDays.push({
-              date: day.date,
-              graph: day.graph,
-              metrics: day.metrics,
-              activities: day.activities,
-              infringements: day.infringements,
-            });
-          }
-        });
-      });
+      const flatDays: DayGraph[] = Array.isArray(data?.days) ? data.days : [];
+      const resolvedDriverId = data?.driver?.resolvedSeepDriverId || "--";
+      const strategy = data?.driver?.strategy || "--";
+      const selectedName = `${selectedDriver?.name || ""} ${selectedDriver?.surname || ""}`.trim();
+      setDriverResolution(`${selectedName || resolvedLocalDriverId} - Seep ID: ${resolvedDriverId} - Strategia: ${strategy}`);
+      setSelectedDriverId(resolvedLocalDriverId);
+      setDriverSearch(getDriverLabel(selectedDriver));
 
       setDays(flatDays);
       setExpandedActivityDays({});
       if (!flatDays.length) {
-        setError("Nessun grafico SVG restituito (verifica driverId e date).");
+        setError("Nessun grafico SVG restituito per il periodo selezionato.");
       }
     } catch (err: any) {
-      setError(err?.message || "Errore nella richiesta di analisi");
+      setError(err?.message || "Errore nella richiesta report autista.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportWorkTimesPdf = async () => {
+    setError(null);
+    const query = driverSearch.trim().toLowerCase();
+    let selectedDriver = selectedDriverId ? findDriverById(selectedDriverId) : null;
+    if (!selectedDriver && query) {
+      selectedDriver =
+        driverOptions.find((driver) => {
+          const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
+          const cardId = String(driver?.tachoDriverId || "").toLowerCase();
+          const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
+          return mongoId === query || cardId === query || name.includes(query);
+        }) || null;
+    }
+    if (!selectedDriver) {
+      setError("Seleziona un autista valido prima di esportare il PDF.");
+      return;
+    }
+
+    const resolvedLocalDriverId = String(selectedDriver?.id || selectedDriver?._id || "");
+    const resolvedTachoDriverId = String(selectedDriver?.tachoDriverId || "").trim();
+
+    try {
+      setLoading(true);
+      const baseUrl = resolveBackendBaseUrl();
+      const res = await fetch(`${baseUrl}/api/seep/driver-graphs/export-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          localDriverId: resolvedLocalDriverId || undefined,
+          tachoDriverId: resolvedTachoDriverId || undefined,
+          startDate: toIso(startDate),
+          endDate: toIso(endDate),
+          timezone: "UTC",
+          brand: {
+            companyName: "Truckly",
+            logoText: "Truckly | Report Ore Lavoro",
+            primaryColor: "1f5ecf",
+            secondaryColor: "0f172a",
+          },
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(`${selectedDriver?.name || ""}_${selectedDriver?.surname || ""}`.trim() || "driver").replace(/\s+/g, "_").toLowerCase()}_work_times.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err?.message || "Errore durante export PDF ore lavoro.");
     } finally {
       setLoading(false);
     }
@@ -1628,23 +2190,57 @@ function DriverDashboard({
               Grafico attivita autista
             </p>
             <p className="text-sm text-white/60">
-              Report attivita e dettagli giornalieri. Selezione: {selectedDriverImei || "--"}
+              Report attivita e dettagli giornalieri. Contesto veicolo: {selectedDriverImei || "--"}
             </p>
+            {driverResolution && (
+              <p className="text-xs text-white/55 mt-1">{driverResolution}</p>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.08em] text-white/65">
-              ID autista
-            </label>
-            <input
-              value={driverId}
-              onChange={(e) => setDriverId(e.target.value)}
-              placeholder="UUID autista (es. da /api/drivers)"
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-            />
+        <div className="space-y-2 relative">
+          <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+            Autista
+          </label>
+          <input
+            value={driverSearch}
+            onChange={(e) => {
+              setDriverSearch(e.target.value);
+              setSelectedDriverId("");
+              setShowDriverSuggestions(true);
+            }}
+            onFocus={() => setShowDriverSuggestions(true)}
+            onBlur={() => {
+              setTimeout(() => setShowDriverSuggestions(false), 120);
+            }}
+            placeholder="Cerca per nome, ID mongo o ID carta..."
+            className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+          />
+          {showDriverSuggestions && filteredDrivers.length > 0 && (
+            <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#09090c]">
+              {filteredDrivers.map((driver) => {
+                const id = String(driver?.id || driver?._id || "");
+                const label = getDriverLabel(driver);
+                return (
+                  <button
+                    key={id || label}
+                    type="button"
+                    onMouseDown={(ev) => ev.preventDefault()}
+                    onClick={() => selectDriver(driver)}
+                    className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/10 transition"
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="text-[11px] text-white/50">
+            Seleziona un autista e il sistema usera automaticamente ID mongo + ID carta.
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.08em] text-white/65">
               Inizio
@@ -1671,11 +2267,34 @@ function DriverDashboard({
 
         <div className="flex items-center gap-3">
           <button
-            onClick={runTest}
+            onClick={runReport}
             disabled={loading}
             className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm font-medium hover:bg-white/15 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Caricamento..." : "Genera grafico di prova"}
+            {loading ? "Caricamento..." : "Aggiorna grafico"}
+          </button>
+          <button
+            onClick={() => {
+              const selected = selectedDriverId ? findDriverById(selectedDriverId) : null;
+              const localDriverId = selected ? String(selected?.id || selected?._id || "") : "";
+              window.dispatchEvent(
+                new CustomEvent("truckly:lul-open", {
+                  detail: {
+                    localDriverId: localDriverId || null,
+                    tachoDriverId: selected?.tachoDriverId || null,
+                  },
+                }),
+              );
+              window.dispatchEvent(
+                new CustomEvent("truckly:bottom-bar-toggle", {
+                  detail: { mode: "drivers" },
+                }),
+              );
+            }}
+            disabled={loading}
+            className="rounded-lg border border-white/20 bg-[#0d0d0f] px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Genera LUL
           </button>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
@@ -2955,4 +3574,6 @@ function TableCard({
     </div>
   );
 }
+
+
 

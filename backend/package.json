@@ -17,6 +17,7 @@
         "@sendgrid/mail": "^8.1.5",
         "@whop-apps/sdk": "^0.0.1-canary.38",
         "apexcharts": "^4.7.0",
+        "axios": "^1.7.7",
         "bcryptjs": "^2.4.3",
         "chart.js": "^4.5.0",
         "chartjs": "^0.3.24",
@@ -36,6 +37,7 @@
         "express": "^4.18.2",
         "express-fileupload": "^1.4.2",
         "express-ws": "^5.0.2",
+        "form-data": "^4.0.1",
         "jsonwebtoken": "^9.0.2",
         "leaflet": "^1.9.4",
         "maplibre-gl": "^5.7.3",
@@ -45,13 +47,13 @@
         "nouislider": "^15.8.1",
         "openai": "^5.15.0",
         "paypal-rest-sdk": "^1.8.1",
+        "pdf-lib": "^1.17.1",
         "pdf-parse": "^1.1.1",
         "ssh2-sftp-client": "^9.1.0",
         "umap-js": "^1.4.0",
         "uplot": "^1.6.32",
-        "zod": "^3.25.76",
-        "axios": "^1.7.7",
-        "form-data": "^4.0.1"
+        "xlsx": "^0.18.5",
+        "zod": "^3.25.76"
     },
     "devDependencies": {
         "connect-livereload": "^0.6.1",

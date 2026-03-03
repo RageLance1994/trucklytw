@@ -488,6 +488,51 @@ export function renderVehicleTooltip({
   const zip = gps?.Location?.Zip;
   const province = gps?.Location?.Provence;
   const speed = gps?.Speed ?? gps?.speed ?? 0;
+  const toNum = (value: unknown) => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (typeof value === "string") {
+      const normalized = value.replace(",", ".").trim();
+      const direct = Number(normalized);
+      if (Number.isFinite(direct)) return direct;
+      const match = normalized.match(/-?\d+(\.\d+)?/);
+      if (match) {
+        const parsed = Number(match[0]);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const speedNum = toNum(speed);
+  const ignitionNum =
+    toNum(
+      io?.ignition ??
+      io?.Ignition ??
+      io?.ign ??
+      io?.ignitionStatus ??
+      io?.engineStatus
+    ) ?? 0;
+  const fallbackFromStatus =
+    status?.class === "success"
+      ? { status: "In marcia", class: "success" }
+      : status?.class === "warning"
+        ? { status: "Quadro acceso", class: "warning" }
+        : status?.class === "danger"
+          ? { status: "Fermo", class: "danger" }
+          : null;
+  const liveStatus =
+    (speedNum != null && speedNum > 5)
+      ? { status: "In marcia", class: "success" }
+      : (speedNum != null && ignitionNum === 1)
+        ? { status: "Quadro acceso", class: "warning" }
+        : (speedNum != null
+            ? { status: "Fermo", class: "danger" }
+            : (fallbackFromStatus || { status: "Fermo", class: "danger" }));
+  const statusInfo = {
+    status: liveStatus.status || status.status || "N/D",
+    class: liveStatus.class || status.class || "",
+  };
 
   const actions = [
     { label: "Percorsi", icon: icons.route, action: "routes" },
@@ -629,8 +674,8 @@ export function renderVehicleTooltip({
     <div class="truckly-tooltip" data-imei="${escapeHtml(vehicle.imei || "")}">
       <div class="truckly-tooltip__header">
         <h1>${escapeHtml(vehicle.nickname || vehicle.name || "-")}${plate ? ` · ${escapeHtml(plate)}` : ""}</h1>
-        <span class="truckly-pill ${status.class || ""}">
-          ${escapeHtml(status.status || "N/D")}
+        <span class="truckly-pill ${statusInfo.class || ""}">
+          ${escapeHtml(statusInfo.status || "N/D")}
         </span>
       </div>
 

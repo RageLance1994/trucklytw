@@ -82,6 +82,28 @@ const computeFuelSummary = (io = {}, vehicle = {}) => {
     unit: vehicle?.details?.tanks?.unit || 'litri'
   };
 };
+
+const toTelemetryNumber = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    const direct = Number(normalized);
+    if (Number.isFinite(direct)) return direct;
+    const match = normalized.match(/-?\d+(\.\d+)?/);
+    if (match) {
+      const parsed = Number(match[0]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const resolveSpeedValue = (gps = {}, io = {}) =>
+  gps?.Speed ?? gps?.speed ?? io?.speed ?? io?.vehicle_speed ?? io?.vehicleSpeed;
 const vehicles = window.vehicles || [];
 const imeis = vehicles.map(v => v.imei);
 
@@ -220,7 +242,8 @@ window.wsClient = new WSClient(`${wsBaseUrl}/ws/stream`, imeis,
     const tooltipEntry = await buildToolTip(device, vehicle);
     const tooltipNode = tooltipEntry?.root ?? document.createElement('div');
     const countersContext = tooltipEntry?.counterContext ?? buildTooltipCountersContext(device, vehicle);
-    var vehicle_state = getVehicleState(device.data.gps.Speed, device.data.io.ignition).class
+    const liveSpeed = resolveSpeedValue(device?.data?.gps, device?.data?.io);
+    var vehicle_state = getVehicleState(liveSpeed, device.data.io.ignition).class
 
 
     console.warn(device)
@@ -281,7 +304,7 @@ async function buildToolTip(device, vehicle) {
     imei,
     device,
     vehicle,
-    status: getVehicleState(device.data.gps.Speed, device.data.io.ignition),
+    status: getVehicleState(resolveSpeedValue(device?.data?.gps, device?.data?.io), device.data.io.ignition),
     fuelSummary: computeFuelSummary(device.data.io, vehicle),
   };
   if (!entry) {
@@ -351,7 +374,9 @@ function updateTooltipEntry(entry, payload) {
   const gps = data.gps || {};
   const io = data.io || {};
   const summary = payload.fuelSummary || computeFuelSummary(io, payload.vehicle || {});
-  const vehicleStatus = payload.status || getVehicleState(gps.Speed, io.ignition);
+  const rawSpeed = resolveSpeedValue(gps, io);
+  const speedValue = toTelemetryNumber(rawSpeed) ?? 0;
+  const vehicleStatus = payload.status || getVehicleState(rawSpeed, io.ignition);
   if (nodes.vehicleStatus) {
     nodes.vehicleStatus.textContent = vehicleStatus?.status || "Sconosciuto";
     const statusClasses = ["success", "danger", "warning", "info", "muted"];
@@ -363,7 +388,7 @@ function updateTooltipEntry(entry, payload) {
   }
   if (nodes.lat) nodes.lat.textContent = formatCoordinate(gps.Latitude);
   if (nodes.lng) nodes.lng.textContent = formatCoordinate(gps.Longitude);
-  if (nodes.speed) nodes.speed.textContent = `${Number(gps.Speed || 0).toFixed(1)} km/h`;
+  if (nodes.speed) nodes.speed.textContent = `${speedValue.toFixed(1)} km/h`;
   if (nodes.fuelValue) {
     const liters = Number.isFinite(summary.liters) ? `${summary.liters.toFixed(1)} L` : "-";
     nodes.fuelValue.textContent = liters;
@@ -397,8 +422,8 @@ function getVehicleState(speed = 0, ignition = 0) {
   // normalizza i valori
 
 
-  const v = Number(speed) || 0;
-  const ig = Number(ignition) || 0;
+  const v = toTelemetryNumber(speed) ?? 0;
+  const ig = toTelemetryNumber(ignition) ?? 0;
 
 
   if (v > 5) {
