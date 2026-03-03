@@ -756,6 +756,7 @@
 }
 
 .truckly-marker--pin {
+  --truckly-pin-anchor-offset: 14px;
   position: relative;
   border-radius: 0;
   padding: 0;
@@ -764,6 +765,9 @@
   border: 0;
   box-shadow: none;
   color: var(--pin-color, #64748b);
+  transform: translateY(calc(-1 * var(--truckly-pin-anchor-offset)))
+    scale(var(--truckly-marker-scale, 1));
+  transform-origin: center bottom;
   filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.42))
     drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
 }
