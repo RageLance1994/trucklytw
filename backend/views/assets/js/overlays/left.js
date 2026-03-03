@@ -14,6 +14,18 @@ const formatPlate = (vehicle, io) => {
 };
 
 const toNumber = (value) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string') {
+        const normalized = value.replace(',', '.').trim();
+        const direct = Number(normalized);
+        if (Number.isFinite(direct)) return direct;
+        const match = normalized.match(/-?\d+(\.\d+)?/);
+        if (match) {
+            const parsed = Number(match[0]);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+    }
     const num = Number(value);
     return Number.isFinite(num) ? num : null;
 };
@@ -66,8 +78,14 @@ const resolveDriver = (io = {}) => {
 };
 
 const deriveVehicleStatus = (deviceData = {}) => {
-    const speed = Number(deviceData?.gps?.Speed ?? deviceData?.gps?.speed);
-    const ignition = Number(deviceData?.io?.ignition ?? deviceData?.io?.Ignition);
+    const speed = toNumber(
+        deviceData?.gps?.Speed
+        ?? deviceData?.gps?.speed
+        ?? deviceData?.io?.speed
+        ?? deviceData?.io?.vehicle_speed
+        ?? deviceData?.io?.vehicleSpeed
+    );
+    const ignition = toNumber(deviceData?.io?.ignition ?? deviceData?.io?.Ignition);
     if (Number.isFinite(speed) && speed > 5) {
         return { className: 'success', label: 'In marcia' };
     }

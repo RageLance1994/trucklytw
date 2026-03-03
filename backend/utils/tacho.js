@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_PAGE_SIZE = 100;
+const CAN_DUMP_DEBUG = process.env.NODE_ENV !== 'production' && !process.env.K_SERVICE;
 
 const normalizeCompanyList = (payload) => {
   if (!payload) return [];
@@ -110,16 +111,18 @@ const TachoSync = new class {
   async companiesFlat() {
     const res = await this._request('get', '/Companies');
     const flattened = flattenCompanyTree(res.data);
-    try {
-      const dumpPath = path.join(process.cwd(), 'Tacho_companies.json');
-      fs.writeFileSync(dumpPath, JSON.stringify({
-        fetchedAt: new Date().toISOString(),
-        raw: res.data,
-        flattened,
-      }, null, 2), 'utf8');
-      console.log('[tacho] dumped companies to', dumpPath);
-    } catch (err) {
-      console.warn('[tacho] failed to dump companies', err?.message || err);
+    if (CAN_DUMP_DEBUG) {
+      try {
+        const dumpPath = path.join(process.cwd(), 'Tacho_companies.json');
+        fs.writeFileSync(dumpPath, JSON.stringify({
+          fetchedAt: new Date().toISOString(),
+          raw: res.data,
+          flattened,
+        }, null, 2), 'utf8');
+        console.log('[tacho] dumped companies to', dumpPath);
+      } catch (err) {
+        console.warn('[tacho] failed to dump companies', err?.message || err);
+      }
     }
     return flattened;
   }
@@ -157,19 +160,21 @@ const TachoSync = new class {
     const params = new URLSearchParams();
     (Array.isArray(ids) ? ids : [ids]).forEach((id) => params.append('Ids', id));
     if (fileFormat) params.append('FileFormat', fileFormat);
-    try {
-      const dumpPath = path.join(process.cwd(), 'Files_info.json');
-      const payload = {
-        fetchedAt: new Date().toISOString(),
-        type: 'driver',
-        ids: Array.isArray(ids) ? ids : [ids],
-        fileFormat,
-        url: `${this.baseurl}/DriverFiles/Download?${params.toString()}`,
-      };
-      fs.writeFileSync(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
-      console.log('[tacho] dumped files info to', dumpPath);
-    } catch (err) {
-      console.warn('[tacho] failed to dump files info', err?.message || err);
+    if (CAN_DUMP_DEBUG) {
+      try {
+        const dumpPath = path.join(process.cwd(), 'Files_info.json');
+        const payload = {
+          fetchedAt: new Date().toISOString(),
+          type: 'driver',
+          ids: Array.isArray(ids) ? ids : [ids],
+          fileFormat,
+          url: `${this.baseurl}/DriverFiles/Download?${params.toString()}`,
+        };
+        fs.writeFileSync(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
+        console.log('[tacho] dumped files info to', dumpPath);
+      } catch (err) {
+        console.warn('[tacho] failed to dump files info', err?.message || err);
+      }
     }
     return this._request('get', `/DriverFiles/Download?${params.toString()}`, {
       responseType: 'arraybuffer',
@@ -180,19 +185,21 @@ const TachoSync = new class {
     const params = new URLSearchParams();
     (Array.isArray(ids) ? ids : [ids]).forEach((id) => params.append('Ids', id));
     if (fileFormat) params.append('FileFormat', fileFormat);
-    try {
-      const dumpPath = path.join(process.cwd(), 'Files_info.json');
-      const payload = {
-        fetchedAt: new Date().toISOString(),
-        type: 'vehicle',
-        ids: Array.isArray(ids) ? ids : [ids],
-        fileFormat,
-        url: `${this.baseurl}/VehicleFiles/Download?${params.toString()}`,
-      };
-      fs.writeFileSync(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
-      console.log('[tacho] dumped files info to', dumpPath);
-    } catch (err) {
-      console.warn('[tacho] failed to dump files info', err?.message || err);
+    if (CAN_DUMP_DEBUG) {
+      try {
+        const dumpPath = path.join(process.cwd(), 'Files_info.json');
+        const payload = {
+          fetchedAt: new Date().toISOString(),
+          type: 'vehicle',
+          ids: Array.isArray(ids) ? ids : [ids],
+          fileFormat,
+          url: `${this.baseurl}/VehicleFiles/Download?${params.toString()}`,
+        };
+        fs.writeFileSync(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
+        console.log('[tacho] dumped files info to', dumpPath);
+      } catch (err) {
+        console.warn('[tacho] failed to dump files info', err?.message || err);
+      }
     }
     return this._request('get', `/VehicleFiles/Download?${params.toString()}`, {
       responseType: 'arraybuffer',

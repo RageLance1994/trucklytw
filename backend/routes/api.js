@@ -2,13 +2,19 @@ const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
+const { spawnSync } = require('child_process');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const XLSX = require('xlsx');
 const { auth, imeiOwnership } = require('../utils/users');
-const { Vehicles, Drivers, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema } = require('../Models/Schemes');
+const { Vehicles, Drivers, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema, SeepFileStatus } = require('../Models/Schemes');
 const { _Devices } = require('../utils/database');
 const { decryptString, decryptJSON, encryptString, encryptJSON } = require('../utils/encryption');
 const { _Users } = require('../utils/database');
 const { SeepTrucker } = require('../utils/seep');
 const { TachoSync } = require('../utils/tacho');
+const { getSyncStatus, runSync, SYNC_INTERVAL } = require('../utils/seep-sync');
 
 const router = express.Router();
 const HISTORY_BUCKET_MS = 60_000;
@@ -24,6 +30,507 @@ const isSuperAdmin = (user) => getPrivilegeLevel(user) === 0;
 const canManageUsers = (user) => getPrivilegeLevel(user) <= 2;
 const canEditVehicles = (user) => getPrivilegeLevel(user) <= 1;
 const canManageDrivers = (user) => getPrivilegeLevel(user) <= 1;
+
+const LUL_REPORT_TYPES = {
+  D01: { code: 'D01', label: 'Report di attivita e infrazioni', seep: 'activity_infringements' },
+  D02: { code: 'D02', label: 'Dichiarazione di attivita', seep: 'registered_places' },
+  D03: { code: 'D03', label: 'Report dei tempi di attivita', seep: 'activity_times' },
+  D04: { code: 'D04', label: 'Rapporto dei tempi di lavoro', seep: 'work_times' },
+  D05: { code: 'D05', label: 'Report tessere inserite', seep: 'inserted_cards' },
+};
+
+const escapeHtml = (value) =>
+  String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const metricToMinutes = (value) => {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return 0;
+    return value > 1000 ? Math.round(value / 60) : Math.round(value);
+  }
+  const str = String(value || '').trim();
+  const hm = str.match(/^(\d+)\s*h\s*(\d+)?/i);
+  if (hm) return (Number(hm[1] || 0) * 60) + Number(hm[2] || 0);
+  const hhmm = str.match(/^(\d{1,2}):(\d{2})$/);
+  if (hhmm) return (Number(hhmm[1] || 0) * 60) + Number(hhmm[2] || 0);
+  return 0;
+};
+
+const minutesToHHMM = (minutes) => {
+  const total = Math.max(0, Number(minutes) || 0);
+  const hh = Math.floor(total / 60);
+  const mm = total % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+
+const toTimeFromIso = (value) => {
+  const raw = String(value || '');
+  const m = raw.match(/T(\d{2}:\d{2})/);
+  return m ? m[1] : '--';
+};
+
+const normalizeSheetText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+const isWeeklyTotalsRow = (value) =>
+  normalizeSheetText(value).toLowerCase().startsWith('totali settimanali');
+
+const isWeekHeaderRow = (value) => {
+  const normalized = normalizeSheetText(value);
+  return /^\d{4}\s*\|\s*Settimana\s*\d+/i.test(normalized);
+};
+
+const isDayRow = (value) => /^\d{4}-\d{2}-\d{2}\b/.test(String(value || '').trim());
+
+const withDash = (value) => {
+  const v = String(value == null ? '' : value).trim();
+  return v || '-';
+};
+
+const parseWorkTimesRowsFromXlsx = (xlsxBuffer) => {
+  const wb = XLSX.read(xlsxBuffer, { type: 'buffer' });
+  const firstSheet = wb.SheetNames?.[0];
+  if (!firstSheet) {
+    return {
+      periodTotals: { workTotal: '-', workDay: '-', workNight: '-', kms: '-' },
+      weeklySections: [],
+      dailyRows: [],
+    };
+  }
+  const ws = wb.Sheets[firstSheet];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  const periodTotals = { workTotal: '-', workDay: '-', workNight: '-', kms: '-' };
+  const weeklySections = [];
+  const dailyRows = [];
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const cols = rows[i] || [];
+    const col0 = String(cols?.[0] || '').trim();
+    if (!col0) continue;
+
+    const normalized = normalizeSheetText(col0).toLowerCase();
+    if (normalized.startsWith('totali periodo analizzato')) {
+      const totalValues = rows[i + 2] || [];
+      periodTotals.workTotal = withDash(totalValues?.[0]);
+      periodTotals.workDay = withDash(totalValues?.[1]);
+      periodTotals.workNight = withDash(totalValues?.[2]);
+      periodTotals.kms = withDash(totalValues?.[3]);
+      i += 2;
+      continue;
+    }
+
+    if (!isWeekHeaderRow(col0)) continue;
+
+    const weekSection = {
+      label: col0,
+      rows: [],
+      totals: { workTotal: '-', workDay: '-', workNight: '-', kms: '-' },
+    };
+
+    for (i = i + 1; i < rows.length; i += 1) {
+      const row = rows[i] || [];
+      const first = String(row?.[0] || '').trim();
+      if (!first) continue;
+
+      if (isWeekHeaderRow(first)) {
+        i -= 1;
+        break;
+      }
+
+      if (isWeeklyTotalsRow(first)) {
+        weekSection.totals.workTotal = withDash(row?.[4]);
+        weekSection.totals.workDay = withDash(row?.[5]);
+        weekSection.totals.workNight = withDash(row?.[6]);
+        weekSection.totals.kms = withDash(row?.[7]);
+        break;
+      }
+
+      if (!isDayRow(first)) continue;
+
+      const [isoDateRaw, dayNameRaw] = first.split(',');
+      const dayRow = {
+        date: withDash(isoDateRaw),
+        dayName: withDash(dayNameRaw),
+        startTime: withDash(row?.[1]),
+        endTime: withDash(row?.[2]),
+        amplitude: withDash(row?.[3]),
+        workTotal: withDash(row?.[4]),
+        workDay: withDash(row?.[5]),
+        workNight: withDash(row?.[6]),
+        kms: withDash(row?.[7]),
+      };
+      weekSection.rows.push(dayRow);
+      dailyRows.push(dayRow);
+    }
+
+    if (weekSection.rows.length || weekSection.totals.workTotal !== '-') {
+      weeklySections.push(weekSection);
+    }
+  }
+
+  return { periodTotals, weeklySections, dailyRows };
+};
+
+const pickWorkActivityBounds = (activities = []) => {
+  const list = Array.isArray(activities) ? activities : [];
+  const active = list.filter((activity) => {
+    const type = String(activity?.activityType || '').toLowerCase();
+    return type && type !== 'break' && type !== 'unknown';
+  });
+  const target = active.length ? active : list;
+  const first = target[0] || null;
+  const last = target[target.length - 1] || null;
+  return {
+    first: first?.startDateTime ? toTimeFromIso(first.startDateTime) : '--',
+    last: last?.endDateTime ? toTimeFromIso(last.endDateTime) : '--',
+  };
+};
+
+const buildLulPreviewHtml = ({
+  companyName,
+  driverName,
+  driverCardId,
+  reportCode,
+  reportLabel,
+  generatedAt,
+  startDate,
+  endDate,
+  rows,
+  workTimesData,
+}) => {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const parsedWorkTimes = workTimesData && typeof workTimesData === 'object' ? workTimesData : null;
+  const periodTotals = parsedWorkTimes?.periodTotals || {
+    workTotal: '-',
+    workDay: '-',
+    workNight: '-',
+    kms: '-',
+  };
+  const weeklySections = Array.isArray(parsedWorkTimes?.weeklySections) ? parsedWorkTimes.weeklySections : [];
+  const weeklyTablesHtml = weeklySections.map((week) => {
+    const weekRows = Array.isArray(week?.rows) ? week.rows : [];
+    const rowsHtml = weekRows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.date)}, ${escapeHtml(row.dayName)}</td>
+          <td>${escapeHtml(row.startTime)}</td>
+          <td>${escapeHtml(row.endTime)}</td>
+          <td>${escapeHtml(row.amplitude)}</td>
+          <td>${escapeHtml(row.workTotal)}</td>
+          <td>${escapeHtml(row.workDay)}</td>
+          <td>${escapeHtml(row.workNight)}</td>
+          <td>${escapeHtml(row.kms)}</td>
+        </tr>
+      `).join('');
+    return `
+      <table class="weekly-table">
+        <thead>
+          <tr>
+            <th>${escapeHtml(week?.label || 'Settimana')}</th>
+            <th>Inizio giornata</th>
+            <th>Fine del giorno</th>
+            <th>Ampiezza</th>
+            <th>Lavoro totale</th>
+            <th>Lavoro diurno</th>
+            <th>Lavoro notturno</th>
+            <th>Kms</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <tr class="week-total-row">
+            <td class="week-total-label">Totali settimanali</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td class="week-total-value">${escapeHtml(week?.totals?.workTotal || '-')}</td>
+            <td class="week-total-value">${escapeHtml(week?.totals?.workDay || '-')}</td>
+            <td class="week-total-value">${escapeHtml(week?.totals?.workNight || '-')}</td>
+            <td class="week-total-value">${escapeHtml(week?.totals?.kms || '-')}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }).join('');
+  const fallbackRowsHtml = safeRows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.date)}</td>
+        <td>${escapeHtml(row.startTime)}</td>
+        <td>${escapeHtml(row.endTime)}</td>
+        <td>${escapeHtml(row.amplitude)}</td>
+        <td>${escapeHtml(row.workTotal)}</td>
+        <td>${escapeHtml(row.kms)}</td>
+      </tr>
+    `).join('');
+
+  const logoPath = path.join(__dirname, '..', 'views', 'assets', 'images', 'logo_black.png');
+  let logoDataUri = '';
+  try {
+    const logoBytes = fs.readFileSync(logoPath);
+    logoDataUri = `data:image/png;base64,${logoBytes.toString('base64')}`;
+  } catch (_) {
+    logoDataUri = '';
+  }
+
+  return `<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Generatore LUL</title>
+    <style>
+      :root { --ink:#0f172a; --muted:#475569; --line:#d4d4d8; --accent:#ff6a00; --accent-soft:#ffedd5; --bg:#ffffff; }
+      html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,Arial,sans-serif;}
+      .page{padding:24px;}
+      .head{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #e5e7eb;padding-bottom:14px;margin-bottom:16px;}
+      .brand-block{display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
+      .logo{height:44px;width:240px;display:block;align-self:flex-start;object-fit:contain;object-position:left center;}
+      .driver-name{font-size:30px;line-height:1.05;font-weight:900;letter-spacing:.02em;margin:0;text-transform:uppercase;}
+      .driver-card{margin:0;color:#334155;font-size:13px;font-weight:600;}
+      .sub{margin:4px 0 0;color:var(--muted);font-size:12px;}
+      .meta{display:grid;grid-template-columns:auto auto;gap:4px 16px;font-size:12px;}
+      .meta strong{font-weight:700;}
+      .section{margin-top:12px;}
+      .section h2{margin:0 0 8px;font-size:14px;}
+      table{width:100%;border-collapse:collapse;font-size:12px;}
+      thead th{background:var(--accent);color:#111827;border:1px solid #f59e0b;padding:6px;text-align:left;font-weight:800;white-space:nowrap;}
+      tbody td{border:1px solid var(--line);padding:6px;white-space:nowrap;}
+      tbody tr:nth-child(even){background:#fafafa;}
+      .small{font-size:12px;color:var(--muted);}
+      .totals-table tbody td{font-weight:800;background:var(--accent-soft);}
+      .weekly-table{margin-bottom:14px;}
+      .week-total-label{font-weight:800;background:var(--accent);color:#111827;border-color:#f59e0b;}
+      .week-total-value{font-weight:800;background:var(--accent-soft);}
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="head">
+        <div class="brand-block">
+          ${logoDataUri ? `<img class="logo" src="${logoDataUri}" alt="Truckly" />` : ''}
+          <h1 class="driver-name">${escapeHtml(driverName || 'Autista')}</h1>
+          <p class="driver-card">ID Carta: ${escapeHtml(driverCardId || '--')}</p>
+          <p class="sub">${escapeHtml(reportCode)} - ${escapeHtml(reportLabel)}</p>
+        </div>
+        <div class="meta">
+          <strong>Generato il</strong><span>${escapeHtml(generatedAt)}</span>
+          <strong>Azienda</strong><span>${escapeHtml(companyName)}</span>
+          <strong>Da</strong><span>${escapeHtml(startDate)}</span>
+          <strong>A</strong><span>${escapeHtml(endDate)}</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Totali periodo analizzato</h2>
+        <table class="totals-table">
+          <thead>
+            <tr>
+              <th>Lavoro totale</th>
+              <th>Lavoro diurno</th>
+              <th>Lavoro notturno</th>
+              <th>Kms</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${escapeHtml(periodTotals.workTotal)}</td>
+              <td>${escapeHtml(periodTotals.workDay)}</td>
+              <td>${escapeHtml(periodTotals.workNight)}</td>
+              <td>${escapeHtml(periodTotals.kms)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Tabelle settimanali</h2>
+        ${weeklyTablesHtml || '<p class="small">Nessun riepilogo settimanale disponibile.</p>'}
+      </div>
+
+      ${!weeklyTablesHtml && fallbackRowsHtml ? `
+      <div class="section">
+        <h2>Dettaglio giornaliero</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Inizio giornata</th>
+              <th>Fine giornata</th>
+              <th>Ampiezza</th>
+              <th>Lavoro totale</th>
+              <th>Kms</th>
+            </tr>
+          </thead>
+          <tbody>${fallbackRowsHtml}</tbody>
+        </table>
+      </div>` : ''}
+    </div>
+  </body>
+</html>`;
+};
+
+const parseHexColor = (value, fallback = [0.07, 0.1, 0.15]) => {
+  const raw = String(value || '').trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) {
+    return rgb(fallback[0], fallback[1], fallback[2]);
+  }
+  const r = parseInt(raw.slice(0, 2), 16) / 255;
+  const g = parseInt(raw.slice(2, 4), 16) / 255;
+  const b = parseInt(raw.slice(4, 6), 16) / 255;
+  return rgb(r, g, b);
+};
+
+const normalizePdfProvider = (value) => {
+  const v = String(value || '').trim().toLowerCase();
+  if (v === 'seep') return 'seep';
+  return 'truckly';
+};
+
+const applyTrucklyBrandingToPdf = async (buffer, options = {}) => {
+  const primary = parseHexColor(options.primaryColor || '111827', [0.07, 0.1, 0.15]);
+  const companyName = String(options.companyName || 'Truckly').trim() || 'Truckly';
+  const logoPath = path.join(__dirname, '..', 'views', 'assets', 'images', 'logo_black.png');
+
+  const doc = await PDFDocument.load(buffer);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  let logoImage = null;
+  try {
+    const logoBytes = fs.readFileSync(logoPath);
+    logoImage = await doc.embedPng(logoBytes);
+  } catch (_) {
+    logoImage = null;
+  }
+
+  const pages = doc.getPages();
+  pages.forEach((page) => {
+    const { width, height } = page.getSize();
+
+    // Clear only the top header strip so we do not crop underlying section titles.
+    const stripY = height - 74;
+    const stripH = 58;
+    page.drawRectangle({ x: 0, y: stripY, width, height: stripH, color: rgb(1, 1, 1) });
+
+    if (logoImage) {
+      const scaled = logoImage.scale(0.27);
+      page.drawImage(logoImage, {
+        x: 18,
+        y: height - 69,
+        width: scaled.width,
+        height: scaled.height,
+      });
+    } else {
+      page.drawText(companyName, { x: 20, y: height - 54, size: 24, font: fontBold, color: primary });
+    }
+  });
+
+  return Buffer.from(await doc.save());
+};
+
+const recolorAndNormalizeSeepPdf = (buffer) => {
+  try {
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'seep-pdf-postprocess.py');
+    if (!fs.existsSync(scriptPath)) return buffer;
+    const nonce = crypto.randomBytes(8).toString('hex');
+    const inputPath = path.join(os.tmpdir(), `seep_in_${nonce}.pdf`);
+    const outputPath = path.join(os.tmpdir(), `seep_out_${nonce}.pdf`);
+    fs.writeFileSync(inputPath, buffer);
+    const run = spawnSync('python', [scriptPath, inputPath, outputPath], {
+      encoding: 'utf8',
+      timeout: 20_000,
+    });
+    if (run.status !== 0 || !fs.existsSync(outputPath)) {
+      try { fs.unlinkSync(inputPath); } catch {}
+      try { fs.unlinkSync(outputPath); } catch {}
+      return buffer;
+    }
+    const out = fs.readFileSync(outputPath);
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(outputPath); } catch {}
+    return out;
+  } catch (_) {
+    return buffer;
+  }
+};
+
+const resolveDriverGraphsPayload = async (payload = {}) => {
+  const {
+    localDriverId,
+    tachoDriverId: requestedTachoDriverId,
+    seepDriverId,
+    startDate,
+    endDate,
+    timezone = 'UTC',
+    regulation = 0,
+    penalty = 0,
+    onlyInfringementsGraphs = false,
+    ignoreCountrySelectedInfringements = false,
+  } = payload || {};
+
+  if (!startDate || !endDate) {
+    const err = new Error('startDate e endDate sono obbligatori.');
+    err.statusCode = 400;
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  if (!localDriverId && !requestedTachoDriverId && !seepDriverId) {
+    const err = new Error('Serve almeno uno tra localDriverId, tachoDriverId o seepDriverId.');
+    err.statusCode = 400;
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+
+  let resolvedLocalDriver = null;
+  let resolvedTachoDriverId = requestedTachoDriverId ? String(requestedTachoDriverId).trim() : null;
+  if (localDriverId && mongoose.Types.ObjectId.isValid(String(localDriverId))) {
+    resolvedLocalDriver = await Drivers.findById(localDriverId).lean();
+    if (!resolvedLocalDriver) {
+      const err = new Error('Autista locale non trovato.');
+      err.statusCode = 404;
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    if (!resolvedTachoDriverId) {
+      resolvedTachoDriverId = resolvedLocalDriver?.tachoDriverId
+        ? String(resolvedLocalDriver.tachoDriverId).trim()
+        : null;
+    }
+  }
+
+  const output = await SeepTrucker.driverGraphs({
+    localDriverId: localDriverId ? String(localDriverId).trim() : null,
+    tachoDriverId: resolvedTachoDriverId,
+    seepDriverId: seepDriverId ? String(seepDriverId).trim() : null,
+    localDriverName: resolvedLocalDriver?.name || null,
+    localDriverSurname: resolvedLocalDriver?.surname || null,
+    startDate,
+    endDate,
+    timezone,
+    regulation,
+    penalty,
+    onlyInfringementsGraphs,
+    ignoreCountrySelectedInfringements,
+  });
+
+  return {
+    output,
+    resolvedLocalDriver,
+    request: {
+      localDriverId: localDriverId ? String(localDriverId).trim() : null,
+      tachoDriverId: resolvedTachoDriverId,
+      seepDriverId: seepDriverId ? String(seepDriverId).trim() : null,
+      startDate,
+      endDate,
+      timezone,
+    },
+  };
+};
 
 const normalizeCompanyName = (value) =>
   String(value || '')
@@ -410,34 +917,37 @@ router.get('/tacho/files', auth, async (req, res) => {
     const driverItems = Array.isArray(driverRes?.items) ? driverRes.items : [];
     const vehicleItems = Array.isArray(vehicleRes?.items) ? vehicleRes.items : [];
 
-    try {
-      const dumpPath = path.join(process.cwd(), 'Files_info.json');
-      fs.writeFileSync(
-        dumpPath,
-        JSON.stringify(
-          {
-            fetchedAt: new Date().toISOString(),
-            source,
-            request: {
-              companyId,
-              from,
-              to,
-              contains,
-              pageNumber,
-              pageSize,
+    const canDumpDebug = process.env.NODE_ENV !== 'production' && !process.env.K_SERVICE;
+    if (canDumpDebug) {
+      try {
+        const dumpPath = path.join(process.cwd(), 'Files_info.json');
+        fs.writeFileSync(
+          dumpPath,
+          JSON.stringify(
+            {
+              fetchedAt: new Date().toISOString(),
+              source,
+              request: {
+                companyId,
+                from,
+                to,
+                contains,
+                pageNumber,
+                pageSize,
+              },
+              teltonikaParams: params,
+              driverSample: driverItems[0] || null,
+              vehicleSample: vehicleItems[0] || null,
             },
-            teltonikaParams: params,
-            driverSample: driverItems[0] || null,
-            vehicleSample: vehicleItems[0] || null,
-          },
-          null,
-          2,
-        ),
-        'utf8',
-      );
-      console.log('[api] dumped files info to', dumpPath);
-    } catch (err) {
-      console.warn('[api] failed to dump files info', err?.message || err);
+            null,
+            2,
+          ),
+          'utf8',
+        );
+        console.log('[api] dumped files info to', dumpPath);
+      } catch (err) {
+        console.warn('[api] failed to dump files info', err?.message || err);
+      }
     }
 
     const resolvePeriod = (item) => {
@@ -493,15 +1003,47 @@ router.get('/tacho/files', auth, async (req, res) => {
       return !name || name.endsWith('.ddd');
     });
 
-    filtered.sort((a, b) => {
+    const seepStatusRows = await SeepFileStatus.find(
+      { teltonikaFileId: { $in: filtered.map((item) => String(item.id || '')).filter(Boolean) } },
+      {
+        _id: 0,
+        teltonikaFileId: 1,
+        seepUploaded: 1,
+        seepFileId: 1,
+        uploadedAt: 1,
+        lastCheckedAt: 1,
+        error: 1,
+      },
+    ).lean();
+    const seepById = new Map(
+      seepStatusRows.map((row) => [String(row.teltonikaFileId || ''), row]),
+    );
+
+    const enriched = filtered.map((item) => {
+      const seep = seepById.get(String(item.id || ''));
+      let syncState = 'pending';
+      if (seep?.seepUploaded) syncState = 'uploaded';
+      else if (seep?.error) syncState = 'error';
+      return {
+        ...item,
+        seepUploaded: Boolean(seep?.seepUploaded),
+        seepFileId: seep?.seepFileId || null,
+        uploadedAt: seep?.uploadedAt || null,
+        lastCheckedAt: seep?.lastCheckedAt || null,
+        error: seep?.error || null,
+        syncState,
+      };
+    });
+
+    enriched.sort((a, b) => {
       const ta = a.downloadTime ? new Date(a.downloadTime).getTime() : 0;
       const tb = b.downloadTime ? new Date(b.downloadTime).getTime() : 0;
       return tb - ta;
     });
 
     return res.status(200).json({
-      items: filtered,
-      total: filtered.length,
+      items: enriched,
+      total: enriched.length,
       sources: {
         driverCount: driverItems.length,
         vehicleCount: vehicleItems.length,
@@ -1875,11 +2417,284 @@ router.post('/fuel/history', auth, imeiOwnership, async (req, res) => {
   }
 });
 
-// === Driver activity test endpoint ===
+router.get('/seep/sync/status', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  return res.status(200).json({
+    status: getSyncStatus(),
+    config: {
+      interval: SYNC_INTERVAL,
+      enabled: String(process.env.SEEP_SYNC_ENABLED || 'true').toLowerCase() !== 'false',
+      runOnBoot: String(process.env.SEEP_SYNC_RUN_ON_BOOT || 'false').toLowerCase() === 'true',
+    },
+  });
+});
+
+router.post('/seep/sync/run', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  try {
+    const result = await runSync({ trigger: 'manual' });
+    if (result?.alreadyRunning) {
+      return res.status(409).json({
+        error: 'ALREADY_RUNNING',
+        message: 'Sincronizzazione gia in corso.',
+        status: result.state || getSyncStatus(),
+      });
+    }
+    return res.status(200).json({
+      ok: true,
+      result,
+      status: getSyncStatus(),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
+router.get('/seep/files/status', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const page = Math.max(Number(req.query.page || 1) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize || 100) || 100, 1), 500);
+  const skip = (page - 1) * pageSize;
+  try {
+    const [items, total] = await Promise.all([
+      SeepFileStatus.find({})
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(pageSize)
+        .lean(),
+      SeepFileStatus.countDocuments({}),
+    ]);
+    return res.status(200).json({
+      items,
+      page,
+      pageSize,
+      total,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
+router.get('/seep/lul/config', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  return res.status(200).json({
+    enabled: SeepTrucker.lulEnabled(),
+    reason: SeepTrucker.lulEnabled() ? null : 'SEEP_LUL_ENABLED=false',
+  });
+});
+
+router.post('/seep/lul', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  try {
+    const payload = req.body || {};
+    const result = await SeepTrucker.createLul(payload);
+    return res.status(200).json({ result });
+  } catch (err) {
+    const status = Number(err?.statusCode) || 500;
+    return res.status(status).json({ error: err?.code || 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
+router.post('/seep/lul/preview', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  try {
+    const { output, resolvedLocalDriver, request } = await resolveDriverGraphsPayload(req.body || {});
+    const reportCode = String(req.body?.reportCode || 'D04').toUpperCase();
+    const report = LUL_REPORT_TYPES[reportCode] || LUL_REPORT_TYPES.D04;
+    const analysis = output?.analysis || {};
+    const weeks = Array.isArray(analysis?.activityAnalysis?.weeks) ? analysis.activityAnalysis.weeks : [];
+    let rows = [];
+    let workTimesData = null;
+    let builtFromXlsx = false;
+
+    // Prefer Seep official work_times table (includes start/end day and kms).
+    if (report.seep === 'work_times' && output?.driver?.resolvedSeepDriverId) {
+      try {
+        const xlsx = await SeepTrucker.driverXlsxReport({
+          driverId: output.driver.resolvedSeepDriverId,
+          reportType: 'work_times',
+          startDate: String(request?.startDate || '').slice(0, 10),
+          endDate: String(request?.endDate || '').slice(0, 10),
+          timezone: request?.timezone || 'Europe/Rome',
+          regulation: Number(req.body?.regulation || 0),
+          penalty: Number(req.body?.penalty || 0),
+          onlyInfringementsGraphs: Boolean(req.body?.onlyInfringementsGraphs),
+          ignoreCountrySelectedInfringements: Boolean(req.body?.ignoreCountrySelectedInfringements),
+          activitiesGraphs: false,
+          activitiesTables: true,
+          infringementsLists: false,
+        });
+        workTimesData = parseWorkTimesRowsFromXlsx(xlsx.buffer);
+        rows = Array.isArray(workTimesData?.dailyRows) ? workTimesData.dailyRows : [];
+        builtFromXlsx = true;
+      } catch (xlsxErr) {
+        console.warn('[api] LUL preview xlsx parse fallback', xlsxErr?.message || xlsxErr);
+      }
+    }
+
+    // Fallback from activity-analysis when xlsx is unavailable.
+    if (!rows.length) {
+      const fallbackRows = [];
+      weeks.forEach((week) => {
+        const days = Array.isArray(week?.days) ? week.days : [];
+        days.forEach((day) => {
+          const activities = Array.isArray(day?.activities) ? day.activities : [];
+          const metrics = day?.metrics || {};
+          const bounds = pickWorkActivityBounds(activities);
+          fallbackRows.push({
+            date: String(day?.date || '--'),
+            startTime: bounds.first,
+            endTime: bounds.last,
+            amplitude: minutesToHHMM(metricToMinutes(metrics?.totalAmplitude)),
+            workTotal: minutesToHHMM(metricToMinutes(metrics?.totalWork)),
+            kms: day?.kms ?? day?.km ?? day?.distance ?? '-',
+          });
+        });
+      });
+      rows = fallbackRows;
+    }
+
+    const rangeStart = String(request?.startDate || '').slice(0, 10);
+    const rangeEnd = String(request?.endDate || '').slice(0, 10);
+    if (!builtFromXlsx && rangeStart && rangeEnd) {
+      rows = rows.filter((row) => {
+        const day = String(row?.date || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return true;
+        return day >= rangeStart && day <= rangeEnd;
+      });
+    }
+
+    const driverName = resolvedLocalDriver
+      ? `${resolvedLocalDriver?.name || ''} ${resolvedLocalDriver?.surname || ''}`.trim()
+      : (output?.driver?.match?.name || 'Autista');
+
+    const html = buildLulPreviewHtml({
+      companyName: req.user?.companyName || 'Truckly',
+      driverName,
+      driverCardId: resolvedLocalDriver?.tachoDriverId || output?.driver?.match?.cardNumber || null,
+      reportCode: report.code,
+      reportLabel: report.label,
+      generatedAt: new Date().toLocaleString('it-IT'),
+      startDate: String(request?.startDate || '').slice(0, 10),
+      endDate: String(request?.endDate || '').slice(0, 10),
+      rows,
+      workTimesData,
+    });
+
+    const fileBaseName = `${driverName.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()}_${report.code}_${Date.now()}`;
+    return res.status(200).json({
+      report: report.code,
+      reportLabel: report.label,
+      html,
+      fileBaseName,
+    });
+  } catch (err) {
+    const status = Number(err?.statusCode) || 500;
+    return res.status(status).json({ error: err?.code || 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
+router.post('/seep/driver-graphs', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  try {
+    const { output, resolvedLocalDriver } = await resolveDriverGraphsPayload(req.body || {});
+
+    return res.status(200).json({
+      source: output.source,
+      driver: {
+        ...output.driver,
+        localDriver: resolvedLocalDriver
+          ? {
+              id: resolvedLocalDriver?._id?.toString?.() || resolvedLocalDriver?._id || null,
+              name: resolvedLocalDriver?.name || null,
+              surname: resolvedLocalDriver?.surname || null,
+              tachoDriverId: resolvedLocalDriver?.tachoDriverId || null,
+            }
+          : null,
+      },
+      days: output.days || [],
+    });
+  } catch (err) {
+    const status = Number(err?.statusCode) || 500;
+    return res.status(status).json({ error: err?.code || 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
+router.post('/seep/driver-graphs/export-pdf', auth, async (req, res) => {
+  if (!canManageDrivers(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  try {
+    const { output, resolvedLocalDriver, request } = await resolveDriverGraphsPayload(req.body || {});
+    const provider = normalizePdfProvider(req.body?.provider || process.env.PDF_PROVIDER || 'truckly');
+    const brand = req.body?.brand || {};
+    const toReportDate = (value) => {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      return raw.slice(0, 10);
+    };
+    const driverName = resolvedLocalDriver
+      ? `${resolvedLocalDriver?.name || ''} ${resolvedLocalDriver?.surname || ''}`.trim()
+      : (output?.driver?.match?.name || 'driver');
+
+    const pdf = await SeepTrucker.driverPdfReport({
+      driverId: output?.driver?.resolvedSeepDriverId,
+      reportType: 'activity_times',
+      startDate: toReportDate(request.startDate),
+      endDate: toReportDate(request.endDate),
+      timezone: request.timezone || 'Europe/Rome',
+      regulation: Number(request.regulation || 0),
+      penalty: Number(request.penalty || 0),
+      onlyInfringementsGraphs: Boolean(request.onlyInfringementsGraphs),
+      ignoreCountrySelectedInfringements: Boolean(request.ignoreCountrySelectedInfringements),
+      activitiesGraphs: false,
+      activitiesTables: true,
+      infringementsLists: false,
+    });
+
+    const normalizedBuffer = provider === 'truckly'
+      ? recolorAndNormalizeSeepPdf(pdf.buffer)
+      : pdf.buffer;
+
+    const brandedBuffer = provider === 'truckly'
+      ? await applyTrucklyBrandingToPdf(normalizedBuffer, {
+          companyName: brand?.companyName || req.user?.companyName || 'Truckly',
+          primaryColor: brand?.primaryColor || '111827',
+        })
+      : normalizedBuffer;
+
+    const safeName = `${driverName.toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}.pdf`;
+    res.setHeader('Content-Type', pdf.contentType || 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    return res.status(200).send(brandedBuffer);
+  } catch (err) {
+    const status = Number(err?.statusCode) || 500;
+    return res.status(status).json({ error: err?.code || 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
+// === Driver activity test endpoint (debug only) ===
 // POST /api/seep/test
 // Body: { driverId, startDate, endDate, timezone, regulation, penalty, onlyInfringementsGraphs, ignoreCountrySelectedInfringements }
 // Optionally attach a multipart file under field "file" to upload a DDD before analysis.
-router.post('/seep/test', async (req, res) => {
+router.post('/seep/test', auth, async (req, res) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
   try {
     const {
       driverId,
