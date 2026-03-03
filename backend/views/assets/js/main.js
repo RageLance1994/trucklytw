@@ -330,6 +330,7 @@ function bindTooltipScrollHint(root) {
 function collectTooltipFields(root) {
   if (!root) return {};
   return {
+    vehicleStatus: root.querySelector('[data-field="tooltip-vehicle-status"]'),
     updatedAt: root.querySelector('[data-field="tooltip-updated-at"]'),
     lat: root.querySelector('[data-field="tooltip-lat"]'),
     lng: root.querySelector('[data-field="tooltip-lng"]'),
@@ -350,6 +351,13 @@ function updateTooltipEntry(entry, payload) {
   const gps = data.gps || {};
   const io = data.io || {};
   const summary = payload.fuelSummary || computeFuelSummary(io, payload.vehicle || {});
+  const vehicleStatus = payload.status || getVehicleState(gps.Speed, io.ignition);
+  if (nodes.vehicleStatus) {
+    nodes.vehicleStatus.textContent = vehicleStatus?.status || "Sconosciuto";
+    const statusClasses = ["success", "danger", "warning", "info", "muted"];
+    statusClasses.forEach((cls) => nodes.vehicleStatus.classList.remove(cls));
+    if (vehicleStatus?.class) nodes.vehicleStatus.classList.add(vehicleStatus.class);
+  }
   if (nodes.updatedAt) {
     nodes.updatedAt.textContent = formatDate(new Date(data.timestamp));
   }
