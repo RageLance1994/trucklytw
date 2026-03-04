@@ -69,6 +69,7 @@ export class TrucklyMap {
   markers: Map<string, ManagedMarker> = new Map();
   _routeLayers: Map<string, { sourceId: string; layerId: string; casingId: string }> =
     new Map();
+  _navigationRouteIds: { sourceId: string; layerId: string; casingId: string } | null = null;
   _clusterUpdateScheduled = false;
   _clusterUpdateFrame: number | null = null;
   _clusters: ClusterBucket[] = [];
@@ -615,6 +616,98 @@ export class TrucklyMap {
       return;
     }
     Array.from(this._routeLayers.keys()).forEach(removeOne);
+  }
+
+  clearNavigationRoute() {
+    const ids = this._navigationRouteIds;
+    if (!ids) return;
+    const map = this.map;
+    try {
+      if (map.getLayer(ids.layerId)) map.removeLayer(ids.layerId);
+    } catch {}
+    try {
+      if (map.getLayer(ids.casingId)) map.removeLayer(ids.casingId);
+    } catch {}
+    try {
+      if (map.getSource(ids.sourceId)) map.removeSource(ids.sourceId);
+    } catch {}
+    this._navigationRouteIds = null;
+  }
+
+  drawNavigationRoute(geometry: { type?: string; coordinates?: any[] } | null) {
+    if (!geometry || geometry.type !== "LineString" || !Array.isArray(geometry.coordinates)) return;
+    const points = geometry.coordinates
+      .map((item) => {
+        const lng = Number(Array.isArray(item) ? item[0] : null);
+        const lat = Number(Array.isArray(item) ? item[1] : null);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+        return [lng, lat] as [number, number];
+      })
+      .filter(Boolean) as [number, number][];
+
+    if (points.length < 2) return;
+
+    this._withStyleReady(() => {
+      const map = this.map;
+      this.clearNavigationRoute();
+      const sourceId = "nav-route-source";
+      const casingId = "nav-route-casing";
+      const layerId = "nav-route-line";
+      this._navigationRouteIds = { sourceId, casingId, layerId };
+
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: points,
+              },
+              properties: {},
+            },
+          ],
+        },
+      });
+
+      try {
+        map.addLayer({
+          id: casingId,
+          type: "line",
+          source: sourceId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 4, 10, 7, 14, 10, 18, 14],
+            "line-color": "#000000",
+            "line-opacity": 0.32,
+          },
+        });
+      } catch {}
+
+      try {
+        map.addLayer({
+          id: layerId,
+          type: "line",
+          source: sourceId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 2.5, 10, 4, 14, 6, 18, 10],
+            "line-color": "#3b82f6",
+            "line-opacity": 0.95,
+          },
+        });
+      } catch {}
+
+      const lons = points.map((p) => p[0]);
+      const lats = points.map((p) => p[1]);
+      const sw: [number, number] = [Math.min(...lons), Math.min(...lats)];
+      const ne: [number, number] = [Math.max(...lons), Math.max(...lats)];
+      if (Number.isFinite(sw[0]) && Number.isFinite(sw[1]) && Number.isFinite(ne[0]) && Number.isFinite(ne[1])) {
+        map.fitBounds([sw, ne], { padding: 70, maxZoom: 15 });
+      }
+    });
   }
 
   drawRoute(imei: string, history: Array<{ gps?: any; io?: any }>) {

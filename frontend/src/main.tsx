@@ -321,7 +321,7 @@ function DashboardPage() {
   const [isQuickSidebarOpen, setIsQuickSidebarOpen] = React.useState(false);
   const [bottomBarState, setBottomBarState] = React.useState<{
     open: boolean;
-    mode: "driver" | "fuel" | "tacho" | "vehicles" | "drivers";
+    mode: "driver" | "fuel" | "tacho" | "vehicles" | "drivers" | "navigation";
   }>({ open: false, mode: "driver" });
   const [mobileMarkerPanel, setMobileMarkerPanel] = React.useState<{
     open: boolean;
@@ -373,7 +373,7 @@ function DashboardPage() {
   const [vehicleEditTarget, setVehicleEditTarget] = React.useState<Vehicle | null>(null);
   const [vehicleEditFocus, setVehicleEditFocus] = React.useState<"tags" | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<
-    "driver" | "routes" | "geofence" | "vehicle" | "admin" | "driver-register"
+    "driver" | "routes" | "navigation" | "geofence" | "vehicle" | "admin" | "driver-register"
   >("driver");
   const [geofenceDraft, setGeofenceDraft] = React.useState<{
     geofenceId: string;
@@ -386,6 +386,9 @@ function DashboardPage() {
     () => vehicles.find((vehicle) => vehicle.imei === selectedFuelImei) ?? null,
     [vehicles, selectedFuelImei],
   );
+  const selectedBottomVehicleImei = bottomBarState.mode === "navigation"
+    ? selectedRouteImei
+    : selectedFuelImei;
 
   React.useEffect(() => {
     selectedFuelImeiRef.current = selectedFuelImei;
@@ -481,6 +484,12 @@ function DashboardPage() {
           detail: { imei },
         }),
       );
+    } else if (action === "navigation") {
+      window.dispatchEvent(
+        new CustomEvent("truckly:bottom-bar-toggle", {
+          detail: { mode: "navigation", imei },
+        }),
+      );
     } else if (action === "geofence") {
       (window as any).trucklyStartGeofence?.(imei);
     }
@@ -532,6 +541,10 @@ function DashboardPage() {
   }, [loadVehicles]);
 
   React.useEffect(() => {
+    (window as any).trucklyVehicles = vehicles;
+  }, [vehicles]);
+
+  React.useEffect(() => {
     const handler = () => {
       setLoading(true);
       void loadVehicles();
@@ -566,6 +579,7 @@ function DashboardPage() {
         detail?.mode === "fuel"
         || detail?.mode === "tacho"
         || detail?.mode === "vehicles"
+        || detail?.mode === "navigation"
         || detail?.mode === "drivers"
           ? detail.mode
           : "driver";
@@ -573,6 +587,9 @@ function DashboardPage() {
 
       if (mode === "fuel") {
         setSelectedFuelImei(imei);
+      }
+      if (mode === "navigation") {
+        setSelectedRouteImei(imei);
       }
       if (mode === "vehicles") {
         setIsQuickSidebarOpen(false);
@@ -609,6 +626,9 @@ function DashboardPage() {
       if (bottomBarState.open && bottomBarState.mode === "fuel") {
         setSelectedFuelImei(imei);
       }
+      if (bottomBarState.open && bottomBarState.mode === "navigation") {
+        setSelectedRouteImei(imei);
+      }
     };
 
     window.addEventListener("vchange", handler);
@@ -625,6 +645,18 @@ function DashboardPage() {
     };
     window.addEventListener("truckly:routes-open", handler);
     return () => window.removeEventListener("truckly:routes-open", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail || {};
+      setSelectedRouteImei(detail?.imei || null);
+      setSidebarMode("navigation");
+      setIsDriverSidebarOpen(true);
+      setBottomBarState((prev) => ({ ...prev, open: false }));
+    };
+    window.addEventListener("truckly:navigation-open", handler);
+    return () => window.removeEventListener("truckly:navigation-open", handler);
   }, []);
 
   React.useEffect(() => {
@@ -1318,7 +1350,7 @@ function DashboardPage() {
             mode={bottomBarState.mode}
             onClose={() => setBottomBarState((prev) => ({ ...prev, open: false }))}
             selectedDriverImei={selectedDriverImei}
-            selectedVehicleImei={selectedFuelImei}
+            selectedVehicleImei={selectedBottomVehicleImei}
             selectedVehicle={selectedFuelVehicle}
             vehicles={vehicles}
           />
@@ -1767,6 +1799,14 @@ function DashboardPage() {
                         >
                           <i className="fa fa-road text-sm" aria-hidden="true" />
                           Percorsi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMobileMarkerAction("navigation")}
+                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                        >
+                          <i className="fa fa-location-arrow text-sm" aria-hidden="true" />
+                          Navigazione
                         </button>
                         <button
                           type="button"

@@ -31,6 +31,157 @@ const canManageUsers = (user) => getPrivilegeLevel(user) <= 2;
 const canEditVehicles = (user) => getPrivilegeLevel(user) <= 1;
 const canManageDrivers = (user) => getPrivilegeLevel(user) <= 1;
 
+const DEFAULT_ROUTING_PROVIDER = "ors";
+const ROUTING_TIMEOUT_MS = 12_000;
+
+const toFiniteNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const normalizeLngLat = (raw = {}) => {
+  const lng = toFiniteNumber(raw?.lng ?? raw?.lon ?? raw?.longitude);
+  const lat = toFiniteNumber(raw?.lat ?? raw?.latitude);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lng, lat };
+};
+
+const resolveRoutingProvider = (requested = null) => {
+  const normalized = String(requested || process.env.ROUTING_PROVIDER || DEFAULT_ROUTING_PROVIDER)
+    .trim()
+    .toLowerCase();
+  return normalized === "google" ? "google" : "ors";
+};
+
+const withTimeoutFetch = async (url, options = {}, timeoutMs = ROUTING_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const geocodeWithORS = async (query) => {
+  const apiKey = process.env.ORS_API_KEY || "";
+  if (!apiKey) throw new Error("ORS_API_KEY missing");
+  const url = `https://api.openrouteservice.org/geocode/search?api_key=${encodeURIComponent(apiKey)}&text=${encodeURIComponent(query)}&size=6`;
+  const res = await withTimeoutFetch(url, { method: "GET" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ORS geocode failed (${res.status}): ${text.slice(0, 180)}`);
+  }
+  const payload = await res.json();
+  const features = Array.isArray(payload?.features) ? payload.features : [];
+  return features
+    .map((feature) => {
+      const coords = feature?.geometry?.coordinates;
+      const lng = toFiniteNumber(Array.isArray(coords) ? coords[0] : null);
+      const lat = toFiniteNumber(Array.isArray(coords) ? coords[1] : null);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const label = feature?.properties?.label || feature?.properties?.name || `${lat},${lng}`;
+      return { label, lat, lng };
+    })
+    .filter(Boolean);
+};
+
+const geocodeWithGoogle = async (query) => {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || "";
+  if (!apiKey) throw new Error("GOOGLE_MAPS_API_KEY missing");
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${encodeURIComponent(apiKey)}&language=it`;
+  const res = await withTimeoutFetch(url, { method: "GET" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Google geocode failed (${res.status}): ${text.slice(0, 180)}`);
+  }
+  const payload = await res.json();
+  const rows = Array.isArray(payload?.results) ? payload.results : [];
+  return rows.slice(0, 6)
+    .map((item) => {
+      const lat = toFiniteNumber(item?.geometry?.location?.lat);
+      const lng = toFiniteNumber(item?.geometry?.location?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        label: item?.formatted_address || `${lat},${lng}`,
+        lat,
+        lng,
+      };
+    })
+    .filter(Boolean);
+};
+
+const routeWithORS = async ({ from, to }) => {
+  const apiKey = process.env.ORS_API_KEY || "";
+  if (!apiKey) throw new Error("ORS_API_KEY missing");
+  const url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
+  const body = {
+    coordinates: [
+      [from.lng, from.lat],
+      [to.lng, to.lat],
+    ],
+    instructions: false,
+  };
+  const res = await withTimeoutFetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`ORS route failed (${res.status}): ${text.slice(0, 180)}`);
+  }
+  const payload = await res.json();
+  const feature = Array.isArray(payload?.features) ? payload.features[0] : null;
+  const summary = feature?.properties?.summary || {};
+  const geometry = feature?.geometry || null;
+  return {
+    provider: "ors",
+    hasTraffic: false,
+    distanceKm: Number.isFinite(summary?.distance) ? Number((summary.distance / 1000).toFixed(2)) : null,
+    durationMin: Number.isFinite(summary?.duration) ? Number((summary.duration / 60).toFixed(1)) : null,
+    durationTrafficMin: null,
+    geometry,
+    raw: { summary },
+  };
+};
+
+const routeWithGoogle = async ({ from, to, departureTime }) => {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || "";
+  if (!apiKey) throw new Error("GOOGLE_MAPS_API_KEY missing");
+  const dep = Number.isFinite(departureTime) ? Math.floor(departureTime / 1000) : "now";
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(`${from.lat},${from.lng}`)}&destination=${encodeURIComponent(`${to.lat},${to.lng}`)}&departure_time=${encodeURIComponent(dep)}&traffic_model=best_guess&key=${encodeURIComponent(apiKey)}&language=it`;
+  const res = await withTimeoutFetch(url, { method: "GET" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Google route failed (${res.status}): ${text.slice(0, 180)}`);
+  }
+  const payload = await res.json();
+  const route = Array.isArray(payload?.routes) ? payload.routes[0] : null;
+  const leg = Array.isArray(route?.legs) ? route.legs[0] : null;
+  const polyline = route?.overview_polyline?.points || null;
+  const distanceMeters = toFiniteNumber(leg?.distance?.value);
+  const durationSeconds = toFiniteNumber(leg?.duration?.value);
+  const trafficSeconds = toFiniteNumber(leg?.duration_in_traffic?.value);
+  return {
+    provider: "google",
+    hasTraffic: Number.isFinite(trafficSeconds),
+    distanceKm: Number.isFinite(distanceMeters) ? Number((distanceMeters / 1000).toFixed(2)) : null,
+    durationMin: Number.isFinite(durationSeconds) ? Number((durationSeconds / 60).toFixed(1)) : null,
+    durationTrafficMin: Number.isFinite(trafficSeconds) ? Number((trafficSeconds / 60).toFixed(1)) : null,
+    geometry: polyline ? { type: "EncodedPolyline", polyline } : null,
+    raw: {
+      status: payload?.status || null,
+      warnings: Array.isArray(route?.warnings) ? route.warnings : [],
+    },
+  };
+};
+
 const LUL_REPORT_TYPES = {
   D01: { code: 'D01', label: 'Report di attivita e infrazioni', seep: 'activity_infringements' },
   D02: { code: 'D02', label: 'Dichiarazione di attivita', seep: 'registered_places' },
@@ -2234,12 +2385,66 @@ router.post('/drivers/import', auth, async (req, res) => {
   }
 });
 
-module.exports = router;
+router.post('/nav/geocode', auth, async (req, res) => {
+  try {
+    const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
+    const requestedProvider = typeof req.body?.provider === 'string' ? req.body.provider : null;
+    if (!query || query.length < 3) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Inserisci almeno 3 caratteri.' });
+    }
 
-const toFiniteNumber = (value) => {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-};
+    const provider = resolveRoutingProvider(requestedProvider);
+    let candidates = [];
+    if (provider === 'google') {
+      try {
+        candidates = await geocodeWithGoogle(query);
+      } catch (err) {
+        console.warn('[api.nav.geocode] google failed, fallback to ORS', err?.message || err);
+        candidates = await geocodeWithORS(query);
+        return res.status(200).json({ provider: 'ors', fallbackFrom: 'google', candidates });
+      }
+    } else {
+      candidates = await geocodeWithORS(query);
+    }
+    return res.status(200).json({ provider, candidates });
+  } catch (err) {
+    const message = err?.message || 'Errore geocoding';
+    return res.status(502).json({ error: 'GEOCODE_FAILED', message });
+  }
+});
+
+router.post('/nav/route', auth, async (req, res) => {
+  try {
+    const requestedProvider = typeof req.body?.provider === 'string' ? req.body.provider : null;
+    const from = normalizeLngLat(req.body?.from || {});
+    const to = normalizeLngLat(req.body?.to || {});
+    const departureTime = toFiniteNumber(req.body?.departureTime) || Date.now();
+    if (!from || !to) {
+      return res.status(400).json({ error: 'BAD_REQUEST', message: 'Coordinate partenza/arrivo non valide.' });
+    }
+
+    const provider = resolveRoutingProvider(requestedProvider);
+    let payload;
+    if (provider === 'google') {
+      try {
+        payload = await routeWithGoogle({ from, to, departureTime });
+      } catch (err) {
+        console.warn('[api.nav.route] google failed, fallback to ORS', err?.message || err);
+        payload = await routeWithORS({ from, to });
+        payload.fallbackFrom = 'google';
+      }
+    } else {
+      payload = await routeWithORS({ from, to });
+    }
+
+    return res.status(200).json(payload);
+  } catch (err) {
+    const message = err?.message || 'Errore calcolo rotta';
+    return res.status(502).json({ error: 'ROUTE_FAILED', message });
+  }
+});
+
+module.exports = router;
 
 const toMillis = (value) => {
   if (value instanceof Date) {

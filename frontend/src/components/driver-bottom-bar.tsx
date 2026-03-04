@@ -8,8 +8,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { API_BASE_URL } from "../config";
+import { RouteCalculator } from "./route-calculator";
 
-type BottomBarMode = "driver" | "fuel" | "tacho" | "vehicles" | "drivers";
+type BottomBarMode = "driver" | "fuel" | "tacho" | "vehicles" | "drivers" | "navigation";
 
 type DriverBottomBarProps = {
   isOpen: boolean;
@@ -546,9 +547,21 @@ export function DriverBottomBar({
       cancelled = true;
     };
   }, []);
+  const navigationVehicleLabel = React.useMemo(() => {
+    if (mode !== "navigation" || !selectedVehicleImei) return null;
+    const target = vehicles.find((vehicle) => String(vehicle?.imei || "") === String(selectedVehicleImei));
+    if (!target) return selectedVehicleImei;
+    const plate = typeof target?.plate === "string"
+      ? target.plate
+      : target?.plate?.v || target?.plate?.value || "";
+    const nickname = target?.nickname || target?.name || "";
+    return [nickname, plate].filter(Boolean).join(" | ") || selectedVehicleImei;
+  }, [mode, selectedVehicleImei, vehicles]);
   const title =
       mode === "fuel"
         ? "Dashboard carburante"
+        : mode === "navigation"
+          ? `Navigazione${navigationVehicleLabel ? ` | ${navigationVehicleLabel}` : ""}`
         : mode === "vehicles"
           ? "Tabella veicoli"
         : mode === "drivers"
@@ -556,9 +569,11 @@ export function DriverBottomBar({
         : mode === "tacho"
           ? "Scarico dati"
           : "Attivita autista + tabelle";
-    const subtitle =
+  const subtitle =
       mode === "fuel"
         ? `Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
+        : mode === "navigation"
+          ? ""
         : mode === "vehicles"
           ? "Elenco completo dei veicoli registrati."
         : mode === "drivers"
@@ -579,7 +594,7 @@ export function DriverBottomBar({
       <div className="flex items-start justify-between px-6 py-4 border-b border-white/10">
         <div className="space-y-1.5">
           <h2 className="text-lg font-semibold leading-tight text-white">{title}</h2>
-          <p className="text-sm text-white/70">{subtitle}</p>
+          {subtitle ? <p className="text-sm text-white/70">{subtitle}</p> : null}
         </div>
         {onClose && (
           <button
@@ -599,6 +614,8 @@ export function DriverBottomBar({
             selectedVehicleImei={selectedVehicleImei}
             selectedVehicle={selectedVehicle}
           />
+          ) : mode === "navigation" ? (
+            <RouteCalculator selectedVehicleImei={selectedVehicleImei} compact />
           ) : mode === "vehicles" ? (
             <VehicleTableDashboard
               vehicles={vehicles}

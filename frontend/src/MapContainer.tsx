@@ -745,6 +745,12 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       (window as any).trucklyClearRoute = (imei?: string) => {
         mapInstanceRef.current?.clearRoute(imei);
       };
+      (window as any).trucklyDrawNavigationRoute = (geometry: any) => {
+        mapInstanceRef.current?.drawNavigationRoute(geometry);
+      };
+      (window as any).trucklyClearNavigationRoute = () => {
+        mapInstanceRef.current?.clearNavigationRoute();
+      };
       (window as any).trucklySetRouteProgress = (imei: string, position: number) => {
         mapInstanceRef.current?.setRouteProgress(imei, position);
       };
@@ -1316,6 +1322,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       const driverButton = target.closest("[data-action='driver']") as HTMLElement | null;
       const fuelButton = target.closest("[data-action='fuel']") as HTMLElement | null;
       const routesButton = target.closest("[data-action='routes']") as HTMLElement | null;
+      const navigationButton = target.closest("[data-action='navigation']") as HTMLElement | null;
       const geofenceButton = target.closest("[data-action='geofence']") as HTMLElement | null;
 
       if (
@@ -1328,6 +1335,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         !driverButton &&
         !fuelButton &&
         !routesButton &&
+        !navigationButton &&
         !geofenceButton
       ) return;
 
@@ -1475,7 +1483,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         return;
       }
 
-      const tooltip = (driverButton || fuelButton || routesButton || geofenceButton)?.closest(".truckly-tooltip") as HTMLElement | null;
+      const tooltip = (driverButton || fuelButton || routesButton || navigationButton || geofenceButton)?.closest(".truckly-tooltip") as HTMLElement | null;
       const imei = tooltip?.getAttribute("data-imei") || null;
 
       if (driverButton) {
@@ -1504,6 +1512,23 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
             detail: { imei },
           }),
         );
+        return;
+      }
+
+      if (navigationButton) {
+        if (isMobileViewRef.current) {
+          window.dispatchEvent(
+            new CustomEvent("truckly:bottom-bar-toggle", {
+              detail: { mode: "navigation", imei },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent("truckly:navigation-open", {
+              detail: { imei },
+            }),
+          );
+        }
         return;
       }
 

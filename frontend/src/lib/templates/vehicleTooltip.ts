@@ -358,7 +358,7 @@ const SECTION_STYLES = `
   }
   .truckly-actions {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0,1fr));
+    grid-template-columns: repeat(3, minmax(0,1fr));
     gap: 6px;
   }
   .truckly-action-btn {
@@ -423,6 +423,7 @@ const icons = {
   location: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-6.58-7-11.5A7 7 0 0 1 12 2a7 7 0 0 1 7 7.5C19 14.42 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>`,
   speed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 16l8-8"/><path d="M9 2h6"/><path d="M4 8h4"/><path d="M16 8h4"/><path d="M5 12h2"/><path d="M17 12h2"/><path d="M6 16h12"/><path d="M9 22h6"/></svg>`,
   route: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16"/><path d="M4 12h8"/><path d="M4 20h16"/><circle cx="16" cy="12" r="3"/></svg>`,
+  navigate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 11.5 21 3l-8.5 18-2.2-7.3L3 11.5Z"/></svg>`,
   fuel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2h6v20H6z"/><path d="M18 7v13a2 2 0 0 1-2 2h-4"/><path d="M20 7l-4-4"/></svg>`,
   driver: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3"/><path d="M6 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>`,
   alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0Z"/></svg>`,
@@ -543,6 +544,7 @@ export function renderVehicleTooltip({
 
   const actions = [
     { label: "Percorsi", icon: icons.route, action: "routes" },
+    { label: "Naviga", icon: icons.navigate, action: "navigation" },
     { label: "Carburante", icon: icons.fuel, action: "fuel" },
     { label: "Autista", icon: icons.driver, action: "driver" },
     { label: "Alert", icon: icons.alert, action: "alert" },

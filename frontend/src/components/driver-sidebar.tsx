@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { API_BASE_URL, VEHICLES_PATH } from "../config";
 import { dataManager } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
+import { RouteCalculator } from "./route-calculator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +17,7 @@ type DriverSidebarProps = {
   selectedDriverImei?: string | null;
   selectedRouteImei?: string | null;
   selectedDriverDevice?: any | null;
-  mode?: "driver" | "routes" | "geofence" | "vehicle" | "admin" | "driver-register";
+  mode?: "driver" | "routes" | "navigation" | "geofence" | "vehicle" | "admin" | "driver-register";
   driverEditTarget?: DriverEditTarget | null;
   driverEditReadOnly?: boolean;
   vehicleEditTarget?: VehicleEditTarget | null;
@@ -2527,6 +2528,7 @@ export function DriverSidebar({
   vehicleEditFocus = null,
   geofenceDraft,
 }: DriverSidebarProps) {
+  const wasOpenRef = React.useRef(isOpen);
   const routesBaseUrl = React.useMemo(() => {
     if (typeof window === "undefined") return "";
     return `${window.location.protocol}//${window.location.hostname}:8080`;
@@ -2546,6 +2548,7 @@ export function DriverSidebar({
   const hasDriver1 = Boolean(driver1Id);
 
   const isRoutesMode = mode === "routes";
+  const isNavigationMode = mode === "navigation";
   const isGeofenceMode = mode === "geofence";
   const isVehicleMode = mode === "vehicle";
   const isAdminMode = mode === "admin";
@@ -2557,6 +2560,17 @@ export function DriverSidebar({
     Number.isInteger(effectivePrivilege) && effectivePrivilege <= 2;
   const canManageDrivers =
     Number.isInteger(effectivePrivilege) && effectivePrivilege <= 1;
+  const navigationVehicleLabel = React.useMemo(() => {
+    if (!isNavigationMode || !selectedRouteImei || typeof window === "undefined") return null;
+    const vehicles = Array.isArray((window as any).trucklyVehicles) ? (window as any).trucklyVehicles : [];
+    const target = vehicles.find((vehicle: any) => String(vehicle?.imei || "") === String(selectedRouteImei));
+    if (!target) return selectedRouteImei;
+    const plate = typeof target?.plate === "string"
+      ? target.plate
+      : target?.plate?.v || target?.plate?.value || "";
+    const nickname = target?.nickname || target?.name || "";
+    return [nickname, plate].filter(Boolean).join(" | ") || selectedRouteImei;
+  }, [isNavigationMode, selectedRouteImei]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2631,6 +2645,14 @@ export function DriverSidebar({
     };
   }, [isOpen]);
 
+  React.useEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    if (wasOpen && !isOpen) {
+      (window as any).trucklyClearNavigationRoute?.();
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
+
   return (
     <aside
       className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-none sm:max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
@@ -2646,6 +2668,8 @@ export function DriverSidebar({
             <h2 className="text-xl font-semibold leading-tight text-white">
               {isGeofenceMode
                 ? "GeoFence"
+                : isNavigationMode
+                ? `Navigazione${navigationVehicleLabel ? ` | ${navigationVehicleLabel}` : ""}`
                 : isRoutesMode
                 ? "Percorsi"
                 : isDriverRegisterMode
@@ -2656,7 +2680,7 @@ export function DriverSidebar({
                 ? "Utenti"
                 : "Autista"}
             </h2>
-          {!isAdminMode && (
+          {!isAdminMode && !isNavigationMode && (
               <p className="text-sm text-white/70">
                 {isGeofenceMode
                   ? "Configura la geofence appena creata."
@@ -2684,6 +2708,8 @@ export function DriverSidebar({
         <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0a0a0a]">
           {isGeofenceMode ? (
             <GeofenceSidebar geofenceDraft={geofenceDraft} />
+          ) : isNavigationMode ? (
+            <RouteCalculator selectedVehicleImei={selectedRouteImei} />
           ) : isRoutesMode ? (
             <RoutesSidebar isOpen={isOpen} selectedVehicleImei={selectedRouteImei} />
           ) : isDriverRegisterMode ? (
