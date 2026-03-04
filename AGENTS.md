@@ -133,6 +133,16 @@ Queste regole vanno seguite per ogni nuova UI/refactor.
 - Selezione: valorizza input, chiude dropdown, conserva coordinate/value.
 - Styling coerente: bordo sottile, background dark, hover chiaro, ombra morbida.
 
+### Pulsanti E Azioni
+- Evitare pulsanti testuali standalone nelle toolbar delle tabelle/pannelli.
+- Preferire sempre azioni con icone Font Awesome, con:
+  - `title`/`aria-label` descrittivo
+  - context menu per azioni multiple
+- Per azioni tabellari usare pattern:
+  - searchbar in testata
+  - menu azioni in alto a destra (icona `ellipsis`)
+  - filtri come checkbox nel menu con conteggio elementi.
+
 ### Route Inputs (A/B)
 - Input con bottone mirino a sinistra per impostare posizione attuale.
 - Placeholder standard:

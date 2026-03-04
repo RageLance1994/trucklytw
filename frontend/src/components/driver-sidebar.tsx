@@ -1,13 +1,16 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { API_BASE_URL, VEHICLES_PATH } from "../config";
-import { dataManager } from "../lib/data-manager";
+import { dataManager, resolveBackendBaseUrl } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
 import { RouteCalculator } from "./route-calculator";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
@@ -52,8 +55,36 @@ type RoutePoint = {
   };
   io: {
     ignition: number;
+    totalOdometer?: number | null;
+    odometer?: number | null;
+    driver1Id?: string | null;
+    tachoDriverIds?: string | null;
   };
 };
+
+type RouteTimelineEvent = {
+  id: string;
+  kind: "pause" | "rest" | "refuel" | "withdrawal" | "driver-change";
+  label: string;
+  start: number;
+  end: number;
+  durationMin: number | null;
+  liters?: number | null;
+  driverFrom?: string | null;
+  driverTo?: string | null;
+  lat: number | null;
+  lng: number | null;
+};
+
+type RouteRefuelingDoc = {
+  eventId: string;
+  eventStart?: string | number | Date;
+  eventEnd?: string | number | Date;
+  liters?: number | null;
+  metadata?: Record<string, any>;
+};
+
+type RouteEventKind = RouteTimelineEvent["kind"];
 
 type AdminUser = {
   id: string;
@@ -261,6 +292,15 @@ const toTimestamp = (value: unknown) => {
 };
 
 const normalizeRouteHistory = (raw: any[] = []): RoutePoint[] => {
+  const toFinite = (value: unknown) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const toDriverText = (value: unknown) => {
+    if (value == null) return null;
+    const text = String(value).trim();
+    return text.length ? text : null;
+  };
   const normalized = raw
     .map((entry) => {
       const gps = entry?.gps || entry?.data?.gps || entry?.data || {};
@@ -273,6 +313,8 @@ const normalizeRouteHistory = (raw: any[] = []): RoutePoint[] => {
       const ignition = Number(
         io?.ignition ?? io?.ignitionStatus ?? io?.Ignition ?? io?.ign ?? 0,
       );
+      const totalOdometer = toFinite(io?.totalOdometer ?? io?.total_odometer);
+      const odometerIo = toFinite(io?.odometer ?? io?.Odometer ?? io?.vehicleOdometer);
       return {
         timestamp: ts as number,
         gps: {
@@ -280,7 +322,13 @@ const normalizeRouteHistory = (raw: any[] = []): RoutePoint[] => {
           Longitude: lon,
           Speed: Number.isFinite(speed) ? speed : 0,
         },
-        io: { ignition: Number.isFinite(ignition) ? ignition : 0 },
+        io: {
+          ignition: Number.isFinite(ignition) ? ignition : 0,
+          totalOdometer,
+          odometer: odometerIo,
+          driver1Id: toDriverText(io?.driver1Id),
+          tachoDriverIds: toDriverText(io?.tachoDriverIds),
+        },
       };
     })
     .filter(Boolean) as RoutePoint[];
@@ -327,20 +375,9 @@ const normalizeFuelEvent = (raw: any = {}) => {
     end: Number.isFinite(end) ? (end as number) : (start as number),
     liters: toNumber(raw.liters ?? raw.delta),
     delta: toNumber(raw.delta),
+    lat: toNumber(raw.lat ?? raw.latitude),
+    lng: toNumber(raw.lng ?? raw.lon ?? raw.longitude),
   };
-};
-
-const formatEventLabel = (evt: { normalizedType?: string }) => {
-  if (evt.normalizedType === "refuel") return "Rifornimento";
-  if (
-    evt.normalizedType === "withdrawal" ||
-    evt.normalizedType === "fuel_withdrawal" ||
-    evt.normalizedType === "fuel-theft" ||
-    evt.normalizedType === "theft"
-  ) {
-    return "Prelievo";
-  }
-  return "Evento";
 };
 
 const formatShortDateTime = (value?: number) => {
@@ -351,6 +388,275 @@ const formatShortDateTime = (value?: number) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const formatDurationMinutes = (value: number | null) => {
+  if (!Number.isFinite(value as number)) return "N/D";
+  const total = Math.max(0, Math.round(value as number));
+  const hh = Math.floor(total / 60);
+  const mm = total % 60;
+  if (hh <= 0) return `${mm} min`;
+  return `${hh}h ${String(mm).padStart(2, "0")}m`;
+};
+
+const escapeReportHtml = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const normalizeRouteRefuelings = (items: any[] = []): RouteRefuelingDoc[] => {
+  return items
+    .map((doc) => {
+      const eventId = String(doc?.eventId || "").trim();
+      if (!eventId) return null;
+      return {
+        eventId,
+        eventStart: doc?.eventStart,
+        eventEnd: doc?.eventEnd,
+        liters: Number.isFinite(Number(doc?.liters)) ? Number(doc.liters) : null,
+        metadata: doc?.metadata && typeof doc.metadata === "object" ? doc.metadata : {},
+      } as RouteRefuelingDoc;
+    })
+    .filter(Boolean) as RouteRefuelingDoc[];
+};
+
+const resolveRouteFuelType = (doc?: RouteRefuelingDoc, evt?: any) => {
+  const metaType = String(doc?.metadata?.type || "").toLowerCase().trim();
+  if (metaType === "withdrawal" || metaType === "prelievo") return "withdrawal";
+  if (metaType === "refuel" || metaType === "rifornimento") return "refuel";
+  const normalized = String(evt?.normalizedType || "").toLowerCase().trim();
+  if (normalized === "withdrawal" || normalized === "fuel_withdrawal" || normalized === "fuel-theft" || normalized === "theft") {
+    return "withdrawal";
+  }
+  return "refuel";
+};
+
+const mergeRouteFuelEvents = (
+  events: any[],
+  refuelings: RouteRefuelingDoc[],
+  fromMs: number,
+  toMs: number,
+) => {
+  const list = Array.isArray(events) ? events : [];
+  const docs = Array.isArray(refuelings) ? refuelings : [];
+  const hiddenIds = new Set(
+    docs
+      .filter((doc) => doc?.metadata?.hidden)
+      .map((doc) => doc.eventId),
+  );
+  const refuelById = new Map(docs.map((doc) => [doc.eventId, doc]));
+  const merged: any[] = [];
+
+  list.forEach((evt) => {
+    const eventId = String(evt?.eventId || "").trim();
+    if (!eventId || hiddenIds.has(eventId)) return;
+    const start = Number(evt?.start);
+    if (!Number.isFinite(start) || start < fromMs || start > toMs) return;
+    const doc = refuelById.get(eventId);
+    const liters = Number.isFinite(Number(doc?.liters))
+      ? Number(doc?.liters)
+      : Number.isFinite(Number(evt?.liters))
+        ? Number(evt?.liters)
+        : Number.isFinite(Number(evt?.delta))
+          ? Number(evt?.delta)
+          : null;
+    merged.push({
+      ...evt,
+      eventId,
+      normalizedType: resolveRouteFuelType(doc, evt),
+      liters,
+    });
+  });
+
+  docs.forEach((doc) => {
+    if (!doc?.eventId || hiddenIds.has(doc.eventId)) return;
+    if (list.some((evt) => String(evt?.eventId || "").trim() === doc.eventId)) return;
+    const start = toTimestamp(doc.eventStart);
+    const end = toTimestamp(doc.eventEnd) ?? start;
+    if (!Number.isFinite(start) || start! < fromMs || start! > toMs) return;
+    merged.push({
+      eventId: doc.eventId,
+      start: start as number,
+      end: Number.isFinite(end) ? (end as number) : (start as number),
+      liters: Number.isFinite(Number(doc?.liters)) ? Number(doc?.liters) : null,
+      delta: Number.isFinite(Number(doc?.liters)) ? Number(doc?.liters) : null,
+      normalizedType: resolveRouteFuelType(doc),
+      lat: null,
+      lng: null,
+    });
+  });
+
+  return merged.sort((a, b) => Number(a?.start || 0) - Number(b?.start || 0));
+};
+
+const STATIONARY_SPEED_THRESHOLD = 5;
+const MIN_STOP_EVENT_MS = 5 * 60 * 1000;
+
+const resolveMotionState = (point: RoutePoint) => {
+  const speed = Number(point?.gps?.Speed) || 0;
+  const ignition = Number(point?.io?.ignition) || 0;
+  if (speed > STATIONARY_SPEED_THRESHOLD) return "driving";
+  if (ignition === 1) return "pause";
+  return "rest";
+};
+
+const findNearestHistoryPoint = (history: RoutePoint[], timestamp: number) => {
+  if (!history.length || !Number.isFinite(timestamp)) return null;
+  let nearest: RoutePoint | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  history.forEach((point) => {
+    const distance = Math.abs((point?.timestamp || 0) - timestamp);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = point;
+    }
+  });
+  return nearest;
+};
+
+const buildStopEvents = (history: RoutePoint[]): RouteTimelineEvent[] => {
+  if (!Array.isArray(history) || history.length < 2) return [];
+  const events: RouteTimelineEvent[] = [];
+  let segmentStart = 0;
+  let segmentState = resolveMotionState(history[0]);
+
+  const closeSegment = (endIndex: number) => {
+    if (segmentState === "driving") return;
+    const from = history[segmentStart];
+    const to = history[endIndex];
+    if (!from || !to) return;
+    const durationMs = Math.max(0, (to.timestamp || 0) - (from.timestamp || 0));
+    if (durationMs < MIN_STOP_EVENT_MS) return;
+    const midIndex = Math.floor((segmentStart + endIndex) / 2);
+    const anchor = history[midIndex] || from;
+    events.push({
+      id: `${segmentState}-${from.timestamp}-${to.timestamp}`,
+      kind: segmentState === "pause" ? "pause" : "rest",
+      label: segmentState === "pause" ? "Pausa" : "Riposo",
+      start: from.timestamp,
+      end: to.timestamp,
+      durationMin: Number((durationMs / 60000).toFixed(1)),
+      lat: Number.isFinite(anchor?.gps?.Latitude) ? anchor.gps.Latitude : null,
+      lng: Number.isFinite(anchor?.gps?.Longitude) ? anchor.gps.Longitude : null,
+    });
+  };
+
+  for (let i = 1; i < history.length; i += 1) {
+    const currentState = resolveMotionState(history[i]);
+    if (currentState !== segmentState) {
+      closeSegment(i - 1);
+      segmentStart = i;
+      segmentState = currentState;
+    }
+  }
+  closeSegment(history.length - 1);
+  return events;
+};
+
+const normalizeDriverToken = (value: unknown) => {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const first = raw.split(/[,\s;|/]+/).map((part) => part.trim()).find(Boolean);
+  return first || null;
+};
+
+const extractDriverIdFromPoint = (point: RoutePoint) => {
+  const fromDriver1 = normalizeDriverToken(point?.io?.driver1Id);
+  if (fromDriver1) return fromDriver1;
+  return normalizeDriverToken(point?.io?.tachoDriverIds);
+};
+
+const buildDriverChangeEvents = (history: RoutePoint[]): RouteTimelineEvent[] => {
+  if (!Array.isArray(history) || history.length < 2) return [];
+  const events: RouteTimelineEvent[] = [];
+  let prevDriver = extractDriverIdFromPoint(history[0]);
+  for (let i = 1; i < history.length; i += 1) {
+    const point = history[i];
+    const currentDriver = extractDriverIdFromPoint(point);
+    const isDriverSwap =
+      Boolean(prevDriver) &&
+      Boolean(currentDriver) &&
+      currentDriver !== prevDriver;
+    if (isDriverSwap) {
+      const previousPoint = history[i - 1] || point;
+      events.push({
+        id: `driver-change-${point.timestamp}-${i}`,
+        kind: "driver-change",
+        label: "Cambio autista",
+        start: point.timestamp,
+        end: point.timestamp,
+        durationMin: null,
+        driverFrom: prevDriver,
+        driverTo: currentDriver,
+        lat: Number.isFinite(point?.gps?.Latitude) ? point.gps.Latitude : previousPoint?.gps?.Latitude ?? null,
+        lng: Number.isFinite(point?.gps?.Longitude) ? point.gps.Longitude : previousPoint?.gps?.Longitude ?? null,
+      });
+    }
+    prevDriver = currentDriver;
+  }
+  return events;
+};
+
+const buildTimelineEvents = (history: RoutePoint[], rawFuelEvents: any[]): RouteTimelineEvent[] => {
+  const stopEvents = buildStopEvents(history);
+  const driverChangeEvents = buildDriverChangeEvents(history);
+  const fuelEvents = (Array.isArray(rawFuelEvents) ? rawFuelEvents : [])
+    .map((evt: any) => {
+      const nearest = findNearestHistoryPoint(history, Number(evt?.start));
+      const kindRaw = String(evt?.normalizedType || "").toLowerCase();
+      const kind: RouteTimelineEvent["kind"] =
+        kindRaw === "withdrawal" || kindRaw === "fuel_withdrawal" || kindRaw === "fuel-theft" || kindRaw === "theft"
+          ? "withdrawal"
+          : "refuel";
+      const label = kind === "withdrawal" ? "Prelievo" : "Rifornimento";
+      return {
+        id: String(evt?.eventId || `${kind}-${evt?.start || Date.now()}`),
+        kind,
+        label,
+        start: Number(evt?.start) || 0,
+        end: Number(evt?.end) || Number(evt?.start) || 0,
+        durationMin: Number.isFinite(evt?.end) && Number.isFinite(evt?.start)
+          ? Number((((Number(evt.end) - Number(evt.start)) / 60000)).toFixed(1))
+          : null,
+        liters: Number.isFinite(evt?.liters) ? Number(evt.liters) : null,
+        lat: Number.isFinite(evt?.lat) ? Number(evt.lat) : (nearest?.gps?.Latitude ?? null),
+        lng: Number.isFinite(evt?.lng) ? Number(evt.lng) : (nearest?.gps?.Longitude ?? null),
+      } as RouteTimelineEvent;
+    })
+    .filter((evt) => Number.isFinite(evt.start) && evt.start > 0);
+
+  return [...stopEvents, ...driverChangeEvents, ...fuelEvents].sort((a, b) => b.start - a.start);
+};
+
+const toKilometersFromOdometerRaw = (value: number | null | undefined) => {
+  if (!Number.isFinite(value as number)) return null;
+  const raw = Number(value);
+  if (raw <= 0) return null;
+  // Teltonika odometer values are often meters on IO channels.
+  return raw > 1_000_000 ? raw / 1000 : raw;
+};
+
+const computeRouteDistanceKm = (history: RoutePoint[]) => {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  const samples = history
+    .map((point) => {
+      const raw =
+        point?.io?.totalOdometer
+        ?? point?.io?.odometer
+        ?? null;
+      return toKilometersFromOdometerRaw(raw);
+    })
+    .filter((value) => Number.isFinite(value as number)) as number[];
+  if (samples.length < 2) return null;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const delta = last - first;
+  if (!Number.isFinite(delta) || delta < 0) return null;
+  return Number(delta.toFixed(1));
 };
 
 const resolveHeading = (history: RoutePoint[], index: number) => {
@@ -760,13 +1066,94 @@ function RoutesSidebar({
   const [error, setError] = React.useState<string | null>(null);
   const [historyRaw, setHistoryRaw] = React.useState<any[]>([]);
   const [events, setEvents] = React.useState<any[]>([]);
+  const [refuelings, setRefuelings] = React.useState<RouteRefuelingDoc[]>([]);
   const [scrubValue, setScrubValue] = React.useState(1);
+  const [isFiltersOpen, setIsFiltersOpen] = React.useState(true);
+  const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
+  const [eventSearch, setEventSearch] = React.useState("");
+  const [eventTypeFilters, setEventTypeFilters] = React.useState<Record<RouteEventKind, boolean>>({
+    pause: true,
+    rest: true,
+    refuel: true,
+    withdrawal: true,
+    "driver-change": true,
+  });
+  const [reportModalOpen, setReportModalOpen] = React.useState(false);
+  const [reportPreviewHtml, setReportPreviewHtml] = React.useState("");
   const prevImeiRef = React.useRef<string | null>(null);
 
   const normalizedHistory = React.useMemo(
     () => downsampleRoute(normalizeRouteHistory(historyRaw)),
     [historyRaw],
   );
+  const timelineEvents = React.useMemo(
+    () => {
+      const fromMs = toTimestamp(startDate) ?? Number.NEGATIVE_INFINITY;
+      const toMs = toTimestamp(endDate) ?? Number.POSITIVE_INFINITY;
+      const fuelEvents = mergeRouteFuelEvents(events, refuelings, fromMs, toMs);
+      return buildTimelineEvents(normalizedHistory, fuelEvents);
+    },
+    [normalizedHistory, events, refuelings, startDate, endDate],
+  );
+  const routeDistanceKm = React.useMemo(
+    () => computeRouteDistanceKm(normalizedHistory),
+    [normalizedHistory],
+  );
+  const eventTypeCounts = React.useMemo(() => {
+    const counts: Record<RouteEventKind, number> = {
+      pause: 0,
+      rest: 0,
+      refuel: 0,
+      withdrawal: 0,
+      "driver-change": 0,
+    };
+    timelineEvents.forEach((evt) => {
+      if (counts[evt.kind] != null) counts[evt.kind] += 1;
+    });
+    return counts;
+  }, [timelineEvents]);
+  const filteredTimelineEvents = React.useMemo(() => {
+    const query = eventSearch.trim().toLowerCase();
+    return timelineEvents.filter((evt) => {
+      if (!eventTypeFilters[evt.kind]) return false;
+      if (!query) return true;
+      const detail =
+        evt.kind === "refuel" || evt.kind === "withdrawal"
+          ? (Number.isFinite(evt.liters as number) ? `${(evt.liters as number).toFixed(1)} l` : "n/d")
+          : evt.kind === "driver-change"
+            ? `${evt.driverFrom || "n/d"} -> ${evt.driverTo || "n/d"}`
+            : evt.kind === "pause"
+              ? "sosta con quadro acceso"
+              : "sosta con quadro spento";
+      const haystack = `${evt.label} ${formatShortDateTime(evt.start)} ${formatShortDateTime(evt.end)} ${detail}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [timelineEvents, eventSearch, eventTypeFilters]);
+
+  const fetchRefuelings = React.useCallback(async () => {
+    if (!selectedVehicleImei) {
+      setRefuelings([]);
+      return [] as RouteRefuelingDoc[];
+    }
+    try {
+      const baseUrl = resolveBackendBaseUrl();
+      const res = await fetch(`${baseUrl}/dashboard/refuelings/${selectedVehicleImei}`, {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok || !contentType.includes("application/json")) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const payload = await res.json().catch(() => ({}));
+      const items = normalizeRouteRefuelings(Array.isArray(payload?.items) ? payload.items : []);
+      setRefuelings(items);
+      return items;
+    } catch {
+      setRefuelings([]);
+      return [] as RouteRefuelingDoc[];
+    }
+  }, [selectedVehicleImei]);
 
   const fetchRoutes = React.useCallback(async () => {
     if (!selectedVehicleImei) {
@@ -785,8 +1172,13 @@ function RoutesSidebar({
 
     setLoading(true);
     setError(null);
+    setActiveEventId(null);
+    (window as any).trucklyClearRouteEventMarkers?.();
     try {
-      const data = await dataManager.getHistory(selectedVehicleImei, fromMs, toMs);
+      const [data] = await Promise.all([
+        dataManager.getHistory(selectedVehicleImei, fromMs, toMs),
+        fetchRefuelings(),
+      ]);
       const raw = Array.isArray(data?.raw) ? data.raw : [];
       const normalizedEvents = Array.isArray(data?.fuelEvents)
         ? data.fuelEvents.map(normalizeFuelEvent).filter(Boolean)
@@ -801,11 +1193,12 @@ function RoutesSidebar({
     } finally {
       setLoading(false);
     }
-  }, [selectedVehicleImei, startDate, endDate]);
+  }, [selectedVehicleImei, startDate, endDate, fetchRefuelings]);
 
   React.useEffect(() => {
     if (prevImeiRef.current && prevImeiRef.current !== selectedVehicleImei) {
       (window as any).trucklyClearRoute?.(prevImeiRef.current);
+      (window as any).trucklyClearRouteEventMarkers?.();
       (window as any).trucklyShowAllMarkers?.();
       (window as any).rewinding = false;
       (window as any).trucklyApplyAvlCache?.();
@@ -813,8 +1206,10 @@ function RoutesSidebar({
     prevImeiRef.current = selectedVehicleImei || null;
     setHistoryRaw([]);
     setEvents([]);
+    setRefuelings([]);
     setError(null);
     setScrubValue(1);
+    setActiveEventId(null);
   }, [selectedVehicleImei]);
 
   React.useEffect(() => {
@@ -847,10 +1242,17 @@ function RoutesSidebar({
   React.useEffect(() => {
     if (isOpen) return;
     (window as any).trucklyClearRoute?.(selectedVehicleImei);
+    (window as any).trucklyClearRouteEventMarkers?.();
     (window as any).trucklyShowAllMarkers?.();
     (window as any).rewinding = false;
     (window as any).trucklyApplyAvlCache?.();
   }, [isOpen, selectedVehicleImei]);
+
+  React.useEffect(() => {
+    return () => {
+      (window as any).trucklyClearRouteEventMarkers?.();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!isOpen || !selectedVehicleImei || !normalizedHistory.length) return;
@@ -879,98 +1281,454 @@ function RoutesSidebar({
       ]
     : null;
 
+  const focusTimelineEvent = React.useCallback((evt: RouteTimelineEvent) => {
+    setActiveEventId(evt.id);
+    if (Number.isFinite(evt?.lat) && Number.isFinite(evt?.lng)) {
+      (window as any).trucklyFlyToLocation?.(
+        { lat: evt.lat as number, lng: evt.lng as number },
+        15,
+      );
+      (window as any).trucklySetRouteEventMarker?.({
+        id: evt.id,
+        lat: evt.lat,
+        lng: evt.lng,
+        kind: evt.kind,
+        title: evt.label,
+        subtitle: formatShortDateTime(evt.start),
+        details:
+          evt.kind === "refuel" || evt.kind === "withdrawal"
+            ? `Litri: ${Number.isFinite(evt.liters as number) ? `${(evt.liters as number).toFixed(1)} L` : "N/D"}`
+            : evt.kind === "driver-change"
+              ? `Autista: ${evt.driverFrom || "N/D"} -> ${evt.driverTo || "N/D"}`
+              : `Durata: ${formatDurationMinutes(evt.durationMin)}`,
+        badge:
+          evt.kind === "pause"
+            ? "PAU"
+            : evt.kind === "rest"
+              ? "RIP"
+              : evt.kind === "driver-change"
+                ? "DRV"
+              : evt.kind === "withdrawal"
+                ? "PRE"
+                : "RIF",
+      });
+    }
+    if (!normalizedHistory.length) return;
+    const targetTs = Number(evt.start);
+    const total = normalizedHistory.length;
+    let nearestIndex = 0;
+    let minDistance = Number.POSITIVE_INFINITY;
+    normalizedHistory.forEach((point, idx) => {
+      const distance = Math.abs((point?.timestamp || 0) - targetTs);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = idx;
+      }
+    });
+    const position = total > 1 ? nearestIndex / (total - 1) : 1;
+    setScrubValue(position);
+  }, [normalizedHistory]);
+
+  const buildReportHtml = React.useCallback(() => {
+    const vehicleLabel = (() => {
+      if (typeof window === "undefined" || !selectedVehicleImei) return selectedVehicleImei || "Veicolo";
+      const vehicles = Array.isArray((window as any).trucklyVehicles) ? (window as any).trucklyVehicles : [];
+      const target = vehicles.find((vehicle: any) => String(vehicle?.imei || "") === String(selectedVehicleImei));
+      if (!target) return selectedVehicleImei;
+      const plate = typeof target?.plate === "string" ? target.plate : target?.plate?.v || target?.plate?.value || "";
+      const nickname = target?.nickname || target?.name || "";
+      return [nickname, plate].filter(Boolean).join(" | ") || selectedVehicleImei;
+    })();
+
+    const rows = filteredTimelineEvents
+      .map((evt) => {
+        const detail =
+          evt.kind === "refuel" || evt.kind === "withdrawal"
+            ? (Number.isFinite(evt.liters as number) ? `${(evt.liters as number).toFixed(1)} L` : "N/D")
+            : evt.kind === "driver-change"
+              ? `${evt.driverFrom || "N/D"} -> ${evt.driverTo || "N/D"}`
+            : (evt.kind === "pause" ? "Sosta con quadro acceso" : "Sosta con quadro spento");
+        return `
+          <tr>
+            <td>${escapeReportHtml(evt.label)}</td>
+            <td>${escapeReportHtml(formatShortDateTime(evt.start))}</td>
+            <td>${escapeReportHtml(formatShortDateTime(evt.end))}</td>
+            <td>${escapeReportHtml(formatDurationMinutes(evt.durationMin))}</td>
+            <td>${escapeReportHtml(detail)}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    return `<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Report Percorsi</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+    .header { margin-bottom: 18px; }
+    .logo { width: 128px; height: auto; margin-bottom: 10px; }
+    .vehicle { margin: 0; font-size: 20px; font-weight: 700; color: #111; }
+    .subtitle { margin: 4px 0 0 0; color: #6b7280; font-size: 12px; }
+    .stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-bottom: 14px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; background: #fafafa; }
+    .label { font-size: 11px; text-transform: uppercase; color: #666; margin-bottom: 4px; }
+    .value { font-size: 15px; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; font-size: 11px; text-align: left; }
+    th { background: #f3f3f3; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img class="logo" src="/assets/images/logo_black.png" alt="Truckly" />
+    <p class="vehicle">${escapeReportHtml(vehicleLabel)}</p>
+    <p class="subtitle">Report operativo da ${escapeReportHtml(formatShortDateTime(toTimestamp(startDate) || undefined))} a ${escapeReportHtml(formatShortDateTime(toTimestamp(endDate) || undefined))}</p>
+  </div>
+  <div class="stats">
+    <div class="card"><div class="label">Km percorsi</div><div class="value">${escapeReportHtml(Number.isFinite(routeDistanceKm as number) ? `${routeDistanceKm} km` : "N/D")}</div></div>
+    <div class="card"><div class="label">Eventi registrati</div><div class="value">${escapeReportHtml(filteredTimelineEvents.length)}</div></div>
+    <div class="card"><div class="label">Generato il</div><div class="value">${escapeReportHtml(new Date().toLocaleString("it-IT"))}</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Tipo</th>
+        <th>Inizio</th>
+        <th>Fine</th>
+        <th>Durata</th>
+        <th>Dettaglio</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows || `<tr><td colspan="5">Nessun evento disponibile per l'intervallo selezionato.</td></tr>`}
+    </tbody>
+  </table>
+</body>
+</html>`;
+  }, [routeDistanceKm, selectedVehicleImei, startDate, endDate, filteredTimelineEvents]);
+
+  const openReportModal = React.useCallback(() => {
+    setReportPreviewHtml(buildReportHtml());
+    setReportModalOpen(true);
+  }, [buildReportHtml]);
+
+  const printReport = React.useCallback(() => {
+    const html = reportPreviewHtml || buildReportHtml();
+    const win = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 250);
+  }, [reportPreviewHtml, buildReportHtml]);
+
+  const exportEventsCsv = React.useCallback(() => {
+    const header = ["Tipo", "Inizio", "Fine", "Durata", "Dettaglio"];
+    const rows = filteredTimelineEvents.map((evt) => {
+      const detail =
+        evt.kind === "refuel" || evt.kind === "withdrawal"
+          ? (Number.isFinite(evt.liters as number) ? `${(evt.liters as number).toFixed(1)} L` : "N/D")
+          : evt.kind === "driver-change"
+            ? `${evt.driverFrom || "N/D"} -> ${evt.driverTo || "N/D"}`
+          : (evt.kind === "pause" ? "Sosta con quadro acceso" : "Sosta con quadro spento");
+      return [
+        evt.label,
+        formatShortDateTime(evt.start),
+        formatShortDateTime(evt.end),
+        formatDurationMinutes(evt.durationMin),
+        detail,
+      ];
+    });
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `report-percorsi-${selectedVehicleImei || "veicolo"}-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [filteredTimelineEvents, selectedVehicleImei]);
+
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-        <div className="space-y-1">
-          <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-            Intervallo percorsi
-          </p>
-          <p className="text-sm text-white/60">
-            Seleziona una finestra e aggiorna il tracciato.
-          </p>
-        </div>
-        <div className="space-y-3">
+    <div className="relative flex h-full min-h-[560px] flex-col gap-4">
+      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+        <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
-            <input
-              type="datetime-local"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
-            <input
-              type="datetime-local"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-            />
+            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+              Intervallo e rewind
+            </p>
+            <p className="text-sm text-white/60">
+              Seleziona finestra temporale e scorri il percorso.
+            </p>
           </div>
           <button
-            onClick={fetchRoutes}
-            disabled={loading}
-            className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+            type="button"
+            onClick={() => setIsFiltersOpen((prev) => !prev)}
+            className="h-8 min-w-8 rounded-full border border-white/15 bg-white/5 px-2 text-white/75 hover:bg-white/10 hover:text-white transition"
+            aria-label={isFiltersOpen ? "Chiudi sezione filtri" : "Apri sezione filtri"}
           >
-            {loading ? "Carico" : "Aggiorna"}
+            <i className={`fa ${isFiltersOpen ? "fa-chevron-up" : "fa-chevron-down"}`} aria-hidden="true" />
           </button>
-          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
+        {isFiltersOpen && (
+          <div className="mt-4 space-y-4">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
+                <input
+                  type="datetime-local"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
+                <input
+                  type="datetime-local"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                />
+              </div>
+              <button
+                onClick={fetchRoutes}
+                disabled={loading}
+                className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
+              >
+                {loading ? "Carico" : "Aggiorna"}
+              </button>
+              {error && <p className="text-sm text-red-400">{error}</p>}
+            </div>
+            <div className="space-y-3 rounded-lg border border-white/10 bg-[#0d0d0f] p-3">
+              <div className="flex items-center justify-between text-sm text-white/70">
+                <span>Rewind</span>
+                <span>{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.001}
+                value={scrubValue}
+                onChange={(e) => setScrubValue(Number(e.target.value))}
+                className="w-full accent-orange-500"
+              />
+              <div className="text-xs text-white/60">
+                {normalizedHistory.length
+                  ? `Punti caricati: ${normalizedHistory.length}`
+                  : loading
+                    ? "Caricamento percorsi..."
+                    : "Nessun percorso disponibile per l'intervallo selezionato."}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between text-sm text-white/70">
-          <span>Rewind</span>
-          <span>{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
+          <span>{filteredTimelineEvents.length} eventi registrati</span>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <i className="fa fa-search pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-white/40" aria-hidden="true" />
+              <input
+                type="search"
+                value={eventSearch}
+                onChange={(e) => setEventSearch(e.target.value)}
+                placeholder="Cerca evento..."
+                className="h-8 w-[180px] rounded-lg border border-white/15 bg-[#0d0d0f] pl-7 pr-2 text-[11px] text-white/85 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="h-8 w-8 rounded-full border border-white/20 bg-white/5 text-white/75 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                  aria-label="Azioni eventi"
+                  title="Azioni eventi"
+                >
+                  <i className="fa fa-ellipsis-v" aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[240px]">
+                <DropdownMenuItem
+                  onSelect={(ev) => {
+                    ev.preventDefault();
+                    openReportModal();
+                  }}
+                >
+                  <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
+                  Crea Report
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-[0.12em] text-white/55">
+                  Filtra
+                </DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={eventTypeFilters.pause}
+                  onCheckedChange={(checked) => setEventTypeFilters((prev) => ({ ...prev, pause: Boolean(checked) }))}
+                  onSelect={(ev) => ev.preventDefault()}
+                >
+                  Pausa ({eventTypeCounts.pause})
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={eventTypeFilters.rest}
+                  onCheckedChange={(checked) => setEventTypeFilters((prev) => ({ ...prev, rest: Boolean(checked) }))}
+                  onSelect={(ev) => ev.preventDefault()}
+                >
+                  Riposo ({eventTypeCounts.rest})
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={eventTypeFilters.refuel}
+                  onCheckedChange={(checked) => setEventTypeFilters((prev) => ({ ...prev, refuel: Boolean(checked) }))}
+                  onSelect={(ev) => ev.preventDefault()}
+                >
+                  Rifornimento ({eventTypeCounts.refuel})
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={eventTypeFilters.withdrawal}
+                  onCheckedChange={(checked) => setEventTypeFilters((prev) => ({ ...prev, withdrawal: Boolean(checked) }))}
+                  onSelect={(ev) => ev.preventDefault()}
+                >
+                  Prelievo ({eventTypeCounts.withdrawal})
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={eventTypeFilters["driver-change"]}
+                  onCheckedChange={(checked) => setEventTypeFilters((prev) => ({ ...prev, "driver-change": Boolean(checked) }))}
+                  onSelect={(ev) => ev.preventDefault()}
+                >
+                  Cambio autista ({eventTypeCounts["driver-change"]})
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.001}
-          value={scrubValue}
-          onChange={(e) => setScrubValue(Number(e.target.value))}
-          className="w-full"
-        />
-        <div className="text-xs text-white/60">
-          {normalizedHistory.length
-            ? `Punti caricati: ${normalizedHistory.length}`
-            : loading
-              ? "Caricamento percorsi..."
-              : "Nessun percorso disponibile per l'intervallo selezionato."}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between text-sm text-white/70">
-          <span>Eventi</span>
-          <span>{events.length}</span>
-        </div>
-        <div className="space-y-2 max-h-[220px] overflow-y-auto">
-          {events.length === 0 ? (
-            <div className="text-xs text-white/50">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-white/10">
+          {filteredTimelineEvents.length === 0 ? (
+            <div className="p-3 text-xs text-white/50">
               Nessun evento disponibile per questo intervallo.
             </div>
           ) : (
-            events.map((evt: any) => (
-              <div
-                key={evt.eventId}
-                className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">{formatEventLabel(evt)}</span>
-                  <span className="text-white/50">{formatShortDateTime(evt.start)}</span>
-                </div>
-                <div className="mt-1 text-white/60">
-                  {evt.liters != null ? `${evt.liters.toFixed(1)} L` : "Delta non disponibile"}
-                </div>
-              </div>
-            ))
+            <table className="min-w-full text-[10px] text-white/85">
+              <thead className="sticky top-0 z-10 bg-[#111214] text-white/60">
+                <tr className="border-b border-white/10">
+                  <th className="px-3 py-2 text-left text-[9px] uppercase tracking-[0.12em]">Tipo</th>
+                  <th className="px-3 py-2 text-left text-[9px] uppercase tracking-[0.12em]">Inizio</th>
+                  <th className="px-3 py-2 text-left text-[9px] uppercase tracking-[0.12em]">Fine</th>
+                  <th className="px-3 py-2 text-left text-[9px] uppercase tracking-[0.12em]">Durata</th>
+                  <th className="px-3 py-2 text-left text-[9px] uppercase tracking-[0.12em]">Dettaglio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTimelineEvents.map((evt) => (
+                  <tr
+                    key={evt.id}
+                    onClick={() => focusTimelineEvent(evt)}
+                    className={`cursor-pointer border-b border-white/5 hover:bg-white/[0.08] ${activeEventId === evt.id ? "bg-white/10" : "bg-[#0d0d0f]"}`}
+                  >
+                    <td className="px-3 py-2 font-medium">{evt.label}</td>
+                    <td className="px-3 py-2 text-white/75">{formatShortDateTime(evt.start)}</td>
+                    <td className="px-3 py-2 text-white/75">{formatShortDateTime(evt.end)}</td>
+                    <td className="px-3 py-2 text-white/70">{formatDurationMinutes(evt.durationMin)}</td>
+                    <td className="px-3 py-2 text-white/70">
+                      {evt.kind === "refuel" || evt.kind === "withdrawal"
+                        ? (Number.isFinite(evt.liters as number) ? `${(evt.liters as number).toFixed(1)} L` : "N/D")
+                        : evt.kind === "driver-change"
+                          ? `${evt.driverFrom || "N/D"} -> ${evt.driverTo || "N/D"}`
+                        : evt.kind === "pause"
+                          ? "Sosta con quadro acceso"
+                          : "Sosta con quadro spento"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
+        <p className="text-[11px] text-white/45">
+          Clic su una riga: posiziona la mappa sull'evento e apre marker dettaglio.
+        </p>
       </div>
+      {reportModalOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm p-4 md:p-8">
+          <div className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0b0c10] shadow-[0_25px_90px_rgba(0,0,0,0.65)]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Report Percorsi Intervallo</h3>
+                <p className="text-xs text-white/60">Anteprima e generazione report per il periodo selezionato.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReportModalOpen(false)}
+                className="h-8 w-8 rounded-full border border-white/20 text-white/70 hover:border-white/40 hover:text-white"
+                aria-label="Chiudi Report"
+              >
+                <i className="fa fa-close" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[380px_1fr]">
+              <div className="space-y-4 overflow-y-auto border-r border-white/10 px-5 py-4">
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-[0.12em] text-white/60">Intervallo</label>
+                  <p className="text-sm text-white/85">
+                    {formatShortDateTime(toTimestamp(startDate) || undefined)} - {formatShortDateTime(toTimestamp(endDate) || undefined)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-[0.12em] text-white/60">Dati inclusi</label>
+                  <p className="text-sm text-white/85">
+                    {Number.isFinite(routeDistanceKm as number) ? `${routeDistanceKm} km percorsi` : "Km percorsi N/D"}
+                  </p>
+                  <p className="text-sm text-white/85">{filteredTimelineEvents.length} eventi registrati</p>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setReportPreviewHtml(buildReportHtml())}
+                    className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white"
+                  >
+                    Aggiorna anteprima
+                  </button>
+                  <button
+                    type="button"
+                    onClick={printReport}
+                    className="rounded-lg border border-orange-400/30 bg-orange-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-orange-100"
+                  >
+                    Stampa/PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportEventsCsv}
+                    className="rounded-lg border border-white/20 bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/85"
+                  >
+                    CSV Eventi
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 bg-[#07080b] p-4">
+                <div className="h-full overflow-hidden rounded-xl border border-white/10 bg-white">
+                  {reportPreviewHtml ? (
+                    <iframe title="Anteprima Report Percorsi" className="h-full w-full" srcDoc={reportPreviewHtml} />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-slate-600">
+                      Nessuna anteprima disponibile.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

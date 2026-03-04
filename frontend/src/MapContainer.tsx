@@ -207,6 +207,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
   const fuelCalibrationRef = useRef<Map<string, number>>(new Map());
   const avlCacheRef = useRef<Map<string, any>>(new Map());
   const previewMarkersRef = useRef<Set<string>>(new Set());
+  const routeEventMarkersRef = useRef<Set<string>>(new Set());
   const driverDirectoryByCardRef = useRef<Record<string, string>>({});
   const [isMobileView, setIsMobileView] = useState(false);
   const isMobileViewRef = useRef(false);
@@ -947,6 +948,68 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
           curve: 1.4,
         });
       };
+      (window as any).trucklySetRouteEventMarker = (payload: any) => {
+        const map = mapInstanceRef.current;
+        if (!map || !payload) return;
+        const lat = toNumber(payload?.lat);
+        const lng = toNumber(payload?.lng);
+        if (!isValidCoordinate(lat, lng)) return;
+        const rawId = String(payload?.id || Date.now());
+        const markerId = `route-event:${rawId}`;
+        const title = String(payload?.title || "Evento");
+        const subtitle = String(payload?.subtitle || "");
+        const details = String(payload?.details || "");
+        const badge = String(payload?.badge || "EVT");
+        const kind = String(payload?.kind || "").toLowerCase();
+        const themeByKind: Record<string, { ring: string; glow: string; icon: string }> = {
+          pause: { ring: "#f59e0b", glow: "rgba(245,158,11,0.36)", icon: "fa-pause" },
+          rest: { ring: "#22c55e", glow: "rgba(34,197,94,0.34)", icon: "fa-bed" },
+          refuel: { ring: "#f97316", glow: "rgba(249,115,22,0.35)", icon: "fa-tint" },
+          withdrawal: { ring: "#ef4444", glow: "rgba(239,68,68,0.34)", icon: "fa-arrow-down" },
+          "driver-change": { ring: "#38bdf8", glow: "rgba(56,189,248,0.34)", icon: "fa-id-card-o" },
+        };
+        const markerTheme = themeByKind[kind] || { ring: "#f97316", glow: "rgba(249,115,22,0.35)", icon: "fa-map-marker" };
+        const tooltip = `
+          <div class="truckly-event-tooltip">
+            <div style="font-weight:700;font-size:13px;color:#fff;">${title}</div>
+            ${subtitle ? `<div style="font-size:12px;color:rgba(255,255,255,0.78);margin-top:2px;">${subtitle}</div>` : ""}
+            ${details ? `<div style="font-size:11px;color:rgba(255,255,255,0.62);margin-top:6px;">${details}</div>` : ""}
+          </div>
+        `;
+        const html = `
+          <div class="truckly-route-event-marker" style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:#0b0d11;border:2px solid ${markerTheme.ring};box-shadow:0 10px 22px rgba(0,0,0,.48),0 0 0 3px ${markerTheme.glow};color:#e5e7eb;">
+            <i class="fa ${markerTheme.icon}" style="font-size:13px;line-height:1;"></i>
+            <span style="position:absolute;right:-6px;bottom:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#101217;border:1px solid ${markerTheme.ring};display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;letter-spacing:.05em;color:#f8fafc;box-shadow:0 5px 10px rgba(0,0,0,.45);">
+              ${badge.slice(0, 3).toUpperCase()}
+            </span>
+          </div>
+        `;
+        map.addOrUpdateMarker({
+          id: markerId,
+          lng,
+          lat,
+          html,
+          tooltip,
+          hasPopup: !isMobileViewRef.current,
+          classlist: "custom-marker truckly-route-event-marker-wrap",
+        });
+        routeEventMarkersRef.current.add(markerId);
+        const marker = map.markers.get(markerId);
+        if (marker) {
+          map.focusMarker(marker as any, {
+            openPopup: !isMobileViewRef.current,
+            offset: true,
+          });
+        }
+      };
+      (window as any).trucklyClearRouteEventMarkers = () => {
+        const map = mapInstanceRef.current;
+        if (!map) return;
+        routeEventMarkersRef.current.forEach((id) => {
+          map.removeMarker(id);
+        });
+        routeEventMarkersRef.current.clear();
+      };
 
       try {
         const saved = window.localStorage.getItem("truckly:map-style") as
@@ -992,6 +1055,8 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       delete (window as any).trucklyCreateGeofence;
       delete (window as any).trucklyShowOnlyMarkers;
       delete (window as any).trucklyFlyToLocation;
+      delete (window as any).trucklySetRouteEventMarker;
+      delete (window as any).trucklyClearRouteEventMarkers;
       mapInstanceRef.current?.destroy();
       mapInstanceRef.current = null;
     };
