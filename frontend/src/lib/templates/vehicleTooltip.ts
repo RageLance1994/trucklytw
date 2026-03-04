@@ -32,6 +32,7 @@ export type TooltipContext = {
   formatDate?: (date: Date) => string;
   customFields?: CustomFieldConfig[];
   allowCustomize?: boolean;
+  driverDirectoryByCard?: Record<string, string>;
 };
 
 const DRIVER_STATUSES = {
@@ -450,12 +451,18 @@ export function renderVehicleTooltip({
   formatDate = defaultFormatDate,
   customFields = [],
   allowCustomize = false,
+  driverDirectoryByCard = {},
 }: TooltipContext): string {
   const gps = device?.data?.gps || device?.gps || {};
   const io = device?.data?.io || device?.io || {};
   const timestamp = device?.data?.timestamp || device?.timestamp;
   const lastUpdate = timestamp ? formatDate(new Date(timestamp)) : "N/D";
   const hasDriver = Boolean(device?.data?.io?.tachoDriverIds);
+  const resolvedDriverCardId = String(io?.tachoDriverIds?.driver1 || io?.driver1Id || "").trim();
+  const resolvedDriverName = resolvedDriverCardId
+    ? String(driverDirectoryByCard?.[resolvedDriverCardId] || "").trim()
+    : "";
+  const driverDisplay = resolvedDriverName || resolvedDriverCardId || "-";
   const driverStatusKey = driverEvents.at(-1)?.to_state_name;
   const driverStatus = driverStatusKey
     ? DRIVER_STATUSES[driverStatusKey] || DRIVER_STATUSES.unlogged
@@ -546,7 +553,7 @@ export function renderVehicleTooltip({
     ? `<div class="truckly-card">
         <h2>Autista</h2>
         <div class="truckly-row" style="justify-content:space-between;">
-          <strong>${escapeHtml(device?.data?.io?.driver1Id || "-")}</strong>
+          <strong>${escapeHtml(driverDisplay)}</strong>
           <span class="truckly-pill ${driverStatus.class}">
             ${driverStatus.translate}
           </span>

@@ -41,6 +41,46 @@ const getPrivilegeLevel = (user) => {
 const canManageVehicles = (user) => getPrivilegeLevel(user) === 0;
 const canEditVehicles = (user) => getPrivilegeLevel(user) <= 1;
 
+const buildDriverDirectoryForUser = async (user) => {
+  const fields = { tachoDriverId: 1, name: 1, surname: 1 };
+  const level = getPrivilegeLevel(user);
+
+  if (level === 0) {
+    const rows = await Models.Drivers.find({}, fields).lean();
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  const companyId = user?.companyId || null;
+  if (companyId) {
+    const owners = await Models.UserModel.find({ companyId }, { _id: 1 }).lean();
+    const ownerIds = owners.map((owner) => owner._id).filter(Boolean);
+    if (!ownerIds.length) return [];
+    const rows = await Models.Drivers.find({ owner: { $in: ownerIds } }, fields).lean();
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  const ownerId = user?.id || user?._id || null;
+  if (!ownerId) return [];
+  const rows = await Models.Drivers.find({ owner: ownerId }, fields).lean();
+  return Array.isArray(rows) ? rows : [];
+};
+
+const buildDriverDirectoryMap = (rows = []) => {
+  const map = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const cardId = row?.tachoDriverId ? String(row.tachoDriverId).trim() : '';
+    if (!cardId) return;
+    const fullName = [row?.name, row?.surname]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    if (!fullName) return;
+    map.set(cardId, fullName);
+  });
+  return map;
+};
+
 const permissionDeniedResponse = (message = "Non sei autorizzato ad eseguire quest'azione.") => ({
   error: 'PERMISSION_DENIED',
   message
@@ -661,8 +701,17 @@ router.get('/map', auth, async (req, res) => {
   }
 
   var vehicles = await req.user.vehicles.list() || [];
+  const driverRows = await buildDriverDirectoryForUser(req.user).catch(() => []);
+  const driverDirectory = (Array.isArray(driverRows) ? driverRows : []).map((row) => ({
+    tachoDriverId: row?.tachoDriverId ? String(row.tachoDriverId).trim() : null,
+    name: [row?.name, row?.surname]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean)
+      .join(' ')
+      .trim() || null
+  })).filter((entry) => entry.tachoDriverId && entry.name);
 
-  return (res.render('frames/mapFrame.ejs', { rParams: { vehicles } }))
+  return (res.render('frames/mapFrame.ejs', { rParams: { vehicles, driverDirectory } }))
 })
 
 // JSON vehicles API for the React dashboard.
@@ -1271,7 +1320,18 @@ router.post('/tooltip/:action?', auth, imeiOwnership, async (req, res) => {
   const io = device?.data?.io || {};
 
 
+  const tachoDriverId = io?.tachoDriverIds?.driver1 || io?.driver1Id || null;
   var driver = io.tachoDriverIds ? _Drivers.get(io.tachoDriverIds.driver1) : null;
+  let resolvedDriverName = null;
+  if (tachoDriverId) {
+    try {
+      const directoryRows = await buildDriverDirectoryForUser(req.user);
+      const directoryMap = buildDriverDirectoryMap(directoryRows);
+      resolvedDriverName = directoryMap.get(String(tachoDriverId)) || null;
+    } catch (err) {
+      console.warn('[tooltip.mainmap] unable to resolve local driver name', err?.message || err);
+    }
+  }
 
 
 
@@ -1290,6 +1350,7 @@ router.post('/tooltip/:action?', auth, imeiOwnership, async (req, res) => {
         status,
         fuelSummary,
         driverEvents,
+        resolvedDriverName,
 
         formatDate: (d) => new Date(d).toLocaleString('it-IT')
       });

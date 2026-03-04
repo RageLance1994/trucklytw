@@ -130,7 +130,7 @@
                             </div>
                             <div class="wrapper-h j-sb a-center nopadding">
                                 <h1 class="medium fwb" data-field="tooltip-driver">
-                                    <%= device.data.io.driver1Id || '-' %>
+                                    <%= resolvedDriverName || device.data.io.driver1Id || '-' %>
                                 </h1>
                                 <% var currentStatus=statuses[driverEvents.at(-1).to_state_name]; %>
                                     <p class="pill <%= currentStatus.class %>" data-info="driver-status"

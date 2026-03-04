@@ -67,9 +67,12 @@
 </head>
 
 <% var vehicles=typeof rParams !="undefined" && typeof rParams.vehicles !="undefined" ? rParams.vehicles : []; %>
+<% var driverDirectory=typeof rParams !="undefined" && typeof rParams.driverDirectory !="undefined" ? rParams.driverDirectory : []; %>
     <script>
         var vehicles = <%-JSON.stringify(vehicles) %>
         window.vehicles = vehicles;
+        var driverDirectory = <%-JSON.stringify(driverDirectory) %>
+        window.driverDirectory = Array.isArray(driverDirectory) ? driverDirectory : [];
 
     </script>
 

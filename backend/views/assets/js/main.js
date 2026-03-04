@@ -105,6 +105,16 @@ const toTelemetryNumber = (value) => {
 const resolveSpeedValue = (gps = {}, io = {}) =>
   gps?.Speed ?? gps?.speed ?? io?.speed ?? io?.vehicle_speed ?? io?.vehicleSpeed;
 const vehicles = window.vehicles || [];
+const driverDirectory = Array.isArray(window.driverDirectory) ? window.driverDirectory : [];
+const driverDirectoryByCard = new Map(
+  driverDirectory
+    .map((entry) => {
+      const cardId = typeof entry?.tachoDriverId === "string" ? entry.tachoDriverId.trim() : "";
+      const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+      return cardId && name ? [cardId, name] : null;
+    })
+    .filter(Boolean)
+);
 const imeis = vehicles.map(v => v.imei);
 
 const map = new TrucklyMap({
@@ -366,6 +376,16 @@ function collectTooltipFields(root) {
   };
 }
 
+function resolveDriverCardId(io = {}) {
+  return io?.tachoDriverIds?.driver1 || io?.driver1Id || null;
+}
+
+function resolveDriverDisplayName(io = {}) {
+  const driverId = resolveDriverCardId(io);
+  if (!driverId) return "-";
+  return driverDirectoryByCard.get(String(driverId)) || driverId;
+}
+
 function updateTooltipEntry(entry, payload) {
   if (!entry || !payload) return;
   const nodes = entry.nodes || {};
@@ -399,7 +419,7 @@ function updateTooltipEntry(entry, payload) {
   if (nodes.fuelPercent) {
     nodes.fuelPercent.textContent = Number.isFinite(summary.percent) ? `${(summary.percent * 100).toFixed(1)}%` : "";
   }
-  if (nodes.driver) nodes.driver.textContent = io.driver1Id || "-";
+  if (nodes.driver) nodes.driver.textContent = resolveDriverDisplayName(io);
   if (nodes.driverStatus) nodes.driverStatus.textContent = formatDriverWorkingState(io.driver1WorkingState);
 }
 
@@ -407,12 +427,11 @@ function updateTooltipEntry(entry, payload) {
 
 function buildTooltipCountersContext(device, vehicle) {
   const io = device?.data?.io || {};
-  const tacho = io?.tachoDriverIds || {};
-  const driverId = tacho.driver1 || io?.driver1Id || null;
+  const driverId = resolveDriverCardId(io);
   return {
     imei: vehicle?.imei || null,
     driverId,
-    driverName: io?.driver1Id || null,
+    driverName: resolveDriverDisplayName(io),
     driverState: io?.driver1WorkingState ?? null,
     timestamp: device?.data?.timestamp ?? Date.now(),
   };

@@ -207,6 +207,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
   const fuelCalibrationRef = useRef<Map<string, number>>(new Map());
   const avlCacheRef = useRef<Map<string, any>>(new Map());
   const previewMarkersRef = useRef<Set<string>>(new Set());
+  const driverDirectoryByCardRef = useRef<Record<string, string>>({});
   const [isMobileView, setIsMobileView] = useState(false);
   const isMobileViewRef = useRef(false);
   const [markerStyle, setMarkerStyle] = useState<
@@ -279,6 +280,39 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadDriversDirectory = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/drivers`, { credentials: "include" });
+        if (!res.ok) return;
+        const payload = await res.json();
+        const list = Array.isArray(payload?.drivers) ? payload.drivers : [];
+        const next: Record<string, string> = {};
+        list.forEach((driver: any) => {
+          const cardId = String(driver?.tachoDriverId || "").trim();
+          if (!cardId) return;
+          const fullName = [driver?.name, driver?.surname]
+            .map((part) => (typeof part === "string" ? part.trim() : ""))
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          if (!fullName) return;
+          next[cardId] = fullName;
+        });
+        if (cancelled) return;
+        driverDirectoryByCardRef.current = next;
+        (window as any).driverDirectoryByCard = next;
+      } catch {
+        // Best effort only.
+      }
+    };
+    loadDriversDirectory();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const widthQuery = window.matchMedia("(max-width: 1023px)");
     const pointerQuery = window.matchMedia("(pointer: coarse)");
@@ -330,6 +364,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         formatDate: formatTooltipDate,
         customFields: fields,
         allowCustomize,
+        driverDirectoryByCard: driverDirectoryByCardRef.current,
       });
     },
     [allowCustomize],
@@ -459,6 +494,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         formatDate: formatTooltipDate,
         customFields: getVehicleCustomFields(vehicle),
         allowCustomize,
+        driverDirectoryByCard: driverDirectoryByCardRef.current,
       });
       const shouldSkipTooltipUpdate = isEditingTooltip(vehicle?.imei || id);
 
@@ -533,6 +569,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         formatDate: formatTooltipDate,
         customFields: getVehicleCustomFields(vehicle),
         allowCustomize,
+        driverDirectoryByCard: driverDirectoryByCardRef.current,
       });
       const shouldSkipTooltipUpdate = isEditingTooltip(vehicle?.imei);
 
@@ -741,6 +778,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
           formatDate: formatTooltipDate,
           customFields: getVehicleCustomFields(vehicle),
           allowCustomize,
+          driverDirectoryByCard: driverDirectoryByCardRef.current,
         });
         const shouldSkipTooltipUpdate = isEditingTooltip(imei);
         mapInstanceRef.current?.addOrUpdateMarker({
@@ -838,6 +876,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
             formatDate: formatTooltipDate,
             customFields: getVehicleCustomFields(vehicle),
             allowCustomize,
+            driverDirectoryByCard: driverDirectoryByCardRef.current,
           });
           const shouldSkipTooltipUpdate = isEditingTooltip(imei);
 
@@ -1006,6 +1045,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         formatDate: formatTooltipDate,
         customFields: getVehicleCustomFields(vehicle),
         allowCustomize,
+        driverDirectoryByCard: driverDirectoryByCardRef.current,
       });
       const shouldSkipTooltipUpdate = isEditingTooltip(imei);
 
@@ -1218,6 +1258,7 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
             formatDate: formatTooltipDate,
             customFields: getVehicleCustomFields(vehicle),
             allowCustomize,
+            driverDirectoryByCard: driverDirectoryByCardRef.current,
           });
           const shouldSkipTooltipUpdate = isEditingTooltip(imei);
 
