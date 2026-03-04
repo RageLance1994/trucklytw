@@ -1,9 +1,9 @@
 {
-  "fetchedAt": "2026-03-03T20:00:03.089Z",
-  "type": "vehicle",
+  "fetchedAt": "2026-03-03T23:50:01.529Z",
+  "type": "driver",
   "ids": [
-    "9db7b5c9-b8c5-4165-83eb-c92cb3fb7016"
+    "b29038a3-9c19-469c-8a8e-6df569a4d05c"
   ],
   "fileFormat": "DDD",
-  "url": "https://api.tacho.teltonika.lt/v1/VehicleFiles/Download?Ids=9db7b5c9-b8c5-4165-83eb-c92cb3fb7016&FileFormat=DDD"
+  "url": "https://api.tacho.teltonika.lt/v1/DriverFiles/Download?Ids=b29038a3-9c19-469c-8a8e-6df569a4d05c&FileFormat=DDD"
 }
