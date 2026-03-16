@@ -1,65 +1,76 @@
 import React from "react";
-import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import { MapContainer } from "../MapContainer";
+import { Navbar } from "../components/navbar";
+import { QuickSidebar } from "../components/quick-sidebar";
 
-/* ─── Fictional demo vehicles across Italy ─────────────────── */
-type DemoVehicle = {
-  imei: string;
-  nickname: string;
-  plate: string;
-  brand: string;
-  model: string;
-  lat: number;
-  lon: number;
-  status: "driving" | "resting" | "working";
-  angle: number;
-  speed: number;
-};
-
-const DEMO_VEHICLES: DemoVehicle[] = [
-  { imei: "D001", nickname: "Iveco Milano", plate: "FH 842 BZ", brand: "Iveco", model: "S-Way 570", lat: 45.4654, lon: 9.1859, status: "driving", angle: 75, speed: 88 },
-  { imei: "D002", nickname: "Volvo Torino", plate: "AB 317 CD", brand: "Volvo", model: "FH16 750", lat: 45.0703, lon: 7.6869, status: "resting", angle: 0, speed: 0 },
-  { imei: "D003", nickname: "Scania Bologna", plate: "GK 551 MN", brand: "Scania", model: "R450", lat: 44.4949, lon: 11.3426, status: "driving", angle: 120, speed: 94 },
-  { imei: "D004", nickname: "MAN Firenze", plate: "PQ 228 RS", brand: "MAN", model: "TGX 18.560", lat: 43.7696, lon: 11.2558, status: "working", angle: 0, speed: 4 },
-  { imei: "D005", nickname: "Daf Roma", plate: "LT 903 XY", brand: "DAF", model: "XF 480", lat: 41.9028, lon: 12.4964, status: "driving", angle: 200, speed: 112 },
-  { imei: "D006", nickname: "Iveco Napoli", plate: "WZ 067 QP", brand: "Iveco", model: "Stralis 480", lat: 40.8518, lon: 14.2681, status: "resting", angle: 0, speed: 0 },
-  { imei: "D007", nickname: "Scania Bari", plate: "UV 190 EF", brand: "Scania", model: "S580", lat: 41.1171, lon: 16.8719, status: "driving", angle: 310, speed: 105 },
-  { imei: "D008", nickname: "Volvo Venezia", plate: "NK 445 GH", brand: "Volvo", model: "FM 460", lat: 45.4408, lon: 12.3155, status: "driving", angle: 45, speed: 76 },
-  { imei: "D009", nickname: "MAN Palermo", plate: "CJ 712 IJ", brand: "MAN", model: "TGS 26.460", lat: 38.1157, lon: 13.3615, status: "working", angle: 0, speed: 2 },
-  { imei: "D010", nickname: "Daf Catanzaro", plate: "RE 389 KL", brand: "DAF", model: "CF 530", lat: 38.9100, lon: 16.5872, status: "resting", angle: 0, speed: 0 },
-];
-
-const STATUS_COLORS: Record<DemoVehicle["status"], string> = {
-  driving: "#22c55e",
-  resting: "#ef4444",
-  working: "#eab308",
-};
-
-const STATUS_LABELS: Record<DemoVehicle["status"], string> = {
-  driving: "In marcia",
-  resting: "Fermo",
-  working: "Quadro acceso",
-};
+/* ─── 35 veicoli demo distribuiti su tutta Italia ────────────── */
+const DEMO_VEHICLES = [
+  // ── Milano cluster ──
+  { imei: "D001", nickname: "Iveco Milano",   plate: "FH 842 BZ", brand: "Iveco",  model: "S-Way 570",   lat: 45.4654, lon: 9.1859,  status: "driving", angle: 75 },
+  { imei: "D002", nickname: "Volvo Milano",   plate: "ML 312 RT", brand: "Volvo",  model: "FH 460",      lat: 45.4812, lon: 9.2031,  status: "resting", angle: 0  },
+  { imei: "D003", nickname: "Scania Milano",  plate: "GK 551 MN", brand: "Scania", model: "R450",        lat: 45.4523, lon: 9.1645,  status: "driving", angle: 120 },
+  { imei: "D004", nickname: "MAN Milano",     plate: "MI 990 AB", brand: "MAN",    model: "TGX 18.560",  lat: 45.4900, lon: 9.2145,  status: "working", angle: 0  },
+  { imei: "D005", nickname: "DAF Milano",     plate: "TO 213 XY", brand: "DAF",    model: "XF 480",      lat: 45.4401, lon: 9.1742,  status: "driving", angle: 200 },
+  // ── Torino ──
+  { imei: "D006", nickname: "Volvo Torino",   plate: "AB 317 CD", brand: "Volvo",  model: "FH16 750",    lat: 45.0703, lon: 7.6869,  status: "resting", angle: 0  },
+  { imei: "D007", nickname: "Iveco Torino",   plate: "TN 789 PQ", brand: "Iveco",  model: "Stralis 480", lat: 45.0892, lon: 7.6712,  status: "driving", angle: 45 },
+  // ── Bologna / Emilia ──
+  { imei: "D008", nickname: "Scania Bologna", plate: "BO 123 AB", brand: "Scania", model: "S580",        lat: 44.4949, lon: 11.3426, status: "driving", angle: 180 },
+  { imei: "D009", nickname: "DAF Bologna",    plate: "AR 234 EF", brand: "DAF",    model: "CF 530",      lat: 44.3012, lon: 11.5876, status: "driving", angle: 160 },
+  { imei: "D010", nickname: "Iveco Modena",   plate: "MO 567 IJ", brand: "Iveco",  model: "S-Way 480",   lat: 44.6488, lon: 10.9255, status: "resting", angle: 0  },
+  // ── Firenze / Toscana ──
+  { imei: "D011", nickname: "Volvo Firenze",  plate: "FI 678 CD", brand: "Volvo",  model: "FM 460",      lat: 43.7696, lon: 11.2558, status: "resting", angle: 0  },
+  { imei: "D012", nickname: "Scania Pistoia", plate: "PT 890 GH", brand: "Scania", model: "R450",        lat: 43.9012, lon: 11.0234, status: "driving", angle: 210 },
+  // ── Roma cluster ──
+  { imei: "D013", nickname: "DAF Roma",       plate: "LT 903 XY", brand: "DAF",    model: "XF 480",      lat: 41.9028, lon: 12.4964, status: "driving", angle: 200 },
+  { imei: "D014", nickname: "Volvo Roma",     plate: "RM 456 IJ", brand: "Volvo",  model: "FH 500",      lat: 41.8912, lon: 12.5123, status: "working", angle: 0  },
+  { imei: "D015", nickname: "Scania Roma",    plate: "VT 234 KL", brand: "Scania", model: "R500",        lat: 41.9234, lon: 12.4812, status: "driving", angle: 150 },
+  { imei: "D016", nickname: "MAN Roma",       plate: "FR 678 MN", brand: "MAN",    model: "TGX 26.480",  lat: 41.8756, lon: 12.5345, status: "resting", angle: 0  },
+  { imei: "D017", nickname: "Iveco Roma",     plate: "LT 012 OP", brand: "Iveco",  model: "Stralis 460", lat: 41.9456, lon: 12.4678, status: "driving", angle: 20 },
+  // ── Napoli ──
+  { imei: "D018", nickname: "Iveco Napoli",   plate: "WZ 067 QP", brand: "Iveco",  model: "Stralis 480", lat: 40.8518, lon: 14.2681, status: "resting", angle: 0  },
+  { imei: "D019", nickname: "Volvo Napoli",   plate: "NA 345 RS", brand: "Volvo",  model: "FH 460",      lat: 40.8712, lon: 14.2456, status: "driving", angle: 310 },
+  { imei: "D020", nickname: "DAF Napoli",     plate: "SA 789 TU", brand: "DAF",    model: "XF 480",      lat: 40.8345, lon: 14.2867, status: "working", angle: 0  },
+  // ── Bari / Puglia ──
+  { imei: "D021", nickname: "Scania Bari",    plate: "UV 190 EF", brand: "Scania", model: "S580",        lat: 41.1171, lon: 16.8719, status: "driving", angle: 310 },
+  { imei: "D022", nickname: "MAN Bari",       plate: "BA 234 VW", brand: "MAN",    model: "TGS 18.460",  lat: 41.1345, lon: 16.8534, status: "driving", angle: 45 },
+  // ── Venezia / NordEst ──
+  { imei: "D023", nickname: "Volvo Venezia",  plate: "NK 445 GH", brand: "Volvo",  model: "FM 460",      lat: 45.4408, lon: 12.3155, status: "driving", angle: 45 },
+  { imei: "D024", nickname: "Scania Venezia", plate: "VE 678 AB", brand: "Scania", model: "R450",        lat: 45.4612, lon: 12.3312, status: "working", angle: 0  },
+  { imei: "D025", nickname: "DAF Padova",     plate: "PD 012 CD", brand: "DAF",    model: "CF 440",      lat: 45.4078, lon: 11.8765, status: "driving", angle: 180 },
+  // ── Sicilia ──
+  { imei: "D026", nickname: "MAN Palermo",    plate: "CJ 712 IJ", brand: "MAN",    model: "TGS 26.460",  lat: 38.1157, lon: 13.3615, status: "working", angle: 0  },
+  { imei: "D027", nickname: "Iveco Palermo",  plate: "PA 345 EF", brand: "Iveco",  model: "Stralis 460", lat: 38.1345, lon: 13.3789, status: "resting", angle: 0  },
+  { imei: "D028", nickname: "Volvo Catania",  plate: "CT 678 GH", brand: "Volvo",  model: "FH 500",      lat: 37.5023, lon: 15.0872, status: "driving", angle: 90 },
+  // ── Sardegna ──
+  { imei: "D029", nickname: "DAF Cagliari",   plate: "CA 234 KL", brand: "DAF",    model: "XF 480",      lat: 39.2238, lon: 9.1217,  status: "driving", angle: 135 },
+  { imei: "D030", nickname: "Scania Sassari", plate: "SS 567 MN", brand: "Scania", model: "S580",        lat: 40.7259, lon: 8.5556,  status: "resting", angle: 0  },
+  // ── Genova / Liguria ──
+  { imei: "D031", nickname: "Iveco Genova",   plate: "GE 345 QR", brand: "Iveco",  model: "S-Way 570",   lat: 44.4065, lon: 8.9335,  status: "driving", angle: 90 },
+  // ── Ancona ──
+  { imei: "D032", nickname: "Volvo Ancona",   plate: "AN 678 ST", brand: "Volvo",  model: "FH 460",      lat: 43.6158, lon: 13.5189, status: "driving", angle: 150 },
+  // ── Pescara ──
+  { imei: "D033", nickname: "Scania Pescara", plate: "PE 901 UV", brand: "Scania", model: "S580",        lat: 42.3540, lon: 14.1689, status: "driving", angle: 200 },
+  // ── Calabria ──
+  { imei: "D034", nickname: "DAF Catanzaro",  plate: "RE 389 KL", brand: "DAF",    model: "CF 530",      lat: 38.9100, lon: 16.5872, status: "resting", angle: 0  },
+  // ── A1 autostrada ──
+  { imei: "D035", nickname: "MAN A1 Sud",     plate: "CB 234 WX", brand: "MAN",    model: "TGX 26.480",  lat: 41.5612, lon: 14.6654, status: "driving", angle: 195 },
+] as const;
 
 /* ─── Contact Gate Modal ────────────────────────────────────── */
-type ContactGateProps = {
-  isOpen: boolean;
-  onClose: () => void;
-  trigger?: string;
-};
+type ContactGateProps = { isOpen: boolean; onClose: () => void; trigger?: string };
 
 function ContactGate({ isOpen, onClose, trigger }: ContactGateProps) {
-  const [name, setName] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [company, setCompany] = React.useState("");
-  const [fleet, setFleet] = React.useState("");
+  const [name,      setName]      = React.useState("");
+  const [email,     setEmail]     = React.useState("");
+  const [company,   setCompany]   = React.useState("");
+  const [fleet,     setFleet]     = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
-  const [submitted, setSubmitted] = React.useState(false);
+  const [submitted,  setSubmitted]  = React.useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    // Simulate async submit — in production connect to /api/lead or similar
     await new Promise((r) => setTimeout(r, 900));
     setSubmitting(false);
     setSubmitted(true);
@@ -69,101 +80,50 @@ function ContactGate({ isOpen, onClose, trigger }: ContactGateProps) {
 
   return (
     <div className="fixed inset-0 z-[9000] flex items-center justify-center px-4 py-8">
-      <button
-        type="button"
-        aria-label="Chiudi"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-      />
+      <button type="button" aria-label="Chiudi" onClick={onClose}
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#0c0c0d] p-8 shadow-[0_32px_80px_rgba(0,0,0,0.7)]">
-        {/* Glow accent */}
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-2xl"
-          style={{ background: "linear-gradient(90deg, transparent, rgba(255,122,26,0.6), transparent)" }}
-        />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-2xl"
+          style={{ background: "linear-gradient(90deg,transparent,rgba(255,122,26,0.6),transparent)" }} />
 
         {submitted ? (
-          <div className="flex flex-col items-center gap-6 text-center py-4">
-            <div className="h-14 w-14 rounded-full border border-[rgba(255,122,26,0.4)] bg-[rgba(255,122,26,0.1)] flex items-center justify-center">
-              <i className="fa fa-check text-xl text-orange-400" aria-hidden="true" />
+          <div className="flex flex-col items-center gap-6 py-4 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-orange-500/40 bg-orange-500/10">
+              <i className="fa fa-check text-xl text-orange-400" />
             </div>
             <div>
               <h3 className="text-xl font-semibold text-white">Richiesta inviata!</h3>
-              <p className="mt-2 text-sm text-white/60">
-                Ti contatteremo a breve per attivare il tuo accesso completo a Truckly.
-              </p>
+              <p className="mt-2 text-sm text-white/60">Ti contatteremo a breve per attivare il tuo accesso completo a Truckly.</p>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-10 rounded-full border border-white/20 px-6 text-xs uppercase tracking-[0.2em] text-white/70 hover:text-white transition"
-            >
+            <button type="button" onClick={onClose}
+              className="h-10 rounded-full border border-white/20 px-6 text-xs uppercase tracking-[0.2em] text-white/70 transition hover:text-white">
               Chiudi
             </button>
           </div>
         ) : (
           <>
             <div className="mb-6">
-              <p className="text-[10px] uppercase tracking-[0.26em] text-orange-400/80 mb-1">
-                {trigger || "Funzione avanzata"}
-              </p>
-              <h3 className="text-xl font-semibold text-white">
-                Vuoi accedere a questa funzione?
-              </h3>
-              <p className="mt-2 text-sm text-white/60">
-                La versione demo mostra solo la localizzazione. Lascia i tuoi dati per ricevere accesso completo.
-              </p>
+              <p className="mb-1 text-[10px] uppercase tracking-[0.26em] text-orange-400/80">{trigger || "Funzione avanzata"}</p>
+              <h3 className="text-xl font-semibold text-white">Vuoi accedere a questa funzione?</h3>
+              <p className="mt-2 text-sm text-white/60">La versione demo mostra solo la localizzazione. Lascia i tuoi dati per ricevere accesso completo.</p>
             </div>
-
             <form onSubmit={handleSubmit} className="space-y-4">
+              {[
+                { label: "Nome e Cognome *", type: "text",  value: name,    set: setName,    placeholder: "Mario Rossi",            required: true },
+                { label: "Email *",          type: "email", value: email,   set: setEmail,   placeholder: "mario@azienda.it",       required: true },
+                { label: "Azienda *",        type: "text",  value: company, set: setCompany, placeholder: "Trasporti Rossi S.r.l.", required: true },
+              ].map((f) => (
+                <div key={f.label}>
+                  <label className="mb-1.5 block text-[10px] uppercase tracking-[0.2em] text-white/50">{f.label}</label>
+                  <input required={f.required} type={f.type} value={f.value}
+                    onChange={(e) => f.set(e.target.value)} placeholder={f.placeholder}
+                    className="w-full rounded-lg border border-white/10 bg-[#111113] px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-orange-500/50" />
+                </div>
+              ))}
               <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-white/50 mb-1.5">
-                  Nome e Cognome *
-                </label>
-                <input
-                  required
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Mario Rossi"
-                  className="w-full rounded-lg border border-white/10 bg-[#111113] px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-white/50 mb-1.5">
-                  Email *
-                </label>
-                <input
-                  required
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="mario@azienda.it"
-                  className="w-full rounded-lg border border-white/10 bg-[#111113] px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-white/50 mb-1.5">
-                  Azienda *
-                </label>
-                <input
-                  required
-                  type="text"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  placeholder="Trasporti Rossi S.r.l."
-                  className="w-full rounded-lg border border-white/10 bg-[#111113] px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] text-white/50 mb-1.5">
-                  N° mezzi in flotta
-                </label>
-                <select
-                  value={fleet}
-                  onChange={(e) => setFleet(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#111113] px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500/50"
-                >
+                <label className="mb-1.5 block text-[10px] uppercase tracking-[0.2em] text-white/50">N° mezzi in flotta</label>
+                <select value={fleet} onChange={(e) => setFleet(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#111113] px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500/50">
                   <option value="">Seleziona</option>
                   <option value="1-5">1 – 5 mezzi</option>
                   <option value="6-20">6 – 20 mezzi</option>
@@ -171,14 +131,10 @@ function ContactGate({ isOpen, onClose, trigger }: ContactGateProps) {
                   <option value="50+">Oltre 50 mezzi</option>
                 </select>
               </div>
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full h-11 rounded-full text-xs font-semibold uppercase tracking-[0.2em] text-white transition disabled:opacity-60"
-                style={{ background: "linear-gradient(135deg, #ff7a1a, #ff9a4a)", boxShadow: "0 0 28px rgba(255,122,26,0.35)" }}
-              >
-                {submitting ? "Invio in corso..." : "Richiedi accesso completo"}
+              <button type="submit" disabled={submitting}
+                className="h-11 w-full rounded-full text-xs font-semibold uppercase tracking-[0.2em] text-white transition disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg,#ff7a1a,#ff9a4a)", boxShadow: "0 0 28px rgba(255,122,26,0.35)" }}>
+                {submitting ? "Invio in corso…" : "Richiedi accesso completo"}
               </button>
             </form>
           </>
@@ -188,211 +144,112 @@ function ContactGate({ isOpen, onClose, trigger }: ContactGateProps) {
   );
 }
 
-/* ─── Demo vehicle tooltip ──────────────────────────────────── */
-function buildMarkerHtml(v: DemoVehicle): string {
-  const color = STATUS_COLORS[v.status];
-  return `
-    <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:rgba(10,10,14,0.92);color:#fff;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.15);box-shadow:0 8px 18px rgba(0,0,0,0.5);white-space:nowrap;cursor:pointer;">
-      <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;box-shadow:0 0 8px ${color}88;"></span>
-      ${v.plate}
-    </div>`;
-}
-
-/* ─── Main DemoPage ─────────────────────────────────────────── */
+/* ─── DemoPage ──────────────────────────────────────────────── */
 export function DemoPage() {
-  const mapContainerRef = React.useRef<HTMLDivElement>(null);
-  const mapRef = React.useRef<maplibregl.Map | null>(null);
-  const markersRef = React.useRef<maplibregl.Marker[]>([]);
-  const vehiclesRef = React.useRef<DemoVehicle[]>(JSON.parse(JSON.stringify(DEMO_VEHICLES)));
+  const [quickSidebarOpen, setQuickSidebarOpen] = React.useState(false);
+  const [gate, setGate] = React.useState({ open: false, trigger: "" });
 
-  const [contactGate, setContactGate] = React.useState<{ open: boolean; trigger?: string }>({ open: false });
-  const [activeVehicle, setActiveVehicle] = React.useState<DemoVehicle | null>(null);
-  const popupRef = React.useRef<maplibregl.Popup | null>(null);
+  const openGate = React.useCallback((trigger: string) => {
+    setGate({ open: true, trigger });
+  }, []);
 
-  /* init map */
+  /* Intercept all non-map platform events → contact gate */
   React.useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    const gated: [string, string][] = [
+      ["truckly:driver-open",       "Percorsi e rewind"],
+      ["truckly:bottom-bar-toggle", "Analisi consumi & carburante"],
+      ["truckly:rewind-start",      "Rewind percorso"],
+      ["truckly:alert-open",        "Alert intelligenti"],
+      ["truckly:report-open",       "Report & tachigrafo"],
+      ["truckly:tacho-open",        "Tachigrafo digitale"],
+    ];
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: "/maps/style.json",
-      center: [12.5, 42.5],
-      zoom: 5.5,
-      attributionControl: false,
+    const handlers = gated.map(([event, trigger]) => {
+      const fn = (e: Event) => { e.stopImmediatePropagation(); openGate(trigger); };
+      window.addEventListener(event, fn, true); // capture → fires before platform listeners
+      return { event, fn };
     });
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-    mapRef.current = map;
-
-    map.on("load", () => {
-      placeDemoMarkers(map);
-    });
+    /* Quick sidebar toggle (this one is allowed) */
+    const onQuickToggle = () => setQuickSidebarOpen((p) => !p);
+    window.addEventListener("truckly:quick-sidebar", onQuickToggle);
 
     return () => {
-      map.remove();
-      mapRef.current = null;
+      handlers.forEach(({ event, fn }) => window.removeEventListener(event, fn, true));
+      window.removeEventListener("truckly:quick-sidebar", onQuickToggle);
     };
-  }, []);
+  }, [openGate]);
 
-  const placeDemoMarkers = (map: maplibregl.Map) => {
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-
-    vehiclesRef.current.forEach((v) => {
-      const el = document.createElement("div");
-      el.innerHTML = buildMarkerHtml(v);
-      el.addEventListener("click", () => {
-        setActiveVehicle(v);
-        showVehiclePopup(map, v);
-      });
-
-      const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-        .setLngLat([v.lon, v.lat])
-        .addTo(map);
-
-      markersRef.current.push(marker);
-    });
-  };
-
-  const showVehiclePopup = (map: maplibregl.Map, v: DemoVehicle) => {
-    popupRef.current?.remove();
-    const color = STATUS_COLORS[v.status];
-    const content = `
-      <div style="background:#111;border-radius:14px;border:1px solid rgba(255,255,255,0.1);padding:14px 16px;min-width:200px;font-family:system-ui,sans-serif;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span style="width:8px;height:8px;border-radius:50%;background:${color};box-shadow:0 0 8px ${color}88;flex-shrink:0;"></span>
-          <span style="font-size:13px;font-weight:700;color:#fff;">${v.nickname}</span>
-        </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.6);line-height:1.8;">
-          <div><b style="color:rgba(255,255,255,0.4);">Targa</b> ${v.plate}</div>
-          <div><b style="color:rgba(255,255,255,0.4);">Mezzo</b> ${v.brand} ${v.model}</div>
-          <div><b style="color:rgba(255,255,255,0.4);">Stato</b> <span style="color:${color}">${STATUS_LABELS[v.status]}</span></div>
-          ${v.speed > 0 ? `<div><b style="color:rgba(255,255,255,0.4);">Velocità</b> ${v.speed} km/h</div>` : ""}
-        </div>
-        <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-          <button
-            onclick="window.__trucklyDemoGate('Analisi percorso')"
-            style="width:100%;padding:7px;border-radius:8px;background:rgba(255,122,26,0.15);border:1px solid rgba(255,122,26,0.3);color:rgba(255,180,120,0.9);font-size:11px;cursor:pointer;font-weight:600;letter-spacing:0.08em;"
-          >
-            Vedi percorso & analisi →
-          </button>
-        </div>
-      </div>`;
-
-    popupRef.current = new maplibregl.Popup({ closeButton: false, offset: 10, maxWidth: "none" })
-      .setLngLat([v.lon, v.lat])
-      .setHTML(content)
-      .addTo(map);
-  };
-
-  /* Expose gate trigger to popup HTML */
+  /* Expose gate trigger for any inline popup buttons */
   React.useEffect(() => {
-    (window as any).__trucklyDemoGate = (trigger: string) => {
-      setContactGate({ open: true, trigger });
-    };
-    return () => {
-      delete (window as any).__trucklyDemoGate;
-    };
-  }, []);
-
-  /* Animate driving vehicles slightly */
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      vehiclesRef.current = vehiclesRef.current.map((v) => {
-        if (v.status !== "driving") return v;
-        const rad = (v.angle * Math.PI) / 180;
-        const delta = 0.0003;
-        return {
-          ...v,
-          lat: v.lat + Math.cos(rad) * delta,
-          lon: v.lon + Math.sin(rad) * delta,
-        };
-      });
-
-      if (mapRef.current) {
-        markersRef.current.forEach((marker, idx) => {
-          const v = vehiclesRef.current[idx];
-          if (v?.status === "driving") {
-            marker.setLngLat([v.lon, v.lat]);
-          }
-        });
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    (window as any).__trucklyDemoGate = openGate;
+    return () => { delete (window as any).__trucklyDemoGate; };
+  }, [openGate]);
 
   return (
-    <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#0a0a0a]">
-      {/* ─── Top bar ──────────────────────────────────── */}
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-[#0b0b0c]/90 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-3">
-          <a href="/">
-            <img src="/assets/images/logo_white.png" alt="Truckly" className="h-6 w-auto" loading="lazy" />
-          </a>
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
-            style={{ background: "rgba(255,122,26,0.12)", border: "1px solid rgba(255,122,26,0.35)", color: "rgba(255,200,160,0.9)" }}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: "#ff7a1a", boxShadow: "0 0 6px rgba(255,122,26,0.8)", animation: "truckly-typing-blink 1.4s ease-in-out infinite" }}
-            />
-            Demo live
-          </span>
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-[#080809]">
+
+      {/* ── Demo banner ─────────────────────────────────────── */}
+      <div
+        className="relative z-[1500] flex shrink-0 items-center justify-between gap-4 px-4 py-1.5"
+        style={{ background: "rgba(8,6,3,0.95)", borderBottom: "1px solid rgba(255,122,26,0.28)", backdropFilter: "blur(8px)" }}
+      >
+        <div className="flex items-center gap-2 text-[11px] text-orange-300/80">
+          <span className="h-1.5 w-1.5 rounded-full"
+            style={{ background: "#ff7a1a", boxShadow: "0 0 6px rgba(255,122,26,0.9)", animation: "truckly-typing-blink 1.4s ease-in-out infinite" }} />
+          <span className="uppercase tracking-[0.2em]">Demo live</span>
+          <span className="hidden text-white/30 sm:inline">·</span>
+          <span className="hidden text-white/40 sm:inline">Veicoli fittizi · Solo localizzazione attiva</span>
         </div>
-
-        <p className="hidden text-xs text-white/45 sm:block">
-          Veicoli fittizi · Solo localizzazione attiva
-        </p>
-
-        <button
-          type="button"
-          onClick={() => setContactGate({ open: true, trigger: "Accesso completo" })}
-          className="shrink-0 h-9 rounded-full px-4 text-xs font-semibold uppercase tracking-[0.18em] text-white transition"
-          style={{ background: "linear-gradient(135deg, #ff7a1a, #ff9a4a)", boxShadow: "0 0 22px rgba(255,122,26,0.3)" }}
-        >
+        <button type="button" onClick={() => openGate("Accesso completo")}
+          className="h-7 shrink-0 rounded-full px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-white"
+          style={{ background: "linear-gradient(135deg,#ff7a1a,#ff9a4a)" }}>
           Richiedi accesso
         </button>
-      </header>
+      </div>
 
-      {/* ─── Map ──────────────────────────────────────── */}
-      <div ref={mapContainerRef} className="flex-1" />
+      {/* ── Real platform ────────────────────────────────────── */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-[52px]">
+        <Navbar />
+        <MapContainer vehicles={DEMO_VEHICLES as any} />
+        <QuickSidebar
+          isOpen={quickSidebarOpen}
+          onClose={() => setQuickSidebarOpen(false)}
+          vehicles={DEMO_VEHICLES as any}
+        />
+      </div>
 
-      {/* ─── Locked feature bar (bottom) ─────────────── */}
-      <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-[#0b0b0c]/90 px-4 py-3 backdrop-blur">
+      {/* ── Locked feature bar ──────────────────────────────── */}
+      <div
+        className="relative z-[1200] flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 px-4 py-2.5 backdrop-blur"
+        style={{ background: "rgba(11,11,12,0.94)" }}
+      >
         {[
-          { icon: "fa-line-chart", label: "Analisi consumi" },
-          { icon: "fa-road", label: "Percorsi e rewind" },
-          { icon: "fa-bell", label: "Alert in tempo reale" },
-          { icon: "fa-id-card", label: "Gestione autisti" },
-          { icon: "fa-file-text-o", label: "Report & tachigrafo" },
+          { icon: "fa-tint",        label: "Analisi consumi",      trigger: "Analisi consumi" },
+          { icon: "fa-road",        label: "Percorsi e rewind",    trigger: "Percorsi e rewind" },
+          { icon: "fa-bell",        label: "Alert in tempo reale", trigger: "Alert intelligenti" },
+          { icon: "fa-id-card",     label: "Gestione autisti",     trigger: "Gestione autisti" },
+          { icon: "fa-file-text-o", label: "Report & tachigrafo",  trigger: "Report & tachigrafo" },
         ].map((feat) => (
-          <button
-            key={feat.label}
-            type="button"
-            onClick={() => setContactGate({ open: true, trigger: feat.label })}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/4 px-3 py-1.5 text-[11px] text-white/50 transition hover:border-white/20 hover:text-white/80"
-          >
+          <button key={feat.label} type="button" onClick={() => openGate(feat.trigger)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] text-white/50 transition hover:border-white/20 hover:text-white/80">
             <i className={`fa ${feat.icon} text-[11px] text-white/30`} aria-hidden="true" />
             <span className="hidden sm:inline">{feat.label}</span>
             <i className="fa fa-lock text-[9px] text-orange-500/60" aria-hidden="true" />
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setContactGate({ open: true, trigger: "Accesso completo" })}
-          className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-[11px] text-orange-300/80 transition hover:bg-orange-500/15"
-        >
+        <button type="button" onClick={() => openGate("Accesso completo")}
+          className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-[11px] text-orange-300/80 transition hover:bg-orange-500/15">
           <i className="fa fa-unlock-alt text-[11px]" aria-hidden="true" />
           Sblocca tutto
         </button>
       </div>
 
-      {/* ─── Contact gate ─────────────────────────────── */}
+      {/* ── Contact gate modal ──────────────────────────────── */}
       <ContactGate
-        isOpen={contactGate.open}
-        onClose={() => setContactGate({ open: false })}
-        trigger={contactGate.trigger}
+        isOpen={gate.open}
+        onClose={() => setGate((g) => ({ ...g, open: false }))}
+        trigger={gate.trigger}
       />
     </div>
   );

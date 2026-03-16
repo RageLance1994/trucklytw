@@ -1,5 +1,4 @@
 import React from "react";
-import { Button } from "../components/ui/button";
 import { HomeNavbar } from "../components/home-navbar";
 
 /* ─── Static counter data ───────────────────────────────────── */
@@ -52,7 +51,7 @@ const FEATURES = [
 
 /* ─── Steps ─────────────────────────────────────────────────── */
 const HOW_STEPS = [
-  { n: "01", title: "Installa il dispositivo", body: "GPS Teltonika plug-and-play su ogni mezzo. Nessun cablaggio, nessun tecnico." },
+  { n: "01", title: "Installa il dispositivo", body: "Dispositivo GPS plug-and-play su ogni mezzo. Nessun cablaggio, nessun tecnico." },
   { n: "02", title: "Connetti la piattaforma", body: "Il mezzo appare subito sulla mappa. Dati in tempo reale dal primo accensione." },
   { n: "03", title: "Analizza e ottimizza", body: "Dashboard, alert e report ti mostrano dove agire. Meno sprechi, più controllo." },
 ];
@@ -263,7 +262,10 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ══════════ HOW IT WORKS ══════════════════════════════ */}
+      {/* ══════════ HOW IT WORKS + CTA wrapped in scroll truck ═ */}
+      <div className="relative">
+      <ScrollTruck />
+
       <section className="mx-auto w-full max-w-5xl px-6 pb-20" id="piattaforma">
         <div className="mb-12 text-center">
           <p className="text-xs uppercase tracking-[0.3em] text-orange-400/70 mb-3">Processo</p>
@@ -396,7 +398,7 @@ export function HomePage() {
       </section>
 
       {/* ══════════ CTA ═══════════════════════════════════════ */}
-      <section className="mx-auto w-full max-w-4xl px-6 pb-24">
+      <section className="mx-auto w-full max-w-4xl px-6 pb-24" id="cta-section">
         <div
           className="relative overflow-hidden rounded-3xl px-8 py-14 text-center md:px-16"
           style={{
@@ -435,6 +437,8 @@ export function HomePage() {
         </div>
       </section>
 
+      </div>{/* end scroll-truck wrapper */}
+
       {/* ══════════ FOOTER ════════════════════════════════════ */}
       <footer style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-6 px-6 py-8 text-xs text-white/40">
@@ -454,53 +458,191 @@ export function HomePage() {
   );
 }
 
-/* ─── Hero visual component ─────────────────────────────────── */
+/* ─── Seeded RNG ─────────────────────────────────────────────── */
+function seededRng(seed: number) {
+  let s = seed;
+  return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+}
+
+/* ─── Spinning globe (canvas-based, orthographic projection) ── */
 function HeroVisual() {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const SIZE = 420;
+    const cx = SIZE / 2, cy = SIZE / 2;
+    const R  = SIZE * 0.415;
+    const TILT = 0.28; // axial tilt radians (~16°)
+
+    /* Orthographic projection with Y-axis spin + X-axis tilt */
+    const project = (latDeg: number, lonDeg: number, rot: number) => {
+      const phi   = latDeg * Math.PI / 180;
+      const theta = lonDeg * Math.PI / 180;
+      // 3-D on unit sphere
+      const x3 = Math.cos(phi) * Math.sin(theta);
+      const y3 = Math.sin(phi);
+      const z3 = Math.cos(phi) * Math.cos(theta);
+      // Y-axis rotation (spin)
+      const xR = x3 * Math.cos(rot) + z3 * Math.sin(rot);
+      const yR = y3;
+      const zR = -x3 * Math.sin(rot) + z3 * Math.cos(rot);
+      // X-axis tilt
+      const xT = xR;
+      const yT = yR * Math.cos(TILT) - zR * Math.sin(TILT);
+      const zT = yR * Math.sin(TILT) + zR * Math.cos(TILT);
+      return { x: cx + R * xT, y: cy - R * yT, visible: zT > 0, depth: zT };
+    };
+
+    /* Generate world background dots (city lights effect) */
+    const rng1 = seededRng(42);
+    const WORLD_REGIONS = [
+      { lat: [35, 72], lon: [-10, 40],   n: 140, bright: 0.55 }, // Europe
+      { lat: [25, 50], lon: [-85, -65],  n:  80, bright: 0.45 }, // Eastern USA
+      { lat: [30, 50], lon: [-125,-100], n:  40, bright: 0.38 }, // Western USA
+      { lat: [20, 50], lon: [100, 145],  n: 110, bright: 0.48 }, // East Asia
+      { lat: [8,  35], lon: [67,   88],  n:  60, bright: 0.38 }, // India
+      { lat: [-10,22], lon: [95,  125],  n:  50, bright: 0.35 }, // SE Asia
+      { lat: [-40,10], lon: [-75, -35],  n:  60, bright: 0.32 }, // S. America
+      { lat: [20, 40], lon: [35,   65],  n:  40, bright: 0.32 }, // Middle East
+      { lat: [-40,-15],lon: [140, 155],  n:  28, bright: 0.32 }, // Australia E
+      { lat: [50, 65], lon: [30,   80],  n:  35, bright: 0.22 }, // Russia
+      { lat: [-5, 15], lon: [-20,  20],  n:  28, bright: 0.26 }, // W Africa
+    ];
+    const worldDots: { lat: number; lon: number; r: number; a: number }[] = [];
+    WORLD_REGIONS.forEach(({ lat, lon, n, bright }) => {
+      for (let i = 0; i < n; i++) {
+        worldDots.push({
+          lat: lat[0] + rng1() * (lat[1] - lat[0]),
+          lon: lon[0] + rng1() * (lon[1] - lon[0]),
+          r: 0.7 + rng1() * 1.1,
+          a: bright * (0.45 + rng1() * 0.55),
+        });
+      }
+    });
+
+    /* Dense Italy/Europe fleet dots (~900 representing fleet) */
+    const rng2 = seededRng(123);
+    const fleetDots: { lat: number; lon: number }[] = [];
+    for (let i = 0; i < 900; i++) {
+      fleetDots.push({
+        lat: 37 + rng2() * 10,
+        lon: 7  + rng2() * 11,
+      });
+    }
+
+    /* Initial rotation: Italy (≈12°E) faces viewer */
+    let rotation = -(12 * Math.PI / 180);
+    let animating = true;
+    let raf: number;
+
+    const render = () => {
+      ctx.clearRect(0, 0, SIZE, SIZE);
+
+      /* — Sphere fill — */
+      const bgGrd = ctx.createRadialGradient(cx - R * 0.22, cy - R * 0.22, 0, cx, cy, R);
+      bgGrd.addColorStop(0,   "#2d1600");
+      bgGrd.addColorStop(0.5, "#130900");
+      bgGrd.addColorStop(1,   "#050200");
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = bgGrd; ctx.fill();
+
+      /* — Lat/lon grid lines — */
+      ctx.strokeStyle = "rgba(255,110,30,0.07)";
+      ctx.lineWidth   = 0.6;
+      for (let lat = -60; lat <= 60; lat += 30) {
+        ctx.beginPath();
+        let gap = true;
+        for (let lon = -180; lon <= 180; lon += 3) {
+          const p = project(lat, lon, rotation);
+          if (p.visible) { gap ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); gap = false; }
+          else gap = true;
+        }
+        ctx.stroke();
+      }
+      for (let lon = -180; lon < 180; lon += 30) {
+        ctx.beginPath();
+        let gap = true;
+        for (let lat = -80; lat <= 80; lat += 2) {
+          const p = project(lat, lon, rotation);
+          if (p.visible) { gap ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); gap = false; }
+          else gap = true;
+        }
+        ctx.stroke();
+      }
+
+      /* — World background dots — */
+      worldDots.forEach((d) => {
+        const p = project(d.lat, d.lon, rotation);
+        if (!p.visible) return;
+        const alpha = d.a * (0.35 + 0.65 * p.depth);
+        ctx.beginPath(); ctx.arc(p.x, p.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,160,60,${alpha.toFixed(3)})`; ctx.fill();
+      });
+
+      /* — Fleet dots (Italy / Europe, brighter + glow) — */
+      fleetDots.forEach((d) => {
+        const p = project(d.lat, d.lon, rotation);
+        if (!p.visible) return;
+        const alpha = 0.6 + 0.4 * p.depth;
+        // glow halo
+        const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 4.5);
+        grd.addColorStop(0, `rgba(255,122,26,${(alpha * 0.55).toFixed(3)})`);
+        grd.addColorStop(1, "rgba(255,122,26,0)");
+        ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = grd; ctx.fill();
+        // core
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,190,110,${alpha.toFixed(3)})`; ctx.fill();
+      });
+
+      ctx.restore();
+
+      /* — Atmosphere rim glow — */
+      const rimGrd = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, R * 1.22);
+      rimGrd.addColorStop(0,   "rgba(255,90,20,0)");
+      rimGrd.addColorStop(0.4, "rgba(255,90,20,0.09)");
+      rimGrd.addColorStop(1,   "rgba(255,90,20,0)");
+      ctx.beginPath(); ctx.arc(cx, cy, R * 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = rimGrd; ctx.fill();
+
+      /* — Edge stroke — */
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,110,30,0.25)"; ctx.lineWidth = 1.5; ctx.stroke();
+
+      rotation += 0.0022;
+    };
+
+    const animate = () => {
+      if (!animating) return;
+      render();
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => { animating = false; cancelAnimationFrame(raf); };
+  }, []);
+
   return (
-    <div
-      className="relative w-full max-w-[480px]"
-      style={{ minHeight: 340, borderRadius: 28, background: "linear-gradient(160deg, rgba(20,17,14,0.96), rgba(8,8,10,0.98))", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "0 32px 80px rgba(0,0,0,0.55)" }}
-    >
-      {/* Glow */}
-      <div
-        className="pointer-events-none absolute"
-        style={{ inset: "15% 10% auto 8%", height: 120, borderRadius: 999, background: "radial-gradient(circle, rgba(255,160,100,0.35), transparent 70%)", filter: "blur(6px)", opacity: 0.75 }}
+    <div className="relative flex items-center justify-center">
+      {/* Outer glow */}
+      <div className="pointer-events-none absolute inset-0 rounded-full"
+        style={{ background: "radial-gradient(circle, rgba(255,100,20,0.12) 0%, transparent 70%)", filter: "blur(20px)" }} />
+      <canvas
+        ref={canvasRef}
+        width={420} height={420}
+        style={{ borderRadius: "50%", boxShadow: "0 0 60px rgba(255,90,20,0.18), 0 0 120px rgba(255,90,20,0.08)" }}
       />
-      {/* Orbit rings */}
-      <div className="pointer-events-none absolute" style={{ width: 220, height: 220, top: 40, left: 40, borderRadius: "50%", border: "1px dashed rgba(255,255,255,0.1)" }} />
-      <div className="pointer-events-none absolute" style={{ width: 300, height: 300, top: 80, right: -20, borderRadius: "50%", border: "1px dashed rgba(255,255,255,0.07)" }} />
-      {/* Line separators */}
-      <div className="pointer-events-none absolute" style={{ height: 1, left: "12%", right: "18%", top: "52%", background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)" }} />
-      <div className="pointer-events-none absolute" style={{ height: 1, left: "20%", right: "12%", top: "72%", background: "linear-gradient(90deg, transparent, rgba(255,140,60,0.3), transparent)" }} />
-      {/* Live badge */}
-      <div
-        className="absolute flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-white/60"
-        style={{ right: 28, top: 24, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(10,10,10,0.7)", backdropFilter: "blur(8px)" }}
-      >
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ background: "rgba(255,140,60,0.85)", boxShadow: "0 0 8px rgba(255,140,60,0.7)", animation: "truckly-typing-blink 1.6s ease-in-out infinite" }}
-        />
-        Orbita live
-      </div>
-      {/* Mock vehicle cards */}
-      <div className="absolute bottom-8 left-8 right-8 space-y-2">
-        {[
-          { plate: "AB 123 CD", status: "driving", color: "#22c55e", label: "In marcia" },
-          { plate: "EF 456 GH", status: "resting", color: "#ef4444", label: "Fermo" },
-        ].map((v) => (
-          <div
-            key={v.plate}
-            className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-          >
-            <div className="flex items-center gap-2 text-white/80 font-medium">{v.plate}</div>
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em]" style={{ color: v.color }}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: v.color, boxShadow: `0 0 6px ${v.color}88` }} />
-              {v.label}
-            </span>
-          </div>
-        ))}
+      {/* Floating label */}
+      <div className="absolute bottom-8 right-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/50 backdrop-blur">
+        <span className="h-1.5 w-1.5 rounded-full"
+          style={{ background: "#ff7a1a", boxShadow: "0 0 6px rgba(255,122,26,0.9)", animation: "truckly-typing-blink 1.6s ease-in-out infinite" }} />
+        Flotta live
       </div>
     </div>
   );
@@ -576,6 +718,75 @@ function GlassCard({ children, accent }: { children: React.ReactNode; accent: bo
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/* ─── Scroll truck ──────────────────────────────────────────── */
+function ScrollTruck() {
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const [progress, setProgress] = React.useState(0);
+
+  React.useEffect(() => {
+    const onScroll = () => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const { top, height } = el.getBoundingClientRect();
+      const wrapTop = top + window.scrollY;
+      const midY = window.scrollY + window.innerHeight * 0.55;
+      const p = Math.max(0, Math.min(1, (midY - wrapTop) / (height * 0.88)));
+      setProgress(p);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      {/* Road strip — right side, pointer-events-none */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-0 top-0 hidden md:block"
+        style={{ right: "clamp(16px, 3vw, 48px)", width: 32, zIndex: 0 }}
+      >
+        {/* Asphalt */}
+        <div className="absolute inset-x-0 top-0 bottom-0 rounded-full"
+          style={{ background: "linear-gradient(180deg, transparent, rgba(20,12,4,0.6) 8%, rgba(18,10,3,0.85) 20%, rgba(18,10,3,0.85) 80%, rgba(20,12,4,0.6) 92%, transparent)" }} />
+        {/* Center dashes */}
+        <div className="absolute top-0 bottom-0"
+          style={{ left: "50%", width: 2, transform: "translateX(-50%)",
+            backgroundImage: "repeating-linear-gradient(180deg, rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 14px, transparent 14px, transparent 28px)" }} />
+        {/* Truck SVG */}
+        <div
+          style={{ position: "absolute", left: "50%", top: `${progress * 92}%`,
+            transform: "translate(-50%, -50%) rotate(180deg)",
+            transition: "top 80ms linear", filter: "drop-shadow(0 0 6px rgba(255,122,26,0.5))" }}
+        >
+          <svg width="24" height="48" viewBox="0 0 24 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Trailer */}
+            <rect x="3" y="2" width="18" height="24" rx="2" fill="#cc5500" />
+            <rect x="5" y="4" width="14" height="20" rx="1" fill="rgba(255,255,255,0.06)" />
+            {/* Connector */}
+            <rect x="9" y="25" width="6" height="4" rx="1" fill="#aa4400" />
+            {/* Cab */}
+            <rect x="3" y="29" width="18" height="14" rx="2" fill="#ff7a1a" />
+            {/* Windscreen */}
+            <rect x="6" y="31" width="12" height="8" rx="1" fill="rgba(0,0,0,0.45)" />
+            {/* Headlights */}
+            <rect x="4" y="41" width="4" height="2" rx="1" fill="#fff8e0" />
+            <rect x="16" y="41" width="4" height="2" rx="1" fill="#fff8e0" />
+            {/* Wheels */}
+            <rect x="1"  y="30" width="4" height="7" rx="2" fill="#1a1a1a" />
+            <rect x="19" y="30" width="4" height="7" rx="2" fill="#1a1a1a" />
+            <rect x="1"  y="7"  width="4" height="7" rx="2" fill="#1a1a1a" />
+            <rect x="19" y="7"  width="4" height="7" rx="2" fill="#1a1a1a" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Page sections as children */}
+      {/* This component is used as a layout wrapper — children rendered by parent */}
     </div>
   );
 }
