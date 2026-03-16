@@ -35,6 +35,7 @@ import { AccessRequestPage } from "./pages/AccessRequestPage";
 import { DemoPage } from "./pages/DemoPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { CookiePolicyPage } from "./pages/CookiePolicyPage";
+import { CookieBanner } from "./components/CookieBanner";
 import {
   API_BASE_URL,
   LOGIN_PATH,
@@ -1914,17 +1915,27 @@ function DashboardPage() {
   );
 }
 
+/** Wraps public-facing pages with the cookie consent banner */
+function PublicLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      {children}
+      <CookieBanner />
+    </>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/" element={<HomePage />} />
-        <Route path="/accesso" element={<AccessRequestPage />} />
-        <Route path="/demo" element={<DemoPage />} />
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/cookie-policy" element={<CookiePolicyPage />} />
+        <Route path="/" element={<PublicLayout><HomePage /></PublicLayout>} />
+        <Route path="/accesso" element={<PublicLayout><AccessRequestPage /></PublicLayout>} />
+        <Route path="/demo" element={<PublicLayout><DemoPage /></PublicLayout>} />
+        <Route path="/privacy" element={<PublicLayout><PrivacyPage /></PublicLayout>} />
+        <Route path="/cookie-policy" element={<PublicLayout><CookiePolicyPage /></PublicLayout>} />
       </Routes>
     </BrowserRouter>
   );
