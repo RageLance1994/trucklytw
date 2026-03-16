@@ -51,8 +51,8 @@ const FEATURES = [
 
 /* ─── Steps ─────────────────────────────────────────────────── */
 const HOW_STEPS = [
-  { n: "01", title: "Installa il dispositivo", body: "Dispositivo GPS plug-and-play su ogni mezzo. Nessun cablaggio, nessun tecnico." },
-  { n: "02", title: "Connetti la piattaforma", body: "Il mezzo appare subito sulla mappa. Dati in tempo reale dal primo accensione." },
+  { n: "01", title: "Installa il dispositivo", body: "Dispositivo GPS plug-and-play su ogni mezzo." },
+  { n: "02", title: "Connetti la piattaforma", body: "Il mezzo appare subito sulla mappa. Dati in tempo reale dalla prima accensione." },
   { n: "03", title: "Analizza e ottimizza", body: "Dashboard, alert e report ti mostrano dove agire. Meno sprechi, più controllo." },
 ];
 
@@ -152,20 +152,7 @@ export function HomePage() {
           <div className="flex flex-col justify-center gap-8">
             {/* Badge */}
             <div>
-              <span
-                className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] uppercase tracking-[0.24em]"
-                style={{
-                  background: "rgba(255,122,26,0.1)",
-                  border: "1px solid rgba(255,122,26,0.3)",
-                  color: "rgba(255,190,140,0.9)",
-                }}
-              >
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: "#ff7a1a", boxShadow: "0 0 6px rgba(255,122,26,0.9)", animation: "truckly-typing-blink 1.4s ease-in-out infinite" }}
-                />
-                Piattaforma TMS italiana
-              </span>
+
             </div>
 
             <div className="space-y-4">
@@ -197,13 +184,13 @@ export function HomePage() {
               >
                 Richiedi accesso
               </a>
-              <a
+              {/* <a
                 href="/demo"
                 className="inline-flex h-12 items-center gap-2 rounded-full border border-white/15 px-7 text-sm uppercase tracking-[0.2em] text-white/70 transition hover:border-white/30 hover:text-white"
               >
                 <i className="fa fa-play-circle text-orange-400/80 text-sm" aria-hidden="true" />
                 Guarda la demo
-              </a>
+              </a> */}
               <a
                 href="/login"
                 className="inline-flex h-12 items-center rounded-full border border-white/10 px-6 text-sm uppercase tracking-[0.2em] text-white/55 transition hover:text-white"
@@ -424,15 +411,15 @@ export function HomePage() {
               className="inline-flex h-12 items-center rounded-full px-8 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:opacity-90"
               style={{ background: "linear-gradient(135deg, #ff7a1a, #ff9a4a)", boxShadow: "0 0 36px rgba(255,122,26,0.4)" }}
             >
-              Richiedi accesso gratuito
+              Richiedi accesso
             </a>
-            <a
+            {/* <a
               href="/demo"
               className="inline-flex h-12 items-center gap-2 rounded-full border border-white/15 px-7 text-sm uppercase tracking-[0.2em] text-white/65 transition hover:border-orange-500/30 hover:text-white"
             >
               <i className="fa fa-play-circle text-orange-400/70" aria-hidden="true" />
               Demo live
-            </a>
+            </a> */}
           </div>
         </div>
       </section>
@@ -447,9 +434,9 @@ export function HomePage() {
             <span>Truckly © 2026 · Made in Italy</span>
           </div>
           <div className="flex items-center gap-5">
-            <a href="/demo" className="hover:text-white transition">Demo</a>
+            {/* <a href="/demo" className="hover:text-white transition">Demo</a> */}
             <a href="/login" className="hover:text-white transition">Accesso</a>
-            <a href="#" className="hover:text-white transition">Privacy</a>
+            <a href="/privacy" className="hover:text-white transition">Privacy</a>
             <a href="#" className="hover:text-white transition">Contatti</a>
           </div>
         </div>
@@ -639,11 +626,6 @@ function HeroVisual() {
         style={{ borderRadius: "50%", boxShadow: "0 0 60px rgba(255,90,20,0.18), 0 0 120px rgba(255,90,20,0.08)" }}
       />
       {/* Floating label */}
-      <div className="absolute bottom-8 right-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/50 backdrop-blur">
-        <span className="h-1.5 w-1.5 rounded-full"
-          style={{ background: "#ff7a1a", boxShadow: "0 0 6px rgba(255,122,26,0.9)", animation: "truckly-typing-blink 1.6s ease-in-out infinite" }} />
-        Flotta live
-      </div>
     </div>
   );
 }

@@ -33,6 +33,8 @@ import { DriverBottomBar } from "./components/driver-bottom-bar";
 import { HomePage } from "./pages/HomePage";
 import { AccessRequestPage } from "./pages/AccessRequestPage";
 import { DemoPage } from "./pages/DemoPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { CookiePolicyPage } from "./pages/CookiePolicyPage";
 import {
   API_BASE_URL,
   LOGIN_PATH,
@@ -1921,6 +1923,8 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/accesso" element={<AccessRequestPage />} />
         <Route path="/demo" element={<DemoPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/cookie-policy" element={<CookiePolicyPage />} />
       </Routes>
     </BrowserRouter>
   );
