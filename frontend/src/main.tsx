@@ -32,6 +32,7 @@ import { QuickSidebar } from "./components/quick-sidebar";
 import { DriverBottomBar } from "./components/driver-bottom-bar";
 import { HomePage } from "./pages/HomePage";
 import { AccessRequestPage } from "./pages/AccessRequestPage";
+import { DemoPage } from "./pages/DemoPage";
 import {
   API_BASE_URL,
   LOGIN_PATH,
@@ -1919,6 +1920,7 @@ function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/accesso" element={<AccessRequestPage />} />
+        <Route path="/demo" element={<DemoPage />} />
       </Routes>
     </BrowserRouter>
   );

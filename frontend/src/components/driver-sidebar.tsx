@@ -1457,7 +1457,7 @@ function RoutesSidebar({
   }, [filteredTimelineEvents, selectedVehicleImei]);
 
   return (
-    <div className="relative flex h-full min-h-[560px] flex-col gap-4">
+    <div className="relative flex h-full min-h-0 flex-col gap-4">
       <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
@@ -1508,9 +1508,9 @@ function RoutesSidebar({
               {error && <p className="text-sm text-red-400">{error}</p>}
             </div>
             <div className="space-y-3 rounded-lg border border-white/10 bg-[#0d0d0f] p-3">
-              <div className="flex items-center justify-between text-sm text-white/70">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-sm text-white/70">
                 <span>Rewind</span>
-                <span>{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
+                <span className="text-xs text-white/55 tabular-nums">{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
               </div>
               <input
                 type="range"
@@ -1534,17 +1534,17 @@ function RoutesSidebar({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between text-sm text-white/70">
-          <span>{filteredTimelineEvents.length} eventi registrati</span>
-          <div className="flex items-center gap-2">
-            <div className="relative">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-white/70">
+          <span className="shrink-0">{filteredTimelineEvents.length} eventi registrati</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="relative min-w-0">
               <i className="fa fa-search pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-white/40" aria-hidden="true" />
               <input
                 type="search"
                 value={eventSearch}
                 onChange={(e) => setEventSearch(e.target.value)}
                 placeholder="Cerca evento..."
-                className="h-8 w-[180px] rounded-lg border border-white/15 bg-[#0d0d0f] pl-7 pr-2 text-[11px] text-white/85 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="h-8 w-[130px] sm:w-[180px] rounded-lg border border-white/15 bg-[#0d0d0f] pl-7 pr-2 text-[11px] text-white/85 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <DropdownMenu>

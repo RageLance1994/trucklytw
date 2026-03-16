@@ -435,7 +435,7 @@ export function RouteCalculator({
             <button
               type="button"
               onClick={() => applyCurrentVehiclePosition(setOriginText, setOriginPoint, setOriginCandidates)}
-              className="rounded-lg border border-white/20 bg-white/10 px-3 text-[11px] text-white/80 hover:bg-white/15"
+              className="shrink-0 h-9 w-9 rounded-lg border border-white/20 bg-white/10 text-[11px] text-white/80 hover:bg-white/15 inline-flex items-center justify-center"
               title="Usa posizione attuale"
               aria-label="Usa posizione attuale"
             >
@@ -450,13 +450,13 @@ export function RouteCalculator({
               }}
               onFocus={() => showVehicleCandidates(setOriginCandidates)}
               placeholder="Posizione di partenza"
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
             <button
               type="button"
               onClick={() => geocode(originText, setOriginCandidates, setLoadingOrigin)}
               disabled={loadingOrigin}
-              className="rounded-lg border border-white/20 bg-white/10 px-3 text-[10px] uppercase tracking-[0.16em] text-white/80 disabled:opacity-50"
+              className="shrink-0 h-9 rounded-lg border border-white/20 bg-white/10 px-3 text-[10px] uppercase tracking-[0.16em] text-white/80 disabled:opacity-50"
             >
               {loadingOrigin ? "..." : "Cerca"}
             </button>
@@ -488,7 +488,7 @@ export function RouteCalculator({
             <button
               type="button"
               onClick={() => applyCurrentVehiclePosition(setDestinationText, setDestinationPoint, setDestinationCandidates)}
-              className="rounded-lg border border-white/20 bg-white/10 px-3 text-[11px] text-white/80 hover:bg-white/15"
+              className="shrink-0 h-9 w-9 rounded-lg border border-white/20 bg-white/10 text-[11px] text-white/80 hover:bg-white/15 inline-flex items-center justify-center"
               title="Usa posizione attuale"
               aria-label="Usa posizione attuale"
             >
@@ -503,13 +503,13 @@ export function RouteCalculator({
               }}
               onFocus={() => showVehicleCandidates(setDestinationCandidates)}
               placeholder="Posizione di arrivo"
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
             <button
               type="button"
               onClick={() => geocode(destinationText, setDestinationCandidates, setLoadingDestination)}
               disabled={loadingDestination}
-              className="rounded-lg border border-white/20 bg-white/10 px-3 text-[10px] uppercase tracking-[0.16em] text-white/80 disabled:opacity-50"
+              className="shrink-0 h-9 rounded-lg border border-white/20 bg-white/10 px-3 text-[10px] uppercase tracking-[0.16em] text-white/80 disabled:opacity-50"
             >
               {loadingDestination ? "..." : "Cerca"}
             </button>
