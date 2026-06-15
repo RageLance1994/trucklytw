@@ -24,3 +24,5 @@ Thumbs.db
 # Local visual-review screenshots
 screenshot-claude-truckly/
 
+*.pptx
+*.pdf
