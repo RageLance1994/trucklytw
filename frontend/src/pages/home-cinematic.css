@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&display=swap');
+
+/* Lenis smooth-scroll */
+html.lenis,html.lenis body{height:auto}
+.lenis.lenis-smooth{scroll-behavior:auto !important}
+.lenis.lenis-smooth [data-lenis-prevent]{overscroll-behavior:contain}
+.lenis.lenis-stopped{overflow:clip}
+
+/* ============ ROOT ============ */
+.tk-home{
+  --o:#ff7a1a;--o2:#ff9a4a;--o3:#ffb347;--ohi:#ffe2bd;--odeep:#b8480f;--bg:#070707;
+  position:relative;background:var(--bg);color:#fff;
+  font-family:"Space Grotesk","Manrope",ui-sans-serif,system-ui,sans-serif;
+  overflow-x:clip;-webkit-font-smoothing:antialiased;
+}
+.tk-home a{color:inherit;text-decoration:none}
+.tk-home svg{display:block}
+
+.tk-progress{position:fixed;top:0;left:0;height:3px;width:100%;transform:scaleX(0);transform-origin:0 50%;z-index:1200;background:var(--o)}
+
+/* ============ HERO ============ */
+.tk-hero{position:relative;min-height:100svh;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+.tk-ghost{position:absolute;left:0;top:18%;white-space:nowrap;font-weight:700;font-size:24vh;line-height:.8;color:transparent;-webkit-text-stroke:1px rgba(255,255,255,.05);pointer-events:none;animation:tk-ghost 42s linear infinite;z-index:1}
+.tk-ghost.b{top:auto;bottom:14%;animation-duration:50s;animation-direction:reverse;-webkit-text-stroke:1px rgba(255,122,26,.06)}
+@keyframes tk-ghost{to{transform:translateX(-50%)}}
+.tk-spot{position:absolute;inset:-10%;z-index:3;pointer-events:none;mix-blend-mode:screen;background:radial-gradient(circle 340px at var(--mx,50%) var(--my,42%),rgba(255,200,150,.20),transparent 62%)}
+.tk-herowrap{position:relative;z-index:5;max-width:1280px;margin:0 auto;width:100%;padding:0 32px}
+.tk-title{font-weight:700;letter-spacing:-.045em;line-height:.86;font-size:clamp(3rem,12vw,11rem);margin:0}
+.tk-ln{display:block;overflow:hidden;padding:.02em 0}
+.tk-ln>span{display:block;transform:translateY(115%);animation:tk-up 1s cubic-bezier(.16,1,.3,1) forwards}
+.tk-ln:nth-child(1)>span{animation-delay:.05s}
+.tk-ln:nth-child(2)>span{animation-delay:.16s}
+.tk-ln:nth-child(3)>span{animation-delay:.28s}
+@keyframes tk-up{to{transform:translateY(0)}}
+.tk-acc{background-image:linear-gradient(108deg,transparent 30%,rgba(255,255,255,.95) 47%,transparent 60%),linear-gradient(180deg,var(--ohi),var(--o2) 26%,var(--o) 46%,var(--odeep) 60%,var(--o2) 76%,var(--ohi));-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;background-size:280% 100%,100% 100%;background-position:220% 0,0 0;animation:tk-sheen 5s linear infinite}
+@keyframes tk-sheen{to{background-position:-150% 0,0 0}}
+.tk-sub{max-width:560px;margin:30px 0 0;font-family:"Manrope",sans-serif;font-size:clamp(1rem,1.4vw,1.15rem);line-height:1.6;color:rgba(255,255,255,.62)}
+.tk-cta{display:flex;gap:14px;flex-wrap:wrap;margin-top:34px}
+.tk-btn{display:inline-flex;align-items:center;gap:9px;height:56px;padding:0 32px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;transition:transform .18s,background .2s,border-color .2s}
+.tk-btn.p{color:#1a0d02;background:var(--o)}
+.tk-btn.p:hover{transform:translateY(-2px);background:var(--o2)}
+.tk-btn.g{border:1px solid rgba(255,255,255,.22)}
+.tk-btn.g:hover{border-color:var(--o)}
+
+/* ============ JOURNEY AEREO ============ */
+.tk-map{position:relative;height:520vh;background:radial-gradient(120% 50% at 50% 0%,rgba(255,122,26,.05),transparent 60%),#060608}
+.tk-maphead{position:sticky;top:26px;text-align:center;z-index:8;pointer-events:none;padding:0 24px}
+.tk-kick{font-size:12px;letter-spacing:.34em;text-transform:uppercase;color:var(--o2);margin-bottom:6px}
+.tk-maphead h2{font-size:clamp(1.8rem,5vw,3.4rem);font-weight:700;letter-spacing:-.03em;margin:0}
+.tk-maphead h2 .o{color:var(--o)}
+.tk-routeSvg{position:absolute;inset:0;width:100%;height:100%;z-index:2}
+.tk-grid2{position:absolute;inset:0;z-index:1;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:60px 60px}
+.tk-truck{position:absolute;left:0;top:0;width:58px;z-index:5;will-change:transform,left,top;filter:drop-shadow(0 6px 12px rgba(0,0,0,.6))}
+.tk-pin{position:absolute;width:16px;height:16px;border-radius:999px;background:var(--o);transform:translate(-50%,-50%);z-index:4;box-shadow:0 0 0 5px rgba(255,122,26,.16);transition:box-shadow .3s,background .3s}
+.tk-pin.on{box-shadow:0 0 0 8px rgba(255,122,26,.28),0 0 22px rgba(255,122,26,.7)}
+.tk-stop{position:absolute;width:min(360px,40vw);z-index:6;opacity:.16;transform:translateY(20px);transition:.55s}
+.tk-stop.on{opacity:1;transform:none}
+.tk-stop.l{text-align:left}.tk-stop.r{text-align:right}
+.tk-ic{color:var(--o2);line-height:0;margin-bottom:12px}
+.tk-ic svg{width:32px;height:32px;display:inline-block}
+.tk-stop h3{font-family:"Fraunces",serif;font-size:clamp(1.7rem,3.4vw,2.9rem);font-weight:600;letter-spacing:-.01em;margin:6px 0 12px;line-height:1.02}
+.tk-stop p{font-family:"Manrope",sans-serif;font-size:1rem;line-height:1.55;color:rgba(255,255,255,.64);margin:0}
+.tk-dest{position:absolute;z-index:7;transform:translate(-50%,14px);text-align:center;opacity:0;transition:opacity .6s,transform .6s;pointer-events:none}
+.tk-dest.on{opacity:1;transform:translate(-50%,4px)}
+.tk-dest .tk-btn{pointer-events:auto;box-shadow:0 0 0 6px rgba(255,122,26,.14),0 16px 44px rgba(255,122,26,.45)}
+@media(max-width:760px){.tk-stop{width:74vw}.tk-stop.r{text-align:left}}
+
+/* ============ JOURNEY fallback (reduced motion) ============ */
+.tk-journey-list{max-width:900px;margin:0 auto;padding:120px 24px}
+.tk-journey-list .row{padding:28px 0;border-bottom:1px solid rgba(255,255,255,.1);display:flex;gap:20px;align-items:flex-start}
+.tk-journey-list .row .tk-ic{margin:0}
+
+/* ============ FOOTER ============ */
+.tk-ft{border-top:1px solid rgba(255,255,255,.1);background:#050506}
+.tk-ftin{max-width:1280px;margin:0 auto;padding:56px 32px 28px;display:flex;flex-wrap:wrap;gap:40px;justify-content:space-between}
+.tk-ftbrand img{height:24px;opacity:.85}
+.tk-ftbrand p{font-family:"Manrope",sans-serif;color:rgba(255,255,255,.45);font-size:14px;margin:12px 0 0;max-width:300px;line-height:1.5}
+.tk-ftco{font-family:"Manrope",sans-serif;font-size:13.5px;color:rgba(255,255,255,.52);line-height:1.75}
+.tk-ftco a{color:rgba(255,255,255,.52)}.tk-ftco a:hover{color:var(--o2)}
+.tk-ftco-name{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:15px;color:#fff;letter-spacing:.02em;margin-bottom:8px}
+.tk-ftbar{max-width:1280px;margin:0 auto;padding:18px 32px;border-top:1px solid rgba(255,255,255,.07);display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.35)}
+.tk-ftlinks{display:flex;gap:20px}.tk-ftlinks a:hover{color:var(--o2)}
+
