@@ -11,10 +11,11 @@
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.6",
     "@radix-ui/react-navigation-menu": "^1.2.4",
-    "@radix-ui/react-slider": "^1.2.2",
     "@radix-ui/react-separator": "^1.1.2",
+    "@radix-ui/react-slider": "^1.2.2",
     "@radix-ui/react-slot": "^1.1.2",
     "class-variance-authority": "^0.7.1",
+    "echarts": "^6.1.0",
     "lucide-react": "^0.556.0",
     "maplibre-gl": "^5.15.0",
     "react": "^19.0.0",

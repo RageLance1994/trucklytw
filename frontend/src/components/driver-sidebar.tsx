@@ -1,9 +1,10 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { API_BASE_URL, VEHICLES_PATH } from "../config";
+import { API_BASE_URL } from "../config";
 import { dataManager, resolveBackendBaseUrl } from "../lib/data-manager";
 import { TagInput } from "./tag-input";
 import { RouteCalculator } from "./route-calculator";
+import { TabSwitch } from "./ui/tab-switch";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -20,7 +21,7 @@ type DriverSidebarProps = {
   selectedDriverImei?: string | null;
   selectedRouteImei?: string | null;
   selectedDriverDevice?: any | null;
-  mode?: "driver" | "routes" | "navigation" | "geofence" | "vehicle" | "admin" | "driver-register";
+  mode?: "driver" | "routes" | "navigation" | "geofence" | "vehicle" | "driver-register";
   driverEditTarget?: DriverEditTarget | null;
   driverEditReadOnly?: boolean;
   vehicleEditTarget?: VehicleEditTarget | null;
@@ -125,13 +126,6 @@ type DriverEditTarget = {
   companyName?: string | null;
 };
 
-type AdminVehicleSummary = {
-  id?: string | null;
-  imei?: string | null;
-  nickname?: string | null;
-  plate?: string | null;
-  tags?: string[];
-};
 
 type VehicleEditTarget = {
   id?: string | null;
@@ -141,6 +135,7 @@ type VehicleEditTarget = {
   plate?: string | { v?: string; value?: string } | null;
   brand?: string | null;
   model?: string | null;
+  vehicleType?: string | null;
   deviceModel?: string | null;
   codec?: string | null;
   tags?: string[];
@@ -158,16 +153,6 @@ type VehicleEditTarget = {
 };
 
 
-type TachoCompany = {
-  id: string;
-  name: string;
-  parentId?: string | null;
-  depth?: number;
-};
-
-type SortDir = "asc" | "desc";
-type CompanySortField = "name" | "userCount" | "createdAt";
-type UserSortField = "name" | "email" | "role" | "createdAt";
 
 const MS_MIN = 60 * 1000;
 const MS_HOUR = 60 * MS_MIN;
@@ -224,34 +209,6 @@ type DriverMetrics = {
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
-const formatShortDate = (value: string | number | null | undefined) => {
-  if (!value) return "N/D";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "N/D";
-  return date.toLocaleDateString("it-IT");
-};
-
-const formatRoleLabel = (value: number | null | undefined) => {
-  if (value == null) return "N/D";
-  return value <= 1 ? "Admin" : "Operatore";
-};
-
-const sortWithDir = <T,>(
-  list: T[],
-  dir: SortDir,
-  selector: (item: T) => string | number | null | undefined,
-) => {
-  const multiplier = dir === "desc" ? -1 : 1;
-  return [...list].sort((a, b) => {
-    const av = selector(a);
-    const bv = selector(b);
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (typeof av === "number" && typeof bv === "number") return (av - bv) * multiplier;
-    return String(av).localeCompare(String(bv), "it", { sensitivity: "base" }) * multiplier;
-  });
-};
 
 const toLocalInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -1068,7 +1025,7 @@ function RoutesSidebar({
   const [events, setEvents] = React.useState<any[]>([]);
   const [refuelings, setRefuelings] = React.useState<RouteRefuelingDoc[]>([]);
   const [scrubValue, setScrubValue] = React.useState(1);
-  const [isFiltersOpen, setIsFiltersOpen] = React.useState(true);
+  const [routeTab, setRouteTab] = React.useState<"controls" | "events">("controls");
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const [eventSearch, setEventSearch] = React.useState("");
   const [eventTypeFilters, setEventTypeFilters] = React.useState<Record<RouteEventKind, boolean>>({
@@ -1079,6 +1036,14 @@ function RoutesSidebar({
     "driver-change": true,
   });
   const [reportModalOpen, setReportModalOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!reportModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setReportModalOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [reportModalOpen]);
   const [reportPreviewHtml, setReportPreviewHtml] = React.useState("");
   const prevImeiRef = React.useRef<string | null>(null);
 
@@ -1457,85 +1422,82 @@ function RoutesSidebar({
   }, [filteredTimelineEvents, selectedVehicleImei]);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col gap-4">
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-              Intervallo e rewind
-            </p>
-            <p className="text-sm text-white/60">
-              Seleziona finestra temporale e scorri il percorso.
-            </p>
+    <div className="relative flex h-full min-h-0 flex-col gap-3">
+      <TabSwitch
+        ariaLabel="Sezioni percorso"
+        value={routeTab}
+        onChange={(id) => setRouteTab(id as "controls" | "events")}
+        tabs={[
+          { id: "controls", label: "Controlli" },
+          { id: "events", label: `Eventi (${filteredTimelineEvents.length})` },
+        ]}
+      />
+
+      {routeTab === "controls" && (
+        <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+          {/* DA / A affiancate */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="min-w-0 space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
+              <input
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                aria-label="Data inizio"
+                className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
+              <input
+                type="datetime-local"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                aria-label="Data fine"
+                className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              />
+            </div>
           </div>
           <button
-            type="button"
-            onClick={() => setIsFiltersOpen((prev) => !prev)}
-            className="h-8 min-w-8 rounded-full border border-white/15 bg-white/5 px-2 text-white/75 hover:bg-white/10 hover:text-white transition"
-            aria-label={isFiltersOpen ? "Chiudi sezione filtri" : "Apri sezione filtri"}
+            onClick={fetchRoutes}
+            disabled={loading}
+            className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
           >
-            <i className={`fa ${isFiltersOpen ? "fa-chevron-up" : "fa-chevron-down"}`} aria-hidden="true" />
+            {loading ? "Carico" : "Aggiorna"}
           </button>
-        </div>
-        {isFiltersOpen && (
-          <div className="mt-4 space-y-4">
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
-                <input
-                  type="datetime-local"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
-                <input
-                  type="datetime-local"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <button
-                onClick={fetchRoutes}
-                disabled={loading}
-                className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50"
-              >
-                {loading ? "Carico" : "Aggiorna"}
-              </button>
-              {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          {/* Scroller (rewind) sotto */}
+          <div className="space-y-3 rounded-xl border border-white/10 bg-background p-3">
+            <div className="flex flex-wrap items-center justify-between gap-1 text-sm text-white/70">
+              <span>Rewind</span>
+              <span className="text-xs text-white/55 tabular-nums">{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
             </div>
-            <div className="space-y-3 rounded-lg border border-white/10 bg-[#0d0d0f] p-3">
-              <div className="flex flex-wrap items-center justify-between gap-1 text-sm text-white/70">
-                <span>Rewind</span>
-                <span className="text-xs text-white/55 tabular-nums">{currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "N/D"}</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.001}
-                value={scrubValue}
-                onChange={(e) => setScrubValue(Number(e.target.value))}
-                className="w-full accent-orange-500"
-              />
-              <div className="text-xs text-white/60">
-                {normalizedHistory.length
-                  ? `Punti caricati: ${normalizedHistory.length}`
-                  : loading
-                    ? "Caricamento percorsi..."
-                    : "Nessun percorso disponibile per l'intervallo selezionato."}
-              </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.001}
+              value={scrubValue}
+              onChange={(e) => setScrubValue(Number(e.target.value))}
+              className="h-2 w-full accent-orange-500"
+              aria-label="Riavvolgi percorso"
+              aria-valuetext={currentPoint ? new Date(currentPoint.timestamp).toLocaleString("it-IT") : "Nessun dato"}
+            />
+            <div className="text-xs text-white/60">
+              {normalizedHistory.length
+                ? `Punti caricati: ${normalizedHistory.length}`
+                : loading
+                  ? "Caricamento percorsi..."
+                  : "Nessun percorso disponibile per l'intervallo selezionato."}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      {routeTab === "events" && (
+      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-white/10 bg-card p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-white/70">
-          <span className="shrink-0">{filteredTimelineEvents.length} eventi registrati</span>
+          <span className="shrink-0">Eventi registrati</span>
           <div className="flex items-center gap-2 min-w-0">
             <div className="relative min-w-0">
               <i className="fa fa-search pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-white/40" aria-hidden="true" />
@@ -1544,7 +1506,7 @@ function RoutesSidebar({
                 value={eventSearch}
                 onChange={(e) => setEventSearch(e.target.value)}
                 placeholder="Cerca evento..."
-                className="h-8 w-[130px] sm:w-[180px] rounded-lg border border-white/15 bg-[#0d0d0f] pl-7 pr-2 text-[11px] text-white/85 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="h-8 w-[130px] sm:w-[180px] rounded-lg border border-white/15 bg-background pl-7 pr-2 text-[11px] text-white/85 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <DropdownMenu>
@@ -1611,7 +1573,7 @@ function RoutesSidebar({
             </DropdownMenu>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-white/10">
+        <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-white/10">
           {filteredTimelineEvents.length === 0 ? (
             <div className="p-3 text-xs text-white/50">
               Nessun evento disponibile per questo intervallo.
@@ -1631,8 +1593,17 @@ function RoutesSidebar({
                 {filteredTimelineEvents.map((evt) => (
                   <tr
                     key={evt.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Evento ${evt.label} — vai sulla mappa`}
                     onClick={() => focusTimelineEvent(evt)}
-                    className={`cursor-pointer border-b border-white/5 hover:bg-white/[0.08] ${activeEventId === evt.id ? "bg-white/10" : "bg-[#0d0d0f]"}`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        focusTimelineEvent(evt);
+                      }
+                    }}
+                    className={`cursor-pointer border-b border-white/5 outline-none hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${activeEventId === evt.id ? "bg-white/10" : "bg-background"}`}
                   >
                     <td className="px-3 py-2 font-medium">{evt.label}</td>
                     <td className="px-3 py-2 text-white/75">{formatShortDateTime(evt.start)}</td>
@@ -1657,13 +1628,13 @@ function RoutesSidebar({
           Clic su una riga: posiziona la mappa sull'evento e apre marker dettaglio.
         </p>
       </div>
+      )}
       {reportModalOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm p-4 md:p-8">
-          <div className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0b0c10] shadow-[0_25px_90px_rgba(0,0,0,0.65)]">
+          <div role="dialog" aria-modal="true" aria-label="Report percorsi intervallo" className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0b0c10] shadow-[0_25px_90px_rgba(0,0,0,0.65)]">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
               <div>
                 <h3 className="text-lg font-semibold text-white">Report Percorsi Intervallo</h3>
-                <p className="text-xs text-white/60">Anteprima e generazione report per il periodo selezionato.</p>
               </div>
               <button
                 type="button"
@@ -1733,1546 +1704,6 @@ function RoutesSidebar({
   );
 }
 
-type SortButtonProps = {
-  label: string;
-  active: boolean;
-  dir: SortDir;
-  onClick: () => void;
-  align?: "left" | "right";
-};
-
-function SortButton({
-  label,
-  active,
-  dir,
-  onClick,
-  align = "left",
-}: SortButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-1 text-[10px] sm:text-xs uppercase tracking-[0.2em] text-white/55 hover:text-white/85 transition ${
-        align === "right" ? "justify-end" : "justify-start"
-      }`}
-    >
-      <span>{label}</span>
-      {active && (
-        <i
-          className={`fa ${dir === "asc" ? "fa-sort-up" : "fa-sort-down"} text-white/60`}
-          aria-hidden="true"
-        />
-      )}
-    </button>
-  );
-}
-
-function AdminSidebar({
-  isOpen,
-  canManageUsers,
-  isSuperAdmin,
-  sessionLoaded,
-  sessionCompanyId,
-  sessionCompanyName,
-}: {
-  isOpen: boolean;
-  canManageUsers: boolean;
-  isSuperAdmin: boolean;
-  sessionLoaded: boolean;
-  sessionCompanyId: string | null;
-  sessionCompanyName: string | null;
-}) {
-  const [companies, setCompanies] = React.useState<AdminCompany[]>([]);
-  const [search, setSearch] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
-  const [companySort, setCompanySort] = React.useState<{
-    field: CompanySortField;
-    dir: SortDir;
-  }>({ field: "name", dir: "asc" });
-  const [userSort, setUserSort] = React.useState<{
-    field: UserSortField;
-    dir: SortDir;
-  }>({ field: "name", dir: "asc" });
-  const [userSearch, setUserSearch] = React.useState<Record<string, string>>({});
-  const [tachoCompanies, setTachoCompanies] = React.useState<TachoCompany[]>([]);
-  const [tachoQuery, setTachoQuery] = React.useState("");
-  const [tachoDropdownOpen, setTachoDropdownOpen] = React.useState(false);
-  const [selectedTachoCompany, setSelectedTachoCompany] = React.useState<TachoCompany | null>(null);
-  const [importName, setImportName] = React.useState("");
-  const [tachoLoading, setTachoLoading] = React.useState(false);
-  const [tachoError, setTachoError] = React.useState<string | null>(null);
-  const [registering, setRegistering] = React.useState(false);
-  const [registerSuccess, setRegisterSuccess] = React.useState<string | null>(null);
-  const [modalOpen, setModalOpen] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<"new" | "import">("new");
-  const [newName, setNewName] = React.useState("");
-  const [legalAddress, setLegalAddress] = React.useState("");
-  const [vatId, setVatId] = React.useState("");
-  const [sdiCode, setSdiCode] = React.useState("");
-  const [registerTeltonika, setRegisterTeltonika] = React.useState(false);
-  const [userModalOpen, setUserModalOpen] = React.useState(false);
-  const [userCompanyId, setUserCompanyId] = React.useState<string | null>(null);
-  const [userCompanyName, setUserCompanyName] = React.useState<string | null>(null);
-  const [userFirstName, setUserFirstName] = React.useState("");
-  const [userLastName, setUserLastName] = React.useState("");
-  const [userPhone, setUserPhone] = React.useState("");
-  const [userEmail, setUserEmail] = React.useState("");
-  const [userPassword, setUserPassword] = React.useState("");
-  const [userRole, setUserRole] = React.useState(1);
-  const [userPrivilege, setUserPrivilege] = React.useState(2);
-  const [userStatus, setUserStatus] = React.useState(0);
-  const [userSubmitting, setUserSubmitting] = React.useState(false);
-  const [userError, setUserError] = React.useState<string | null>(null);
-  const [userSuccess, setUserSuccess] = React.useState<string | null>(null);
-  const [vehicleInventory, setVehicleInventory] = React.useState<AdminVehicleSummary[]>([]);
-  const [vehicleTags, setVehicleTags] = React.useState<string[]>([]);
-  const [selectedVehicleIds, setSelectedVehicleIds] = React.useState<string[]>([]);
-  const [allowedVehicleTags, setAllowedVehicleTags] = React.useState<string[]>([]);
-  const [restrictionsEnabled, setRestrictionsEnabled] = React.useState(false);
-  const [restrictionMode, setRestrictionMode] = React.useState<"include" | "exclude">("include");
-  const [restrictionSearch, setRestrictionSearch] = React.useState("");
-  const [restrictionFilterOpen, setRestrictionFilterOpen] = React.useState(false);
-  const [vehicleLoading, setVehicleLoading] = React.useState(false);
-  const [editModalOpen, setEditModalOpen] = React.useState(false);
-  const [editUserId, setEditUserId] = React.useState<string | null>(null);
-  const [editUserName, setEditUserName] = React.useState<string | null>(null);
-  const [editUserRole, setEditUserRole] = React.useState<number | null>(null);
-  const [editRestrictionMode, setEditRestrictionMode] =
-    React.useState<"include" | "exclude">("include");
-  const [editRestrictionSearch, setEditRestrictionSearch] = React.useState("");
-  const [editRestrictionFilterOpen, setEditRestrictionFilterOpen] = React.useState(false);
-  const [editAllowedVehicleTags, setEditAllowedVehicleTags] = React.useState<string[]>([]);
-  const [editSelectedVehicleIds, setEditSelectedVehicleIds] = React.useState<string[]>([]);
-  const [editLoading, setEditLoading] = React.useState(false);
-  const [editSaving, setEditSaving] = React.useState(false);
-  const [editError, setEditError] = React.useState<string | null>(null);
-  const [editSuccess, setEditSuccess] = React.useState<string | null>(null);
-
-  const fetchCompanies = React.useCallback(async () => {
-    const query = new URLSearchParams();
-    const trimmed = search.trim();
-    if (trimmed) query.set("search", trimmed);
-    const url = `${API_BASE_URL || ""}/api/admin/companies${query.toString() ? `?${query}` : ""}`;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setCompanies(Array.isArray(data?.companies) ? data.companies : []);
-    } catch (err: any) {
-      setError(err?.message || "Errore durante il caricamento.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
-
-  const fetchTachoCompanies = React.useCallback(async () => {
-    setTachoLoading(true);
-    setTachoError(null);
-    try {
-      const res = await fetch(`${API_BASE_URL || ""}/api/tacho/companies`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setTachoCompanies(Array.isArray(data?.companies) ? data.companies : []);
-    } catch (err: any) {
-      setTachoError(err?.message || "Errore durante il caricamento del servizio.");
-    } finally {
-      setTachoLoading(false);
-    }
-  }, []);
-
-  const fetchVehicles = React.useCallback(async () => {
-    setVehicleLoading(true);
-    try {
-      const res = await fetch(`${API_BASE_URL || ""}${VEHICLES_PATH}`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setVehicleInventory([]);
-        setVehicleTags([]);
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      const vehicles = Array.isArray(data?.vehicles) ? data.vehicles : [];
-      const normalized = vehicles.map((vehicle: any) => {
-        const rawPlate = vehicle?.plate;
-        const plate = typeof rawPlate === "string" ? rawPlate : rawPlate?.v || null;
-        const rawTags = Array.isArray(vehicle?.tags)
-          ? vehicle.tags
-          : Array.isArray(vehicle?.details?.tags)
-            ? vehicle.details.tags
-            : [];
-        const tags = rawTags.map((tag: any) => String(tag).trim()).filter(Boolean);
-        return {
-          id: vehicle?._id ? String(vehicle._id) : vehicle?.id ? String(vehicle.id) : null,
-          imei: vehicle?.imei ?? null,
-          nickname: vehicle?.nickname ?? null,
-          plate,
-          tags,
-        } as AdminVehicleSummary;
-      });
-      const tagSet = new Set<string>();
-      normalized.forEach((vehicle) => {
-        vehicle.tags?.forEach((tag) => tagSet.add(tag));
-      });
-      setVehicleInventory(normalized);
-      setVehicleTags(Array.from(tagSet).sort((a, b) => a.localeCompare(b, "it")));
-    } catch (err) {
-      setVehicleInventory([]);
-      setVehicleTags([]);
-    } finally {
-      setVehicleLoading(false);
-    }
-  }, []);
-
-  const resetModal = () => {
-    setActiveTab("new");
-    setNewName("");
-    setLegalAddress("");
-    setVatId("");
-    setSdiCode("");
-    setRegisterTeltonika(false);
-    setSelectedTachoCompany(null);
-    setImportName("");
-    setTachoQuery("");
-    setTachoDropdownOpen(false);
-    setTachoError(null);
-    setRegisterSuccess(null);
-  };
-
-  const resetUserModal = () => {
-    setUserFirstName("");
-    setUserLastName("");
-    setUserPhone("");
-    setUserEmail("");
-    setUserPassword("");
-    setUserPrivilege(isSuperAdmin ? 1 : 3);
-    setUserRole(isSuperAdmin ? 1 : 3);
-    setUserStatus(0);
-    setUserSubmitting(false);
-    setUserError(null);
-    setUserSuccess(null);
-    setAllowedVehicleTags([]);
-    setSelectedVehicleIds([]);
-    setRestrictionsEnabled(false);
-    setRestrictionMode("include");
-    setRestrictionSearch("");
-    setRestrictionFilterOpen(false);
-  };
-
-  React.useEffect(() => {
-    if (!canManageUsers || isSuperAdmin) return;
-    if (sessionCompanyId) {
-      setUserCompanyId(sessionCompanyId);
-      setUserCompanyName(sessionCompanyName);
-    }
-  }, [canManageUsers, isSuperAdmin, sessionCompanyId, sessionCompanyName]);
-
-  React.useEffect(() => {
-    setUserRole(userPrivilege);
-  }, [userPrivilege]);
-
-  React.useEffect(() => {
-    if (userPrivilege !== 3) {
-      setRestrictionsEnabled(false);
-      setSelectedVehicleIds([]);
-    }
-  }, [userPrivilege]);
-
-  const clearModalForm = () => {
-    setNewName("");
-    setLegalAddress("");
-    setVatId("");
-    setSdiCode("");
-    setRegisterTeltonika(false);
-    setSelectedTachoCompany(null);
-    setImportName("");
-    setTachoQuery("");
-    setTachoDropdownOpen(false);
-  };
-
-  React.useEffect(() => {
-    if (!isOpen || !canManageUsers) return undefined;
-    const handle = window.setTimeout(() => {
-      fetchCompanies();
-      if (isSuperAdmin) {
-        fetchTachoCompanies();
-      }
-    }, 200);
-    return () => window.clearTimeout(handle);
-  }, [isOpen, canManageUsers, isSuperAdmin, fetchCompanies, fetchTachoCompanies, search]);
-
-  React.useEffect(() => {
-    if (!userModalOpen) return;
-    fetchVehicles();
-  }, [userModalOpen, fetchVehicles]);
-
-  React.useEffect(() => {
-    if (!editModalOpen || !editUserId) return;
-    fetchVehicles();
-    const loadUser = async () => {
-      setEditLoading(true);
-      setEditError(null);
-      try {
-        const res = await fetch(`${API_BASE_URL || ""}/api/admin/users/${editUserId}`, {
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(text || `HTTP ${res.status}`);
-        }
-        const data = await res.json().catch(() => ({}));
-        const user = data?.user || {};
-        setEditUserRole(Number.isInteger(user.role) ? user.role : null);
-        setEditRestrictionMode(user.allowedVehicleIdsMode === "exclude" ? "exclude" : "include");
-        setEditAllowedVehicleTags(Array.isArray(user.allowedVehicleTags) ? user.allowedVehicleTags : []);
-        setEditSelectedVehicleIds(Array.isArray(user.allowedVehicleIds) ? user.allowedVehicleIds : []);
-      } catch (err: any) {
-        setEditError(err?.message || "Errore durante il caricamento.");
-      } finally {
-        setEditLoading(false);
-      }
-    };
-    void loadUser();
-  }, [editModalOpen, editUserId, fetchVehicles]);
-
-  React.useEffect(() => {
-    if (!userModalOpen) return;
-    setUserPrivilege(isSuperAdmin ? 1 : 3);
-    setUserRole(isSuperAdmin ? 1 : 3);
-    setRestrictionsEnabled(false);
-    setSelectedVehicleIds([]);
-    setAllowedVehicleTags([]);
-    setRestrictionMode("include");
-    setRestrictionSearch("");
-  }, [userModalOpen, isSuperAdmin]);
-
-  const sortedCompanies = React.useMemo(() => {
-    return sortWithDir(companies, companySort.dir, (company) => {
-      if (companySort.field === "userCount") return company.userCount ?? 0;
-      if (companySort.field === "createdAt") {
-        return company.createdAt ? new Date(company.createdAt).getTime() : 0;
-      }
-      return company.name || "";
-    });
-  }, [companies, companySort]);
-
-  const filteredTachoCompanies = React.useMemo(() => {
-    const query = tachoQuery.trim().toLowerCase();
-    if (!query) return tachoCompanies;
-    return tachoCompanies.filter((company) => {
-      const nameMatch = company.name?.toLowerCase().includes(query);
-      const idMatch = company.id?.toLowerCase().includes(query);
-      return nameMatch || idMatch;
-    });
-  }, [tachoCompanies, tachoQuery]);
-
-  const handleRegisterCompany = async () => {
-    if (activeTab === "new") {
-      if (!newName.trim()) {
-        setTachoError("Inserisci la ragione sociale.");
-        return;
-      }
-    } else {
-      if (!selectedTachoCompany) {
-        setTachoError("Seleziona una azienda per l'import.");
-        return;
-      }
-      if (!importName.trim()) {
-        setTachoError("Inserisci il nome azienda.");
-        return;
-      }
-    }
-
-    setRegistering(true);
-    setRegisterSuccess(null);
-    setTachoError(null);
-    try {
-      const res = await fetch(`${API_BASE_URL || ""}/api/admin/companies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: activeTab === "new" ? newName.trim() : importName.trim(),
-          legalAddress: activeTab === "new" ? legalAddress.trim() || null : null,
-          taxId: activeTab === "new" ? vatId.trim() || null : null,
-          sdiCode: activeTab === "new" ? sdiCode.trim() || null : null,
-          registerTeltonika: activeTab === "new" ? registerTeltonika : false,
-          tkCompanyId: activeTab === "import" ? selectedTachoCompany?.id : null,
-        }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      const data = await res.json().catch(() => ({}));
-      setRegisterSuccess("Azienda registrata.");
-      fetchCompanies();
-      clearModalForm();
-      const createdCompanyId = data?.company?.id || null;
-      const createdCompanyName = data?.company?.name || null;
-      if (createdCompanyId) {
-        setUserCompanyId(createdCompanyId);
-        setUserCompanyName(createdCompanyName);
-        setUserModalOpen(true);
-      }
-    } catch (err: any) {
-      setTachoError(err?.message || "Errore durante la registrazione.");
-    } finally {
-      setRegistering(false);
-    }
-  };
-
-  const handleRegisterUser = async () => {
-    if (!userCompanyId) {
-      setUserError("Seleziona una azienda.");
-      return;
-    }
-    if (!userFirstName.trim() || !userLastName.trim() || !userPhone.trim() || !userEmail.trim() || !userPassword) {
-      setUserError("Compila tutti i campi obbligatori.");
-      return;
-    }
-    setUserSubmitting(true);
-    setUserError(null);
-    try {
-      const res = await fetch(`${API_BASE_URL || ""}/api/admin/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          firstName: userFirstName.trim(),
-          lastName: userLastName.trim(),
-          phone: userPhone.trim(),
-          email: userEmail.trim(),
-          password: userPassword,
-          companyId: userCompanyId,
-          role: userPrivilege,
-          privilege: userPrivilege,
-          status: userStatus,
-          allowedVehicleIds: userPrivilege === 3 && restrictionsEnabled ? selectedVehicleIds : [],
-          allowedVehicleIdsMode:
-            userPrivilege === 3 && restrictionsEnabled ? restrictionMode : "include",
-          allowedVehicleTags: userPrivilege === 3 && restrictionsEnabled ? allowedVehicleTags : [],
-          allowedVehicleTagsMode:
-            userPrivilege === 3 && restrictionsEnabled ? restrictionMode : "include",
-        }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      setUserSuccess("Utente registrato.");
-      fetchCompanies();
-    } catch (err: any) {
-      setUserError(err?.message || "Errore durante la registrazione utente.");
-    } finally {
-      setUserSubmitting(false);
-    }
-  };
-
-  const openEditRestrictions = (user: AdminUser) => {
-    setEditUserId(user.id);
-    setEditUserName(`${user.firstName} ${user.lastName}`.trim() || user.email);
-    setEditModalOpen(true);
-    setEditError(null);
-    setEditSuccess(null);
-  };
-
-  const resetEditModal = () => {
-    setEditUserId(null);
-    setEditUserName(null);
-    setEditUserRole(null);
-    setEditRestrictionMode("include");
-    setEditRestrictionSearch("");
-    setEditRestrictionFilterOpen(false);
-    setEditAllowedVehicleTags([]);
-    setEditSelectedVehicleIds([]);
-    setEditError(null);
-    setEditSuccess(null);
-  };
-
-  const handleSaveRestrictions = async () => {
-    if (!editUserId) return;
-    setEditSaving(true);
-    setEditError(null);
-    setEditSuccess(null);
-    try {
-      const res = await fetch(`${API_BASE_URL || ""}/api/admin/users/${editUserId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          allowedVehicleIds: editSelectedVehicleIds,
-          allowedVehicleIdsMode: editRestrictionMode,
-          allowedVehicleTags: editAllowedVehicleTags,
-          allowedVehicleTagsMode: editRestrictionMode,
-        }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      setEditSuccess("Restrizioni aggiornate.");
-    } catch (err: any) {
-      setEditError(err?.message || "Errore durante il salvataggio.");
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const toggleCompany = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const updateCompanySort = (field: CompanySortField) => {
-    setCompanySort((prev) => ({
-      field,
-      dir: prev.field === field && prev.dir === "asc" ? "desc" : "asc",
-    }));
-  };
-
-  const updateUserSort = (field: UserSortField) => {
-    setUserSort((prev) => ({
-      field,
-      dir: prev.field === field && prev.dir === "asc" ? "desc" : "asc",
-    }));
-  };
-
-  const companyGrid =
-    "grid min-w-0 grid-cols-[minmax(0,2.2fr)_minmax(0,0.7fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
-  const userGrid =
-    "grid min-w-0 grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] items-center gap-2 sm:gap-3";
-  const filteredVehicles = React.useMemo(() => {
-    const query = restrictionSearch.trim().toLowerCase();
-    const activeTags = new Set(allowedVehicleTags);
-    return vehicleInventory.filter((vehicle) => {
-      if (activeTags.size > 0) {
-        const hasTag = Array.isArray(vehicle.tags)
-          && vehicle.tags.some((tag) => activeTags.has(tag));
-        if (!hasTag) return false;
-      }
-      if (!query) return true;
-      const name = `${vehicle.nickname || ""} ${vehicle.plate || ""} ${vehicle.imei || ""}`.toLowerCase();
-      return name.includes(query);
-    });
-  }, [allowedVehicleTags, restrictionSearch, vehicleInventory]);
-  const editFilteredVehicles = React.useMemo(() => {
-    const query = editRestrictionSearch.trim().toLowerCase();
-    const activeTags = new Set(editAllowedVehicleTags);
-    return vehicleInventory.filter((vehicle) => {
-      if (activeTags.size > 0) {
-        const hasTag =
-          Array.isArray(vehicle.tags) && vehicle.tags.some((tag) => activeTags.has(tag));
-        if (!hasTag) return false;
-      }
-      if (!query) return true;
-      const name = `${vehicle.nickname || ""} ${vehicle.plate || ""} ${vehicle.imei || ""}`.toLowerCase();
-      return name.includes(query);
-    });
-  }, [editAllowedVehicleTags, editRestrictionSearch, vehicleInventory]);
-
-  return (
-    <div className="space-y-4">
-      {!sessionLoaded && (
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 text-sm text-white/70 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-          Caricamento autorizzazioni...
-        </div>
-      )}
-      {sessionLoaded && !canManageUsers && (
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 text-sm text-white/70 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-          Non hai i permessi per gestire gli utenti.
-        </div>
-      )}
-      {sessionLoaded && canManageUsers && (
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-3 sm:p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">Aziende</p>
-          <div className="flex items-center gap-2">
-            {isSuperAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  setModalOpen(true);
-                  setRegisterSuccess(null);
-                  setTachoError(null);
-                }}
-                className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-              >
-                <i className="fa fa-plus mr-2" aria-hidden="true" />
-                Registra azienda
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={fetchCompanies}
-              className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-            >
-              {loading ? "Aggiorno..." : "Aggiorna"}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca azienda..."
-            className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
-          />
-        </div>
-
-        {error && <p className="text-xs text-red-400">{error}</p>}
-
-        <div className="space-y-3">
-          <div className={`${companyGrid} px-3 text-[9px] sm:text-[10px]`}>
-            <SortButton
-              label="Azienda"
-              active={companySort.field === "name"}
-              dir={companySort.dir}
-              onClick={() => updateCompanySort("name")}
-            />
-            <SortButton
-              label="Utenti"
-              active={companySort.field === "userCount"}
-              dir={companySort.dir}
-              onClick={() => updateCompanySort("userCount")}
-            />
-            <SortButton
-              label="Creato"
-              active={companySort.field === "createdAt"}
-              dir={companySort.dir}
-              onClick={() => updateCompanySort("createdAt")}
-            />
-            <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/55 text-right">
-              Azioni
-            </div>
-          </div>
-
-          {sortedCompanies.length === 0 && !loading ? (
-            <div className="rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-3 text-xs text-white/60">
-              Nessuna azienda trovata.
-            </div>
-          ) : (
-            sortedCompanies.map((company) => {
-              const isExpanded = expanded.has(company.id);
-              const searchValue = (userSearch[company.id] || "").trim().toLowerCase();
-              const filteredUsers = searchValue
-                ? company.users.filter((user) => {
-                    const name = `${user.firstName} ${user.lastName}`.toLowerCase();
-                    return (
-                      name.includes(searchValue) ||
-                      user.email.toLowerCase().includes(searchValue)
-                    );
-                  })
-                : company.users;
-              const sortedUsers = sortWithDir(filteredUsers, userSort.dir, (user) => {
-                if (userSort.field === "email") return user.email;
-                if (userSort.field === "role") return user.role ?? 99;
-                if (userSort.field === "createdAt") {
-                  return user.createdAt ? new Date(user.createdAt).getTime() : 0;
-                }
-                return `${user.firstName} ${user.lastName}`.trim();
-              });
-
-              return (
-                <div
-                  key={company.id}
-                  className="rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-3 text-xs text-white/80"
-                >
-                  <div className={`${companyGrid}`}>
-                    <button
-                      type="button"
-                      onClick={() => toggleCompany(company.id)}
-                      className="flex items-center gap-2 min-w-0 text-left"
-                    >
-                      <i
-                        className={`fa ${isExpanded ? "fa-caret-down" : "fa-caret-right"} text-white/50`}
-                        aria-hidden="true"
-                      />
-                      <span className="truncate font-medium text-white/90">{company.name}</span>
-                    </button>
-                    <div className="text-white/70">{company.userCount}</div>
-                    <div className="text-white/70">{formatShortDate(company.createdAt)}</div>
-                    <div className="flex justify-end">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center text-white/60 hover:text-white transition"
-                          >
-                            <i className="fa fa-ellipsis-h text-[11px]" aria-hidden="true" />
-                          </button>
-                        </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[160px]">
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setUserCompanyId(company.id);
-                              setUserCompanyName(company.name);
-                              setUserModalOpen(true);
-                              setUserSuccess(null);
-                              setUserError(null);
-                            }}
-                          >
-                            Nuovo utente
-                          </DropdownMenuItem>
-                          {isSuperAdmin && <DropdownMenuItem>Dettagli azienda</DropdownMenuItem>}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
-                      <div className="flex items-center justify-end">
-                        <input
-                          value={userSearch[company.id] || ""}
-                          onChange={(e) =>
-                            setUserSearch((prev) => ({
-                              ...prev,
-                              [company.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Cerca utenti..."
-                          className="w-40 sm:w-56 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
-                        />
-                      </div>
-
-                      <div className={`${userGrid} px-2 text-[9px] sm:text-[10px]`}>
-                        <SortButton
-                          label="Nome"
-                          active={userSort.field === "name"}
-                          dir={userSort.dir}
-                          onClick={() => updateUserSort("name")}
-                        />
-                        <div className="hidden sm:block">
-                          <SortButton
-                            label="Email"
-                            active={userSort.field === "email"}
-                            dir={userSort.dir}
-                            onClick={() => updateUserSort("email")}
-                          />
-                        </div>
-                        <SortButton
-                          label="Ruolo"
-                          active={userSort.field === "role"}
-                          dir={userSort.dir}
-                          onClick={() => updateUserSort("role")}
-                        />
-                        <SortButton
-                          label="Creato"
-                          active={userSort.field === "createdAt"}
-                          dir={userSort.dir}
-                          onClick={() => updateUserSort("createdAt")}
-                        />
-                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-white/55 text-right">
-                          Azioni
-                        </div>
-                      </div>
-
-                      {sortedUsers.length === 0 ? (
-                        <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/60">
-                          Nessun utente trovato.
-                        </div>
-                      ) : (
-                        sortedUsers.map((user) => (
-                          <div
-                            key={user.id}
-                            className={`${userGrid} rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-[10px] sm:text-[11px] text-white/80`}
-                          >
-                            <div className="min-w-0 truncate">
-                              {`${user.firstName} ${user.lastName}`.trim() || user.email}
-                            </div>
-                            <div className="hidden sm:block min-w-0 truncate text-white/70">
-                              {user.email}
-                            </div>
-                            <div className="text-white/70">{formatRoleLabel(user.role)}</div>
-                            <div className="text-white/70">{formatShortDate(user.createdAt)}</div>
-                            <div className="flex justify-end">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-7 w-7 items-center justify-center text-white/60 hover:text-white transition"
-                                  >
-                                    <i className="fa fa-ellipsis-h text-[11px]" aria-hidden="true" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="min-w-[160px]">
-                                  <DropdownMenuItem
-                                    onSelect={() => openEditRestrictions(user)}
-                                  >
-                                    Modifica
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem>Disattiva</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-      )}
-
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
-                  Registrazione azienda
-                </p>
-                <h3 className="text-lg font-semibold text-white">Nuova azienda</h3>
-                  <p className="text-sm text-white/60">
-                    Crea una nuova azienda o importa da un servizio esterno.
-                  </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setModalOpen(false);
-                  resetModal();
-                }}
-                className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
-                aria-label="Chiudi"
-              >
-                <i className="fa fa-close" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("new");
-                  setRegisterSuccess(null);
-                  setTachoError(null);
-                }}
-                className={`rounded-full border px-4 py-1.5 text-xs uppercase tracking-[0.18em] transition ${
-                  activeTab === "new"
-                    ? "border-white/40 text-white"
-                    : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-                }`}
-              >
-                Nuova
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("import");
-                  setRegisterSuccess(null);
-                  setTachoError(null);
-                }}
-                className={`rounded-full border px-4 py-1.5 text-xs uppercase tracking-[0.18em] transition ${
-                  activeTab === "import"
-                    ? "border-white/40 text-white"
-                    : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-                }`}
-              >
-                Importa da servizio esterno
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              {activeTab === "new" ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                      Ragione sociale
-                    </label>
-                    <input
-                      value={newName}
-                      onChange={(e) => {
-                        setNewName(e.target.value);
-                        setTachoError(null);
-                      }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                      Sede legale
-                    </label>
-                    <input
-                      value={legalAddress}
-                      onChange={(e) => {
-                        setLegalAddress(e.target.value);
-                        setTachoError(null);
-                      }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                      Partita Iva
-                    </label>
-                    <input
-                      value={vatId}
-                      onChange={(e) => {
-                        setVatId(e.target.value);
-                        setTachoError(null);
-                      }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                      Codice Univoco
-                    </label>
-                    <input
-                      value={sdiCode}
-                      onChange={(e) => {
-                        setSdiCode(e.target.value);
-                        setTachoError(null);
-                      }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-white/80 md:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={registerTeltonika}
-                      onChange={(e) => setRegisterTeltonika(e.target.checked)}
-                    />
-                    Registra su servizio esterno
-                  </label>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-[0.1em] text-white/60">
-                        Azienda servizio esterno
-                      </p>
-                    <button
-                      type="button"
-                      onClick={fetchTachoCompanies}
-                      className="h-7 rounded-full border border-white/15 bg-white/5 px-3 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-                    >
-                      {tachoLoading ? "Aggiorno..." : "Aggiorna"}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      value={tachoQuery}
-                      onChange={(e) => {
-                        setTachoQuery(e.target.value);
-                        setSelectedTachoCompany(null);
-                        setRegisterSuccess(null);
-                        setTachoError(null);
-                      }}
-                      onFocus={() => setTachoDropdownOpen(true)}
-                      onBlur={() => {
-                        window.setTimeout(() => setTachoDropdownOpen(false), 120);
-                      }}
-                      placeholder="Seleziona o cerca..."
-                      className="w-full rounded-lg border border-white/10 bg-[#0b0b0d] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                    />
-                    {tachoDropdownOpen && (
-                      <div
-                        className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0b0b0d] shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        {filteredTachoCompanies.length === 0 ? (
-                          <div className="px-3 py-2 text-[11px] text-white/50">
-                            Nessuna azienda trovata.
-                          </div>
-                        ) : (
-                          filteredTachoCompanies.map((company) => (
-                            <button
-                              key={company.id}
-                              type="button"
-                              onMouseDown={() => {
-                                setSelectedTachoCompany(company);
-                                setTachoQuery(company.name);
-                                setImportName(company.name);
-                                setRegisterSuccess(null);
-                                setTachoError(null);
-                                setTachoDropdownOpen(false);
-                              }}
-                              className="w-full text-left px-3 py-2 text-[11px] text-white/80 hover:bg-white/10 flex items-center justify-between gap-2"
-                            >
-                              <span
-                                className="truncate"
-                                style={{ paddingLeft: `${Math.max(0, Number(company.depth || 0) * 10)}px` }}
-                              >
-                                {company.name}
-                              </span>
-                              <span className="text-white/40 text-[10px]">{company.id}</span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                      Nome azienda
-                    </label>
-                    <input
-                      value={importName}
-                      onChange={(e) => {
-                        setImportName(e.target.value);
-                        setRegisterSuccess(null);
-                        setTachoError(null);
-                      }}
-                      className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {tachoError && <p className="mt-4 text-sm text-red-400">{tachoError}</p>}
-            {registerSuccess && <p className="mt-4 text-sm text-emerald-300">{registerSuccess}</p>}
-
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setModalOpen(false);
-                  resetModal();
-                }}
-                className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={handleRegisterCompany}
-                disabled={registering}
-                className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
-              >
-                {registering ? "Salvataggio..." : "Registra"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {userModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
-                  Registrazione utente
-                </p>
-                <h3 className="text-lg font-semibold text-white">Nuovo utente</h3>
-                <p className="text-sm text-white/60">
-                  Azienda: {userCompanyName || userCompanyId || "N/D"}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setUserModalOpen(false);
-                  resetUserModal();
-                }}
-                className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
-                aria-label="Chiudi"
-              >
-                <i className="fa fa-close" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Nome
-                </label>
-                <input
-                  value={userFirstName}
-                  onChange={(e) => {
-                    setUserFirstName(e.target.value);
-                    setUserError(null);
-                    setUserSuccess(null);
-                  }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Cognome
-                </label>
-                <input
-                  value={userLastName}
-                  onChange={(e) => {
-                    setUserLastName(e.target.value);
-                    setUserError(null);
-                    setUserSuccess(null);
-                  }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Telefono
-                </label>
-                <input
-                  value={userPhone}
-                  onChange={(e) => {
-                    setUserPhone(e.target.value);
-                    setUserError(null);
-                    setUserSuccess(null);
-                  }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Email
-                </label>
-                <input
-                  value={userEmail}
-                  onChange={(e) => {
-                    setUserEmail(e.target.value);
-                    setUserError(null);
-                    setUserSuccess(null);
-                  }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={userPassword}
-                  onChange={(e) => {
-                    setUserPassword(e.target.value);
-                    setUserError(null);
-                    setUserSuccess(null);
-                  }}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.1em] text-white/60">
-                  Privilegio
-                </label>
-                <select
-                  value={userPrivilege}
-                  onChange={(e) => setUserPrivilege(Number(e.target.value))}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                >
-                  {isSuperAdmin ? (
-                    <>
-                      <option value={0}>Super admin</option>
-                      <option value={1}>Amministratore</option>
-                      <option value={2}>Utente</option>
-                      <option value={3}>Sola lettura</option>
-                    </>
-                  ) : (
-                    <option value={3}>Sola lettura</option>
-                  )}
-                </select>
-              </div>
-            </div>
-
-            {userPrivilege === 3 && (
-              <div className="mt-6 space-y-3">
-                <label className="flex items-center gap-2 text-sm text-white/80">
-                  <input
-                    type="checkbox"
-                    checked={restrictionsEnabled}
-                    onChange={(e) => setRestrictionsEnabled(e.target.checked)}
-                  />
-                  Restrizioni veicoli
-                </label>
-
-                {restrictionsEnabled && (
-                  <div className="rounded-xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setRestrictionMode("include")}
-                        className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
-                          restrictionMode === "include"
-                            ? "border-white/40 text-white"
-                            : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-                        }`}
-                      >
-                        Mostra solo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRestrictionMode("exclude")}
-                        className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
-                          restrictionMode === "exclude"
-                            ? "border-white/40 text-white"
-                            : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-                        }`}
-                      >
-                        Tutti Tranne
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        value={restrictionSearch}
-                        onChange={(e) => setRestrictionSearch(e.target.value)}
-                        placeholder="Cerca veicolo..."
-                        className="flex-1 rounded-lg border border-white/10 bg-[#0b0b0d] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                      />
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setRestrictionFilterOpen((prev) => !prev)}
-                          className="h-9 w-9 rounded-lg border border-white/10 bg-white/5 text-white/70 hover:text-white hover:border-white/30 transition inline-flex items-center justify-center"
-                          aria-label="Filtra per tag"
-                        >
-                          <i className="fa fa-filter" aria-hidden="true" />
-                        </button>
-                        {restrictionFilterOpen && (
-                          <div className="absolute right-0 mt-2 w-48 rounded-lg border border-white/10 bg-[#0b0b0d] shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
-                            {vehicleTags.length === 0 ? (
-                              <div className="px-3 py-2 text-[11px] text-white/50">
-                                Nessun tag disponibile.
-                              </div>
-                            ) : (
-                              vehicleTags.map((tag) => {
-                                const isActive = allowedVehicleTags.includes(tag);
-                                return (
-                                  <button
-                                    key={tag}
-                                    type="button"
-                                    onClick={() =>
-                                      setAllowedVehicleTags((prev) =>
-                                        prev.includes(tag)
-                                          ? prev.filter((item) => item !== tag)
-                                          : [...prev, tag],
-                                      )
-                                    }
-                                    className="w-full px-3 py-2 text-left text-[11px] text-white/80 hover:bg-white/10 flex items-center justify-between"
-                                  >
-                                    <span className="truncate">{tag}</span>
-                                    <span className="text-white/40">
-                                      {isActive ? "OK" : ""}
-                                    </span>
-                                  </button>
-                                );
-                              })
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
-                        <span>Veicolo</span>
-                        <span>Tag</span>
-                      </div>
-                      <div className="max-h-48 overflow-y-auto">
-                        {vehicleLoading ? (
-                          <div className="px-3 py-3 text-xs text-white/60">
-                            Caricamento veicoli...
-                          </div>
-                        ) : filteredVehicles.length === 0 ? (
-                          <div className="px-3 py-3 text-xs text-white/60">
-                            Nessun veicolo corrispondente ai filtri.
-                          </div>
-                        ) : (
-                          filteredVehicles.map((vehicle) => {
-                            const vehicleKey =
-                              vehicle.id || vehicle.imei || `${vehicle.nickname}-${vehicle.plate}`;
-                            const selectionId = vehicle.id || null;
-                            const isSelected =
-                              selectionId ? selectedVehicleIds.includes(selectionId) : false;
-                            return (
-                              <button
-                                key={vehicleKey}
-                                type="button"
-                                onClick={() => {
-                                  if (!selectionId) return;
-                                  setSelectedVehicleIds((prev) =>
-                                    prev.includes(selectionId)
-                                      ? prev.filter((id) => id !== selectionId)
-                                      : [...prev, selectionId],
-                                  );
-                                }}
-                                disabled={!selectionId}
-                                className={`grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-left text-xs border-t border-white/5 transition ${
-                                  isSelected
-                                    ? "bg-white/10 text-white"
-                                    : "text-white/80 hover:bg-white/5"
-                                }`}
-                                aria-pressed={isSelected}
-                              >
-                                <span className="truncate">
-                                  {vehicle.nickname || vehicle.plate || vehicle.imei || "Veicolo"}
-                                </span>
-                                <span className="truncate text-white/60 flex items-center justify-between gap-2">
-                                  {(vehicle.tags || []).join(", ") || "--"}
-                                  <span className="text-white/50">
-                                    {isSelected ? "Selezionato" : ""}
-                                  </span>
-                                </span>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {userError && <p className="mt-4 text-sm text-red-400">{userError}</p>}
-            {userSuccess && <p className="mt-4 text-sm text-emerald-300">{userSuccess}</p>}
-
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setUserModalOpen(false);
-                  resetUserModal();
-                }}
-                className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={handleRegisterUser}
-                disabled={userSubmitting}
-                className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
-              >
-                {userSubmitting ? "Salvataggio..." : "Registra utente"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#121212] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
-                  Restrizioni veicoli
-                </p>
-                <h3 className="text-lg font-semibold text-white">Modifica visibilita</h3>
-                <p className="text-sm text-white/60">
-                  Utente: {editUserName || "N/D"}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditModalOpen(false);
-                  resetEditModal();
-                }}
-                className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
-                aria-label="Chiudi"
-              >
-                <i className="fa fa-close" aria-hidden="true" />
-              </button>
-            </div>
-
-            {editLoading ? (
-              <div className="mt-6 text-sm text-white/60">Caricamento utente...</div>
-            ) : editUserRole !== 3 ? (
-              <div className="mt-6 rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-3 text-sm text-white/70">
-                Le restrizioni veicoli sono disponibili solo per utenti sola lettura.
-              </div>
-            ) : (
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditRestrictionMode("include")}
-                    className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
-                      editRestrictionMode === "include"
-                        ? "border-white/40 text-white"
-                        : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-                    }`}
-                  >
-                    Mostra solo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditRestrictionMode("exclude")}
-                    className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] transition ${
-                      editRestrictionMode === "exclude"
-                        ? "border-white/40 text-white"
-                        : "border-white/10 text-white/60 hover:text-white hover:border-white/30"
-                    }`}
-                  >
-                    Tutti Tranne
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    value={editRestrictionSearch}
-                    onChange={(e) => setEditRestrictionSearch(e.target.value)}
-                    placeholder="Cerca veicolo..."
-                    className="flex-1 rounded-lg border border-white/10 bg-[#0b0b0d] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-                  />
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setEditRestrictionFilterOpen((prev) => !prev)}
-                      className="h-9 w-9 rounded-lg border border-white/10 bg-white/5 text-white/70 hover:text-white hover:border-white/30 transition inline-flex items-center justify-center"
-                      aria-label="Filtra per tag"
-                    >
-                      <i className="fa fa-filter" aria-hidden="true" />
-                    </button>
-                    {editRestrictionFilterOpen && (
-                      <div className="absolute right-0 mt-2 w-48 rounded-lg border border-white/10 bg-[#0b0b0d] shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
-                        {vehicleTags.length === 0 ? (
-                          <div className="px-3 py-2 text-[11px] text-white/50">
-                            Nessun tag disponibile.
-                          </div>
-                        ) : (
-                          vehicleTags.map((tag) => {
-                            const isActive = editAllowedVehicleTags.includes(tag);
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() =>
-                                  setEditAllowedVehicleTags((prev) =>
-                                    prev.includes(tag)
-                                      ? prev.filter((item) => item !== tag)
-                                      : [...prev, tag],
-                                  )
-                                }
-                                className="w-full px-3 py-2 text-left text-[11px] text-white/80 hover:bg-white/10 flex items-center justify-between"
-                              >
-                                <span className="truncate">{tag}</span>
-                                <span className="text-white/40">
-                                  {isActive ? "OK" : ""}
-                                </span>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
-                    <span>Veicolo</span>
-                    <span>Tag</span>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {vehicleLoading ? (
-                      <div className="px-3 py-3 text-xs text-white/60">
-                        Caricamento veicoli...
-                      </div>
-                    ) : editFilteredVehicles.length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-white/60">
-                        Nessun veicolo corrispondente ai filtri.
-                      </div>
-                    ) : (
-                      editFilteredVehicles.map((vehicle) => {
-                        const vehicleKey =
-                          vehicle.id || vehicle.imei || `${vehicle.nickname}-${vehicle.plate}`;
-                        const selectionId = vehicle.id || null;
-                        const isSelected =
-                          selectionId ? editSelectedVehicleIds.includes(selectionId) : false;
-                        return (
-                          <button
-                            key={vehicleKey}
-                            type="button"
-                            onClick={() => {
-                              if (!selectionId) return;
-                              setEditSelectedVehicleIds((prev) =>
-                                prev.includes(selectionId)
-                                  ? prev.filter((id) => id !== selectionId)
-                                  : [...prev, selectionId],
-                              );
-                            }}
-                            disabled={!selectionId}
-                            className={`grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2 text-left text-xs border-t border-white/5 transition ${
-                              isSelected
-                                ? "bg-white/10 text-white"
-                                : "text-white/80 hover:bg-white/5"
-                            }`}
-                            aria-pressed={isSelected}
-                          >
-                            <span className="truncate">
-                              {vehicle.nickname || vehicle.plate || vehicle.imei || "Veicolo"}
-                            </span>
-                            <span className="truncate text-white/60 flex items-center justify-between gap-2">
-                              {(vehicle.tags || []).join(", ") || "--"}
-                              <span className="text-white/50">
-                                {isSelected ? "Selezionato" : ""}
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {editError && <p className="mt-4 text-sm text-red-400">{editError}</p>}
-            {editSuccess && <p className="mt-4 text-sm text-emerald-300">{editSuccess}</p>}
-
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditModalOpen(false);
-                  resetEditModal();
-                }}
-                className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveRestrictions}
-                disabled={editSaving || editLoading || editUserRole !== 3}
-                className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
-              >
-                {editSaving ? "Salvataggio..." : "Salva"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function DriverSidebar({
   isOpen,
   onClose,
@@ -3292,9 +1723,19 @@ export function DriverSidebar({
     return `${window.location.protocol}//${window.location.hostname}:8080`;
   }, []);
   const [effectivePrivilege, setEffectivePrivilege] = React.useState<number | null>(null);
-  const [sessionRole, setSessionRole] = React.useState<number | null>(null);
   const [sessionCompanyId, setSessionCompanyId] = React.useState<string | null>(null);
   const [sessionCompanyName, setSessionCompanyName] = React.useState<string | null>(null);
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  const asideRef = React.useRef<HTMLElement | null>(null);
+  const [driverTab, setDriverTab] = React.useState<"stato" | "anagrafica" | "mission">("stato");
   const initialCounters = React.useMemo(
     () => buildCounterBars(emptyParams()),
     [],
@@ -3306,16 +1747,42 @@ export function DriverSidebar({
   const hasDriver1 = Boolean(driver1Id);
 
   const isRoutesMode = mode === "routes";
+  // In mobile la modalità rewind diventa un bottom sheet: la mappa resta visibile sopra.
+  const routesMobile = isRoutesMode && isMobile;
+
+  // Comunica alla mappa l'altezza del bottom sheet così il fly-to non finisce dietro.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const clear = () => {
+      (window as any).trucklyMapBottomInset = 0;
+    };
+    if (!routesMobile || !isOpen) {
+      clear();
+      return clear;
+    }
+    const el = asideRef.current;
+    if (!el) return clear;
+    const apply = () => {
+      (window as any).trucklyMapBottomInset = Math.round(el.getBoundingClientRect().height) + 16;
+    };
+    apply();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(apply);
+      ro.observe(el);
+    }
+    return () => {
+      ro?.disconnect();
+      clear();
+    };
+  }, [routesMobile, isOpen]);
   const isNavigationMode = mode === "navigation";
   const isGeofenceMode = mode === "geofence";
   const isVehicleMode = mode === "vehicle";
-  const isAdminMode = mode === "admin";
   const isDriverRegisterMode = mode === "driver-register";
   const sessionLoaded = effectivePrivilege !== null;
   const canManageVehicles =
     Number.isInteger(effectivePrivilege) && effectivePrivilege === 0;
-  const canManageUsers =
-    Number.isInteger(effectivePrivilege) && effectivePrivilege <= 2;
   const canManageDrivers =
     Number.isInteger(effectivePrivilege) && effectivePrivilege <= 1;
   const navigationVehicleLabel = React.useMemo(() => {
@@ -3332,7 +1799,7 @@ export function DriverSidebar({
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!isOpen || isAdminMode) return () => {};
+    if (!isOpen) return () => {};
     if (!hasDriver1) {
       setCounterBars(initialCounters);
       setActivityStatus("Nessun autista rilevato dal tachigrafo.");
@@ -3365,7 +1832,7 @@ export function DriverSidebar({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, driver1Id, hasDriver1, routesBaseUrl, initialCounters, isAdminMode]);
+  }, [isOpen, driver1Id, hasDriver1, routesBaseUrl, initialCounters]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -3387,9 +1854,6 @@ export function DriverSidebar({
               : null;
         if (!cancelled) {
           setEffectivePrivilege(privilegeValue);
-          setSessionRole(
-            Number.isInteger(data?.user?.role) ? data.user.role : null,
-          );
           setSessionCompanyId(data?.user?.companyId ?? null);
           setSessionCompanyName(data?.user?.companyName ?? null);
         }
@@ -3413,16 +1877,21 @@ export function DriverSidebar({
 
   return (
     <aside
-      className={`fixed top-0 bottom-0 right-0 z-40 w-full max-w-none sm:max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-16 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-        isOpen ? "translate-x-0" : "hidden-right"
-      } ${isAdminMode ? "w-full max-w-none sm:w-full lg:w-[40vw] lg:min-w-[40vw] lg:max-w-none" : ""}`}
+      ref={asideRef}
+      className={
+        routesMobile
+          ? `fixed inset-x-0 bottom-0 top-auto z-40 h-[58vh] w-full max-w-none rounded-t-2xl border-t border-white/10 bg-background text-[#f8fafc] flex flex-col pt-4 overflow-hidden shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              isOpen ? "translate-y-0" : "translate-y-full pointer-events-none opacity-0"
+            }`
+          : `fixed top-0 bottom-0 right-0 md:right-[var(--tk-toolbar-right,0px)] md:top-[var(--tk-toolbar-top,0px)] md:bottom-[var(--tk-toolbar-bottom,0px)] z-40 w-full max-w-none sm:max-w-[92vw] sm:w-[420px] lg:w-[520px] border-l border-white/10 bg-background text-[#f8fafc] flex flex-col pt-16 md:pt-4 overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-sidebar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              isOpen ? "translate-x-0" : "hidden-right"
+            }`
+      }
       aria-hidden={!isOpen}
     >
       <div className="flex items-start justify-between px-5 py-5 border-b border-white/10">
         <div className="space-y-1.5">
-          {!isAdminMode && (
-            <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Pannello</p>
-          )}
+          <p className="text-[11px] uppercase tracking-[0.18em] text-white/50">Pannello</p>
             <h2 className="text-xl font-semibold leading-tight text-white">
               {isGeofenceMode
                 ? "GeoFence"
@@ -3434,23 +1903,8 @@ export function DriverSidebar({
                 ? "Nuovo autista"
                 : isVehicleMode
                 ? "Nuovo veicolo"
-                : isAdminMode
-                ? "Utenti"
                 : "Autista"}
             </h2>
-          {!isAdminMode && !isNavigationMode && (
-              <p className="text-sm text-white/70">
-                {isGeofenceMode
-                  ? "Configura la geofence appena creata."
-                  : isRoutesMode
-                  ? "Gestisci l'intervallo e scorri il percorso selezionato."
-                  : isDriverRegisterMode
-                  ? "Registra o importa un autista per l'azienda selezionata."
-                  : isVehicleMode
-                  ? "Inserisci i dati e visualizza l'anteprima sulla mappa principale."
-                  : "Seleziona un autista dal tooltip del mezzo per vedere i dettagli qui."}
-              </p>
-            )}
         </div>
         {onClose && (
           <button
@@ -3463,7 +1917,7 @@ export function DriverSidebar({
         )}
       </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-[#0a0a0a]">
+        <div className="flex-1 overflow-y-auto px-4 py-5 pb-8 space-y-4 bg-background">
           {isGeofenceMode ? (
             <GeofenceSidebar geofenceDraft={geofenceDraft} />
           ) : isNavigationMode ? (
@@ -3511,87 +1965,101 @@ export function DriverSidebar({
               body="Non hai i permessi per registrare nuovi veicoli."
             />
           )
-        ) : isAdminMode ? (
-          <AdminSidebar
-            isOpen={isOpen}
-            canManageUsers={canManageUsers}
-            isSuperAdmin={
-              Number.isInteger(sessionRole)
-                ? sessionRole === 0
-                : Number.isInteger(effectivePrivilege)
-                  ? effectivePrivilege === 0
-                  : false
-            }
-            sessionLoaded={sessionLoaded}
-            sessionCompanyId={sessionCompanyId}
-            sessionCompanyName={sessionCompanyName}
-          />
         ) : (
           <>
-            <Section
-              title="Stato selezione"
-              body={
-                hasDriver1
-                  ? `Autista selezionato: ${driver1Id}`
-                  : "Nessun autista rilevato."
-              }
-            />
-            {hasDriver1 ? (
-              <>
-                <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-                  <div className="px-4 pt-4 pb-2">
-                    <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Stato guida</p>
-                  </div>
-                  <div className="px-4 pb-4 space-y-4">
-                    {counterBars.map((bar) => (
-                      <CounterBar key={bar.title} {...bar} />
-                    ))}
-                    {activityLoading && (
-                      <p className="text-xs text-white/50">Caricamento attivita...</p>
-                    )}
-                    {activityStatus && !activityLoading && (
-                      <p
-                        className={`text-xs ${
-                          activityStatus.toLowerCase().includes("errore")
-                            ? "text-red-400"
-                            : "text-white/60"
-                        }`}
-                      >
-                        {activityStatus}
-                      </p>
-                    )}
-                  </div>
+            {/* Header autista: nome + menu azioni inline */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-base font-semibold text-foreground">
+                  {hasDriver1 ? driver1Id : "Nessun autista"}
                 </div>
-                <Section title="Informazioni generali" body="Nome, patente, e anagrafica verranno mostrati qui." />
-                <Section title="Contatti" body="Email, telefono e note mostreranno qui." />
-                <Section
-                  title="Stato & disponibilita"
-                  body="Turni, disponibilita e eventi recenti compariranno qui."
-                />
-                <Section
-                  title="Report attivita"
-                  body={
+                <div className="truncate text-xs text-muted-foreground">
+                  {hasDriver1
+                    ? "Autista rilevato dal tachigrafo"
+                    : "Nessun autista rilevato per questo veicolo"}
+                </div>
+              </div>
+              {hasDriver1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      onClick={() =>
+                      aria-label="Azioni autista"
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <i className="fa fa-ellipsis-h" aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[180px]">
+                    <DropdownMenuItem
+                      onSelect={() =>
                         window.dispatchEvent(
                           new CustomEvent("truckly:bottom-bar-toggle", {
                             detail: { mode: "driver" },
                           }),
                         )
                       }
-                      className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition"
                     >
-                      Report Attivita
-                    </button>
-                  }
+                      <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
+                      Report attività
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+
+            {hasDriver1 ? (
+              <>
+                <TabSwitch
+                  ariaLabel="Sezioni autista"
+                  value={driverTab}
+                  onChange={(id) => setDriverTab(id as typeof driverTab)}
+                  tabs={[
+                    { id: "stato", label: "Stato guida" },
+                    { id: "anagrafica", label: "Anagrafica" },
+                    { id: "mission", label: "Mission Control" },
+                  ]}
                 />
+
+                {driverTab === "stato" && (
+                  <div className="space-y-4">
+                    {counterBars.map((bar) => (
+                      <CounterBar key={bar.title} {...bar} />
+                    ))}
+                    {activityLoading && (
+                      <p className="text-xs text-muted-foreground">Caricamento attività...</p>
+                    )}
+                    {activityStatus && !activityLoading && (
+                      <p
+                        className={`text-xs ${
+                          activityStatus.toLowerCase().includes("errore")
+                            ? "text-down"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {activityStatus}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {driverTab === "anagrafica" && (
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>Nome, patente e anagrafica verranno mostrati qui.</p>
+                    <p>Email, telefono e note compariranno qui.</p>
+                  </div>
+                )}
+
+                {driverTab === "mission" && (
+                  <p className="text-sm text-muted-foreground">
+                    Turni, disponibilità ed eventi recenti compariranno qui.
+                  </p>
+                )}
               </>
             ) : (
-              <Section
-                title="Pannello Autista"
-                body="Nessun autista rilevato dal tachigrafo per questo veicolo."
-              />
+              <p className="text-sm text-muted-foreground">
+                Nessun autista rilevato dal tachigrafo per questo veicolo.
+              </p>
             )}
           </>
         )}
@@ -3927,7 +2395,7 @@ function DriverRegistrationSidebar({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -3961,7 +2429,7 @@ function DriverRegistrationSidebar({
             <select
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="">
                 {loadingCompanies ? "Caricamento..." : "Seleziona azienda"}
@@ -3974,7 +2442,7 @@ function DriverRegistrationSidebar({
             </select>
           </div>
         ) : (
-          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/70">
+          <div className="rounded-xl border border-white/10 bg-background px-3 py-2 text-xs text-white/70">
             Azienda: {companyName || sessionCompanyName || "--"}
           </div>
         )}
@@ -3987,7 +2455,7 @@ function DriverRegistrationSidebar({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-1">
@@ -3996,7 +2464,7 @@ function DriverRegistrationSidebar({
                 value={surname}
                 onChange={(e) => setSurname(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-1">
@@ -4005,7 +2473,7 @@ function DriverRegistrationSidebar({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             <div className="space-y-1">
@@ -4014,11 +2482,11 @@ function DriverRegistrationSidebar({
                 value={cardId}
                 onChange={(e) => setCardId(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               />
             </div>
             {!isEditMode && (
-              <div className="sm:col-span-2 rounded-xl border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/70 flex items-center justify-between">
+              <div className="sm:col-span-2 rounded-xl border border-white/10 bg-background px-3 py-2 text-xs text-white/70 flex items-center justify-between">
                 <span>Aggiungi su servizio esterno</span>
                 <label className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/60">
                   <input
@@ -4039,9 +2507,9 @@ function DriverRegistrationSidebar({
               value={tachoSearch}
               onChange={(e) => setTachoSearch(e.target.value)}
               placeholder="Cerca autista..."
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
-            <div className="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-[#0d0d0f]">
+            <div className="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-background">
               {tachoLoading ? (
                 <div className="px-3 py-3 text-xs text-white/60">Caricamento autisti...</div>
               ) : filteredTachoDrivers.length ? (
@@ -4162,6 +2630,7 @@ function VehicleRegistrationSidebar({
   const [plate, setPlate] = React.useState("");
   const [brand, setBrand] = React.useState("");
   const [model, setModel] = React.useState("");
+  const [vehicleType, setVehicleType] = React.useState("camion");
   const [simPrefix, setSimPrefix] = React.useState("+39");
   const [simNumber, setSimNumber] = React.useState("");
   const [simIccid, setSimIccid] = React.useState("");
@@ -4206,6 +2675,7 @@ function VehicleRegistrationSidebar({
     setPlate(normalizePlate(initialVehicle.plate));
     setBrand(initialVehicle.brand || "");
     setModel(initialVehicle.model || "");
+    setVehicleType((initialVehicle as any).vehicleType || "camion");
     setImei(initialVehicle.imei || "");
     setDeviceModel(initialVehicle.deviceModel || "FMC150");
     setCodec(initialVehicle.codec || "8 Ext");
@@ -4240,6 +2710,7 @@ function VehicleRegistrationSidebar({
     setPlate("");
     setBrand("");
     setModel("");
+    setVehicleType("camion");
     setImei("");
     setSimPrefix("+39");
     setSimNumber("");
@@ -4440,6 +2911,7 @@ function VehicleRegistrationSidebar({
       plate: plate.trim(),
       brand: brand.trim(),
       model: model.trim(),
+      vehicleType,
       imei: imei.trim(),
       deviceModel: deviceModel.trim(),
       codec: codec.trim(),
@@ -4626,7 +3098,7 @@ function VehicleRegistrationSidebar({
   return (
     <div className="space-y-4">
       {monitoringPrompt}
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
             Dati veicolo
@@ -4643,7 +3115,7 @@ function VehicleRegistrationSidebar({
             <select
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="">
                 {companyLoading ? "Caricamento..." : "Seleziona azienda"}
@@ -4665,7 +3137,7 @@ function VehicleRegistrationSidebar({
             <input
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -4673,7 +3145,7 @@ function VehicleRegistrationSidebar({
             <input
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -4681,7 +3153,7 @@ function VehicleRegistrationSidebar({
             <input
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -4689,13 +3161,26 @@ function VehicleRegistrationSidebar({
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Tipo veicolo</label>
+            <select
+              value={vehicleType}
+              onChange={(e) => setVehicleType(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            >
+              <option value="auto">Auto</option>
+              <option value="furgone">Furgone</option>
+              <option value="camion">Camion</option>
+              <option value="trattore">Trattore</option>
+            </select>
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">SIM & dispositivo</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
@@ -4703,7 +3188,7 @@ function VehicleRegistrationSidebar({
             <select
               value={simPrefix}
               onChange={(e) => setSimPrefix(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="+39">+39</option>
               <option value="+43">+43</option>
@@ -4715,7 +3200,7 @@ function VehicleRegistrationSidebar({
             <input
               value={simNumber}
               onChange={(e) => setSimNumber(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1 col-span-2">
@@ -4723,7 +3208,7 @@ function VehicleRegistrationSidebar({
             <input
               value={simIccid}
               onChange={(e) => setSimIccid(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -4731,7 +3216,7 @@ function VehicleRegistrationSidebar({
             <select
               value={deviceModel}
               onChange={(e) => setDeviceModel(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="FMC150">FMC150</option>
               <option value="FMC920">FMC920</option>
@@ -4744,7 +3229,7 @@ function VehicleRegistrationSidebar({
             <select
               value={codec}
               onChange={(e) => setCodec(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             >
               <option value="8 Ext">8 Ext</option>
               <option value="8">8</option>
@@ -4758,7 +3243,7 @@ function VehicleRegistrationSidebar({
               onChange={(e) => setImei(e.target.value)}
               disabled={isEditMode}
               className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 disabled:opacity-60 disabled:cursor-not-allowed ${
-                imei && !imeiValid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
+                imei && !imeiValid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-background"
               }`}
               placeholder="15 cifre"
             />
@@ -4777,7 +3262,7 @@ function VehicleRegistrationSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Serbatoi</p>
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-3 items-center">
@@ -4789,7 +3274,7 @@ function VehicleRegistrationSidebar({
                 value={tank1Capacity}
                 onChange={(e) => setTank1Capacity(e.target.value)}
                 className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
-                  tank1Capacity && !tank1Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
+                  tank1Capacity && !tank1Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-background"
                 }`}
               />
             </div>
@@ -4798,7 +3283,7 @@ function VehicleRegistrationSidebar({
               <select
                 value={tank1Unit}
                 onChange={(e) => setTank1Unit(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-white/10 bg-background px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               >
                 <option value="litres">Litri</option>
                 <option value="gallons">Galloni</option>
@@ -4823,7 +3308,7 @@ function VehicleRegistrationSidebar({
                   value={tank2Capacity}
                   onChange={(e) => setTank2Capacity(e.target.value)}
                   className={`w-full rounded-lg border px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30 ${
-                    tank2Capacity && !tank2Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-[#0d0d0f]"
+                    tank2Capacity && !tank2Valid ? "border-red-500/60 bg-[#1a0c0c]" : "border-white/10 bg-background"
                   }`}
                 />
               </div>
@@ -4832,7 +3317,7 @@ function VehicleRegistrationSidebar({
                 <select
                   value={tank2Unit}
                   onChange={(e) => setTank2Unit(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-white/10 bg-background px-2 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
                 >
                   <option value="litres">Litri</option>
                   <option value="gallons">Galloni</option>
@@ -4843,7 +3328,7 @@ function VehicleRegistrationSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Tags</p>
         <TagInput
           value={tags}
@@ -4853,7 +3338,7 @@ function VehicleRegistrationSidebar({
         />
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         {error && <p className="text-xs text-red-400">{error}</p>}
         {success && <p className="text-xs text-emerald-300">{success}</p>}
         <button
@@ -4918,7 +3403,7 @@ function GeofenceSidebar({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="space-y-1">
           <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
             Dettagli geofence
@@ -4933,7 +3418,7 @@ function GeofenceSidebar({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               required
             />
           </div>
@@ -4943,14 +3428,14 @@ function GeofenceSidebar({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
               required
             />
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
           Posizione e raggio
         </p>
@@ -4960,7 +3445,7 @@ function GeofenceSidebar({
             <input
               value={centerLat}
               onChange={(e) => setCenterLat(e.target.value === "" ? "" : Number(e.target.value))}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
           <div className="space-y-1">
@@ -4968,7 +3453,7 @@ function GeofenceSidebar({
             <input
               value={centerLng}
               onChange={(e) => setCenterLng(e.target.value === "" ? "" : Number(e.target.value))}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
             />
           </div>
         </div>
@@ -4982,12 +3467,12 @@ function GeofenceSidebar({
             step={0.05}
             value={radiusKm}
             onChange={(e) => setRadiusKm(Number(e.target.value))}
-            className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            className="w-full rounded-lg border border-white/10 bg-background px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
           />
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 space-y-3 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Trigger</p>
         <label className="flex items-center gap-2 text-sm text-white/80">
           <input
@@ -5015,7 +3500,7 @@ function GeofenceSidebar({
         </label>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-2xl border border-white/10 bg-card p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center justify-between text-xs text-white/50 mb-3">
           <span>Target</span>
           <span>{geofenceDraft?.imei || "-"}</span>
@@ -5050,18 +3535,24 @@ function GeofenceSidebar({
 
 function Section({ title, body }: SectionProps) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="rounded-2xl border border-white/10 bg-card shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
       <div className="px-4 pt-4 pb-2">
         <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">{title}</p>
       </div>
       <div className="px-4 pb-4">
-        <div className="rounded-xl border border-white/8 bg-[#0d0d0f] px-3.5 py-3 text-sm text-white/85 shadow-inner shadow-black/40">
+        <div className="rounded-xl border border-white/8 bg-background px-3.5 py-3 text-sm text-white/85 shadow-inner shadow-black/40">
           {body}
         </div>
       </div>
     </div>
   );
 }
+
+const COUNTER_GLOW: Record<string, string> = {
+  "bg-orange-500": "#f97316",
+  "bg-sky-700": "#0ea5e9",
+  "bg-emerald-500": "#10b981",
+};
 
 function CounterBar({
   title,
@@ -5070,22 +3561,23 @@ function CounterBar({
   remainingPct,
   accentClass,
 }: CounterBarProps) {
-  const safeRemaining = Math.min(100, Math.max(0, remainingPct));
-  const usedPct = 100 - safeRemaining;
+  const safe = Math.min(100, Math.max(0, remainingPct));
+  const glow = COUNTER_GLOW[accentClass] || "#f97316";
 
   return (
-    <div className="space-y-2">
-      <div className="text-base font-medium text-white">{title}</div>
-      <div className="flex items-center justify-between text-xs text-white/60">
-        <span>{totalLabel}</span>
-        <span>{remainingLabel}</span>
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{remainingLabel}</span>
       </div>
-      <div className="h-4 w-full overflow-hidden rounded-md bg-white/10">
-        <div className="flex h-full w-full">
-          <div className="h-full bg-white/10" style={{ width: `${usedPct}%` }} />
-          <div className={`h-full ${accentClass}`} style={{ width: `${safeRemaining}%` }} />
-        </div>
+      <div className="relative h-2.5 w-full rounded-t-full rounded-b-none bg-muted/50">
+        <div
+          className={`absolute inset-y-0 left-0 rounded-t-full rounded-b-none transition-[width] duration-500 ${accentClass}`}
+          // Glow discreto (bassa opacità, blur ridotto) → linguaggio grafico semplice, niente bordi sfocati.
+          style={{ width: `${safe}%`, boxShadow: `0 0 4px 0 ${glow}40` }}
+        />
       </div>
+      <div className="text-[11px] text-muted-foreground">{totalLabel}</div>
     </div>
   );
 }

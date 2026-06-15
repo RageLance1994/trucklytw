@@ -285,7 +285,7 @@ class User {
         });
     }
 
-    async createVehicle({ nickname, plate, brand, model, imei, codec, deviceModel, tags = [], details = {}, ownerIds = [] }) {
+    async createVehicle({ nickname, plate, brand, model, imei, codec, deviceModel, tags = [], details = {}, vehicleType = 'camion', ownerIds = [] }) {
         try {
             if (!this.canManageVehicles()) {
                 const err = new Error('PERMISSION_DENIED');
@@ -297,6 +297,7 @@ class User {
                 ? ownerIds
                 : [this.id];
 
+            const VEHICLE_TYPES = ['auto', 'furgone', 'camion', 'trattore'];
             const info = {
                 owner: resolvedOwners,
                 nickname,
@@ -307,6 +308,7 @@ class User {
                 detailsEnc: encryptJSON(details),
                 deviceModel,
                 codec,
+                vehicleType: VEHICLE_TYPES.includes(vehicleType) ? vehicleType : 'camion',
                 tags
             }
             console.log(info)

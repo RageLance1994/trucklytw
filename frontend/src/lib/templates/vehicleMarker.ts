@@ -12,14 +12,76 @@ type MarkerContext = {
   variant?: "pin" | "full" | "compact" | "plate" | "name" | "direction";
 };
 
-const buildTruckIcon = (strokeColor: string) => `
+const svgWrap = (strokeColor: string, inner: string) => `
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    ${inner}
+  </svg>
+`;
+
+// auto = car silhouette
+const buildCarIcon = (strokeColor: string) =>
+  svgWrap(
+    strokeColor,
+    `
+    <path d="M5 13l1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 1.5L19 13" />
+    <path d="M3 13h18v4a1 1 0 0 1-1 1h-1" />
+    <path d="M6 18H5a1 1 0 0 1-1-1v-4" />
+    <circle cx="7.5" cy="17.5" r="2" />
+    <circle cx="16.5" cy="17.5" r="2" />
+  `
+  );
+
+// furgone = van
+const buildVanIcon = (strokeColor: string) =>
+  svgWrap(
+    strokeColor,
+    `
+    <path d="M3 16V6a1 1 0 0 1 1-1h10v11" />
+    <path d="M14 8h3.5l2.5 3.5V16" />
+    <path d="M4 16h2" />
+    <path d="M18 16h2" />
+    <circle cx="7.5" cy="17.5" r="2" />
+    <circle cx="16.5" cy="17.5" r="2" />
+  `
+  );
+
+// camion = box truck
+const buildTruckIcon = (strokeColor: string) =>
+  svgWrap(
+    strokeColor,
+    `
     <path d="M3 17V5a2 2 0 0 1 2-2h8v14" />
     <path d="M14 7h4l3 4v6" />
     <circle cx="7.5" cy="17.5" r="2.5" />
     <circle cx="17.5" cy="17.5" r="2.5" />
-  </svg>
-`;
+  `
+  );
+
+// trattore = semi / road tractor
+const buildTractorIcon = (strokeColor: string) =>
+  svgWrap(
+    strokeColor,
+    `
+    <path d="M10 17V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12" />
+    <path d="M10 8h6l3 3v6" />
+    <path d="M19 11h-6" />
+    <circle cx="6" cy="17.5" r="2" />
+    <circle cx="16.5" cy="17.5" r="2" />
+  `
+  );
+
+const VEHICLE_ICON_BUILDERS: Record<string, (strokeColor: string) => string> = {
+  auto: buildCarIcon,
+  furgone: buildVanIcon,
+  camion: buildTruckIcon,
+  trattore: buildTractorIcon,
+};
+
+const buildVehicleIcon = (vehicleType: unknown, strokeColor: string) => {
+  const key = typeof vehicleType === "string" ? vehicleType.toLowerCase() : "";
+  const builder = VEHICLE_ICON_BUILDERS[key] || buildTruckIcon;
+  return builder(strokeColor);
+};
 
 export function renderVehicleMarker({ vehicle, status, variant = "full" }: MarkerContext) {
   const nickname = vehicle?.nickname || vehicle?.name || "";
@@ -56,7 +118,7 @@ export function renderVehicleMarker({ vehicle, status, variant = "full" }: Marke
   const iconStyle = tvColor ? `style="background:${tvColor};"` : "";
   const pinColor = tvColor || "#64748b";
   const strokeColor = "white";
-  const truckIcon = buildTruckIcon(strokeColor);
+  const truckIcon = buildVehicleIcon(vehicle?.vehicleType, strokeColor);
   const arrowIcon = `<svg data-role="marker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>`;
 
   const normalizedVariant =

@@ -941,11 +941,14 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
         const nextZoom = Number.isFinite(zoom)
           ? Number(zoom)
           : Math.max(Number.isFinite(currentZoom) ? currentZoom : 12, 12.5);
+        // Offset verticale per non finire dietro al bottom sheet mobile (rewind).
+        const bottomInset = Number((window as any).trucklyMapBottomInset) || 0;
         map.flyTo({
           center,
           zoom: nextZoom,
           speed: 1.2,
           curve: 1.4,
+          padding: { top: 0, bottom: bottomInset, left: 0, right: 0 },
         });
       };
       (window as any).trucklySetRouteEventMarker = (payload: any) => {

@@ -807,11 +807,16 @@ router.post('/vehicles/:action', auth, async (req, res) => {
     codec,
     companyId,
     details,
+    vehicleType,
     from,
     to,
     limit = 1000,
     skip = 0
   } = req.body;
+
+  const VEHICLE_TYPES = ['auto', 'furgone', 'camion', 'trattore'];
+  const normalizeVehicleType = (value) =>
+    VEHICLE_TYPES.includes(value) ? value : 'camion';
 
 
   var device = null;
@@ -857,6 +862,7 @@ router.post('/vehicles/:action', auth, async (req, res) => {
           deviceModel,
           tags,
           details: sanitizedDetails,
+          vehicleType: normalizeVehicleType(vehicleType),
           ownerIds,
         });
 
@@ -938,6 +944,7 @@ router.post('/vehicles/:action', auth, async (req, res) => {
           detailsEnc: encryptJSON(sanitizedDetails),
           deviceModel: typeof deviceModel === 'string' ? deviceModel.trim() : existing.deviceModel,
           codec: typeof codec === 'string' ? codec.trim() : existing.codec,
+          vehicleType: VEHICLE_TYPES.includes(vehicleType) ? vehicleType : (existing.vehicleType || 'camion'),
           tags: normalizedTags
         };
 

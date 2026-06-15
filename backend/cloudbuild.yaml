@@ -37,9 +37,10 @@ steps:
         'europe-west1-docker.pkg.dev/$PROJECT_ID/truckly-backend/app:$SHORT_SHA'
       ]
 
-  # 5) Deploy to Cloud Run
+  # 5) Deploy to Cloud Run (env vars dal manifest env.yaml)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
+    dir: backend
     args:
       [
         'run',
@@ -51,7 +52,9 @@ steps:
         'europe-west1',
         '--platform',
         'managed',
-        '--allow-unauthenticated'
+        '--allow-unauthenticated',
+        '--env-vars-file',
+        'env.yaml'
       ]
 
 logsBucket: gs://truckly-477816-cloudbuild-logs

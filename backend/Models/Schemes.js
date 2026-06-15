@@ -20,6 +20,7 @@ const getModel = (cname, schema) => {
 
 const VehicleSchema = new mongoose.Schema({
   nickname: { type: String, required: true, trim: true },
+  vehicleType: { type: String, enum: ['auto', 'furgone', 'camion', 'trattore'], default: 'camion' },
   imei: { type: String, required: true, unique: true },
   plateEnc: { type: String, required: true },
   brandEnc: { type: String, default: null },
@@ -84,6 +85,16 @@ const CompanySchema = new mongoose.Schema({
   billingAddressEnc: { type: String, default: null },
   status: { type: Number, enum: [0, 1, 2], default: 0 }, // 0=active,1=suspended,2=archived
 }, { timestamps: true });
+
+// Cluster = gruppo di veicoli definito dall'utente (es. "Flotta Nord").
+// Condiviso a livello di azienda. Un veicolo (per IMEI) puo' stare in piu' cluster.
+const ClusterSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", default: null, index: true },
+  imeis: { type: [String], default: [] },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Users", default: null },
+}, { timestamps: true });
+ClusterSchema.index({ companyId: 1, name: 1 });
 
 
 
@@ -209,6 +220,7 @@ const AuthorizedIMEIS = mongoose.model('AuthorizedIMEIS', authorizedIMEISchema, 
 const UserModel = mongoose.model('Users', UserSchema, 'Users');
 const UserChatsModel = mongoose.model('UserChats', UserChatSchema, 'UserChats');
 const Companies = mongoose.model("Company", CompanySchema, "Company");
+const Clusters = mongoose.model("Cluster", ClusterSchema, "Cluster");
 const Vehicles = mongoose.model("Vehicle", VehicleSchema, "Vehicle");
 const Drivers = mongoose.model("Drivers", DriverSchema, "Drivers");
 const Sims = mongoose.model("Sims", SimSchema, "Sims");
@@ -255,6 +267,7 @@ module.exports = {
   Sims, SimSchema,
   SeepFileStatus, SeepFileStatusSchema,
   Companies, CompanySchema,
+  Clusters, ClusterSchema,
   UserModel,
   UserChatsModel,
   RefuelingSchema,

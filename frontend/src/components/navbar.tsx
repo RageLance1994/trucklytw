@@ -251,7 +251,7 @@ export function Navbar() {
   return (
     <header
       ref={headerRef}
-      className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c]"
+      className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c] md:hidden"
     >
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         <div className="flex items-center gap-3 py-3">
@@ -272,6 +272,7 @@ export function Navbar() {
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Cerca veicolo..."
+                aria-label="Cerca veicolo"
                 className="h-10 w-full md:w-[200px] rounded-md border border-border bg-background/60 px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -279,7 +280,7 @@ export function Navbar() {
             <nav className="hidden items-center gap-5 text-sm md:flex">
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none">
+                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                   Flotta
                 </button>
                 </DropdownMenuTrigger>
@@ -364,7 +365,7 @@ export function Navbar() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none">
+                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                   Analisi
                 </button>
               </DropdownMenuTrigger>
@@ -398,7 +399,7 @@ export function Navbar() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none">
+                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                   Mappe
                 </button>
               </DropdownMenuTrigger>
@@ -613,7 +614,7 @@ export function Navbar() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none">
+                <button className="text-foreground/90 hover:text-foreground transition font-medium flex items-center gap-1 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                   Impostazioni
                 </button>
                 </DropdownMenuTrigger>
@@ -621,7 +622,11 @@ export function Navbar() {
                   {canManageUsers && (
                     <DropdownMenuItem
                       onSelect={() =>
-                        window.dispatchEvent(new CustomEvent("truckly:admin-open"))
+                        window.dispatchEvent(
+                          new CustomEvent("truckly:bottom-bar-toggle", {
+                            detail: { mode: "users" },
+                          }),
+                        )
                       }
                     >
                       <i className="fa fa-users mr-2 text-[12px]" aria-hidden="true" />
@@ -714,9 +719,9 @@ export function Navbar() {
       <aside
         id="mobile-menu"
         className={`fixed top-0 bottom-0 right-0 z-50 w-[86vw] max-w-sm border-l border-border bg-[#0b0b0c] text-foreground flex flex-col pt-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${
-          isMenuOpen ? "translate-x-0" : "translate-x-full"
+          isMenuOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
         }`}
-        aria-hidden={!isMenuOpen}
+        inert={!isMenuOpen}
       >
         <div className="flex items-center justify-between px-4 pb-4 border-b border-white/10">
           <div className="text-xs font-semibold tracking-[0.28em] uppercase text-white/70">
@@ -737,7 +742,7 @@ export function Navbar() {
             open={mobileSection === "flotta"}
           >
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none"
+              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) => (current === "flotta" ? null : "flotta"));
@@ -754,7 +759,17 @@ export function Navbar() {
               </svg>
             </summary>
             <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button
+                className="w-full px-2 py-1 text-left hover:text-white transition"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("truckly:bottom-bar-toggle", {
+                      detail: { mode: "vehicles" },
+                    }),
+                  );
+                  setIsMenuOpen(false);
+                }}
+              >
                 Veicoli
               </button>
                 <button
@@ -769,9 +784,9 @@ export function Navbar() {
                 >
                   Autisti
                 </button>
-              <div className="px-2 py-1 text-white/40">
+              <div className="px-2 py-1 text-white/55">
                 Rotte
-                <div className="text-[11px] text-white/40">Disponibile a breve</div>
+                <div className="text-[11px] text-white/55">Disponibile a breve</div>
               </div>
             </div>
           </details>
@@ -781,7 +796,7 @@ export function Navbar() {
             open={mobileSection === "analisi"}
           >
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none"
+              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) => (current === "analisi" ? null : "analisi"));
@@ -798,7 +813,17 @@ export function Navbar() {
               </svg>
             </summary>
             <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button
+                className="w-full px-2 py-1 text-left hover:text-white transition"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("truckly:bottom-bar-toggle", {
+                      detail: { mode: "fuel" },
+                    }),
+                  );
+                  setIsMenuOpen(false);
+                }}
+              >
                 Carburante
               </button>
               <button className="w-full px-2 py-1 text-left hover:text-white transition">
@@ -828,7 +853,7 @@ export function Navbar() {
             open={mobileSection === "mappe"}
           >
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none"
+              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) => (current === "mappe" ? null : "mappe"));
@@ -1004,7 +1029,7 @@ export function Navbar() {
 
           <details className="group" open={mobileSection === "impostazioni"}>
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none"
+              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) =>
@@ -1027,7 +1052,11 @@ export function Navbar() {
                 <button
                   className="w-full px-2 py-1 text-left hover:text-white transition"
                   onClick={() => {
-                    window.dispatchEvent(new CustomEvent("truckly:admin-open"));
+                    window.dispatchEvent(
+                      new CustomEvent("truckly:bottom-bar-toggle", {
+                        detail: { mode: "users" },
+                      }),
+                    );
                     setIsMenuOpen(false);
                   }}
                 >
@@ -1044,7 +1073,7 @@ export function Navbar() {
 
           <details className="group" open={mobileSection === "account"}>
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none"
+              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) =>

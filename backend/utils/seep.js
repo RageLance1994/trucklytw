@@ -300,21 +300,25 @@ class SeepTruckerClient {
   }
 
   extractDriverGraphs(analysis) {
-    const weeks = analysis?.activityAnalysis?.weeks || [];
+    const weeks = Array.isArray(analysis?.activityAnalysis?.weeks)
+      ? analysis.activityAnalysis.weeks
+      : [];
     const graphs = [];
-    weeks.forEach((week) => {
-      (week.days || []).forEach((day) => {
-        if (day?.graph) {
-          graphs.push({
-            date: day.date,
-            graph: day.graph,
-            metrics: day.metrics,
-            activities: day.activities,
-            infringements: day.infringements,
-          });
-        }
-      });
-    });
+    for (const week of weeks) {
+      const days = Array.isArray(week?.days) ? week.days : [];
+      for (const day of days) {
+        if (!day || typeof day !== "object") continue;
+        // graph deve essere una stringa SVG non vuota: scarta shape impreviste
+        if (typeof day.graph !== "string" || !day.graph.trim()) continue;
+        graphs.push({
+          date: day.date ?? null,
+          graph: day.graph,
+          metrics: day.metrics ?? null,
+          activities: Array.isArray(day.activities) ? day.activities : [],
+          infringements: Array.isArray(day.infringements) ? day.infringements : [],
+        });
+      }
+    }
     return graphs;
   }
 

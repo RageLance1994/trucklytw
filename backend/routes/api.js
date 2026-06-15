@@ -8,7 +8,7 @@ const { spawnSync } = require('child_process');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const XLSX = require('xlsx');
 const { auth, imeiOwnership } = require('../utils/users');
-const { Vehicles, Drivers, Companies, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema, SeepFileStatus } = require('../Models/Schemes');
+const { Vehicles, Drivers, Companies, Clusters, UserModel, getModel, avlSchema, getRefuelingModel, fuelEventSchema, SeepFileStatus } = require('../Models/Schemes');
 const { _Devices } = require('../utils/database');
 const { decryptString, decryptJSON, encryptString, encryptJSON } = require('../utils/encryption');
 const { _Users } = require('../utils/database');
@@ -1702,6 +1702,9 @@ router.post('/vehicles/update', auth, async (req, res) => {
       detailsEnc: detailsPayload ? encryptJSON(detailsPayload) : existing.detailsEnc,
       deviceModel: typeof req.body.deviceModel === 'string' ? req.body.deviceModel.trim() : existing.deviceModel,
       codec: typeof req.body.codec === 'string' ? req.body.codec.trim() : existing.codec,
+      vehicleType: ['auto', 'furgone', 'camion', 'trattore'].includes(req.body.vehicleType)
+        ? req.body.vehicleType
+        : (existing.vehicleType || 'camion'),
       tags: normalizedTags
     };
 
@@ -2441,6 +2444,115 @@ router.post('/nav/route', auth, async (req, res) => {
   } catch (err) {
     const message = err?.message || 'Errore calcolo rotta';
     return res.status(502).json({ error: 'ROUTE_FAILED', message });
+  }
+});
+
+// ------------------------------------------------------------------
+// Clusters: gruppi di veicoli custom (es. "Flotta Nord"), per-azienda.
+// Multi-cluster: un IMEI puo' stare in piu' cluster.
+// ------------------------------------------------------------------
+const clusterCompanyFilter = (req) => ({ companyId: req.user?.companyId || null });
+const canEditClusters = (user) => getPrivilegeLevel(user) <= 2; // viewer (3) = sola lettura
+const serializeCluster = (c) => ({
+  id: c?._id?.toString?.() || String(c?._id),
+  name: c?.name || '',
+  imeis: Array.isArray(c?.imeis) ? c.imeis.map(String) : [],
+});
+
+router.get('/clusters', auth, async (req, res) => {
+  try {
+    const list = await Clusters.find(clusterCompanyFilter(req)).sort({ name: 1 }).lean();
+    return res.status(200).json({ clusters: list.map(serializeCluster) });
+  } catch (err) {
+    console.error('[api] /clusters list error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/clusters', auth, async (req, res) => {
+  if (!canEditClusters(req.user)) return res.status(403).json({ error: 'FORBIDDEN' });
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'NAME_REQUIRED' });
+  try {
+    const created = await Clusters.create({
+      name,
+      companyId: req.user?.companyId || null,
+      createdBy: req.user?.id || req.user?._id || null,
+      imeis: [],
+    });
+    return res.status(201).json({ cluster: serializeCluster(created) });
+  } catch (err) {
+    console.error('[api] /clusters create error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.patch('/clusters/:id', auth, async (req, res) => {
+  if (!canEditClusters(req.user)) return res.status(403).json({ error: 'FORBIDDEN' });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: 'NOT_FOUND' });
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'NAME_REQUIRED' });
+  try {
+    const updated = await Clusters.findOneAndUpdate(
+      { _id: req.params.id, ...clusterCompanyFilter(req) },
+      { $set: { name } },
+      { new: true },
+    ).lean();
+    if (!updated) return res.status(404).json({ error: 'NOT_FOUND' });
+    return res.status(200).json({ cluster: serializeCluster(updated) });
+  } catch (err) {
+    console.error('[api] /clusters rename error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.delete('/clusters/:id', auth, async (req, res) => {
+  if (!canEditClusters(req.user)) return res.status(403).json({ error: 'FORBIDDEN' });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: 'NOT_FOUND' });
+  try {
+    const result = await Clusters.deleteOne({ _id: req.params.id, ...clusterCompanyFilter(req) });
+    if (!result.deletedCount) return res.status(404).json({ error: 'NOT_FOUND' });
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[api] /clusters delete error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.post('/clusters/:id/vehicles', auth, async (req, res) => {
+  if (!canEditClusters(req.user)) return res.status(403).json({ error: 'FORBIDDEN' });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: 'NOT_FOUND' });
+  const imei = typeof req.body?.imei === 'string' ? req.body.imei.trim() : '';
+  if (!imei) return res.status(400).json({ error: 'IMEI_REQUIRED' });
+  try {
+    const updated = await Clusters.findOneAndUpdate(
+      { _id: req.params.id, ...clusterCompanyFilter(req) },
+      { $addToSet: { imeis: imei } },
+      { new: true },
+    ).lean();
+    if (!updated) return res.status(404).json({ error: 'NOT_FOUND' });
+    return res.status(200).json({ cluster: serializeCluster(updated) });
+  } catch (err) {
+    console.error('[api] /clusters add-vehicle error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.delete('/clusters/:id/vehicles/:imei', auth, async (req, res) => {
+  if (!canEditClusters(req.user)) return res.status(403).json({ error: 'FORBIDDEN' });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: 'NOT_FOUND' });
+  const imei = String(req.params.imei || '').trim();
+  try {
+    const updated = await Clusters.findOneAndUpdate(
+      { _id: req.params.id, ...clusterCompanyFilter(req) },
+      { $pull: { imeis: imei } },
+      { new: true },
+    ).lean();
+    if (!updated) return res.status(404).json({ error: 'NOT_FOUND' });
+    return res.status(200).json({ cluster: serializeCluster(updated) });
+  } catch (err) {
+    console.error('[api] /clusters remove-vehicle error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 

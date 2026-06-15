@@ -27,6 +27,7 @@ import { MapContainer } from "./MapContainer";
 import { Button } from "./components/ui/button";
 import { HomeNavbar } from "./components/home-navbar";
 import { Navbar } from "./components/navbar";
+import { LeftToolbar } from "./components/left-toolbar";
 import { DriverSidebar } from "./components/driver-sidebar";
 import { QuickSidebar } from "./components/quick-sidebar";
 import { DriverBottomBar } from "./components/driver-bottom-bar";
@@ -35,6 +36,7 @@ import { AccessRequestPage } from "./pages/AccessRequestPage";
 import { DemoPage } from "./pages/DemoPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { CookiePolicyPage } from "./pages/CookiePolicyPage";
+import { WorkspacePage } from "./pages/WorkspacePage";
 import { CookieBanner } from "./components/CookieBanner";
 import {
   API_BASE_URL,
@@ -377,7 +379,7 @@ function DashboardPage() {
   const [vehicleEditTarget, setVehicleEditTarget] = React.useState<Vehicle | null>(null);
   const [vehicleEditFocus, setVehicleEditFocus] = React.useState<"tags" | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<
-    "driver" | "routes" | "navigation" | "geofence" | "vehicle" | "admin" | "driver-register"
+    "driver" | "routes" | "navigation" | "geofence" | "vehicle" | "driver-register"
   >("driver");
   const [geofenceDraft, setGeofenceDraft] = React.useState<{
     geofenceId: string;
@@ -585,9 +587,18 @@ function DashboardPage() {
         || detail?.mode === "vehicles"
         || detail?.mode === "navigation"
         || detail?.mode === "drivers"
+        || detail?.mode === "users"
           ? detail.mode
           : "driver";
       const imei = detail?.imei || null;
+
+      // Modi analitici → pagina dedicata (niente overlay sovrapposto alla sidebar)
+      if (mode !== "navigation") {
+        const params = new URLSearchParams({ tab: mode });
+        if (imei) params.set("imei", String(imei));
+        navigate(`/dashboard/workspace?${params.toString()}`);
+        return;
+      }
 
       if (mode === "fuel") {
         setSelectedFuelImei(imei);
@@ -613,6 +624,61 @@ function DashboardPage() {
     };
     window.addEventListener("truckly:bottom-bar-toggle", handler);
     return () => window.removeEventListener("truckly:bottom-bar-toggle", handler);
+  }, []);
+
+  // Apertura QuickSidebar dalla toolbar (Vista rapida)
+  React.useEffect(() => {
+    const onQuick = () => setIsQuickSidebarOpen(true);
+    window.addEventListener("truckly:quick-open", onQuick);
+    return () => window.removeEventListener("truckly:quick-open", onQuick);
+  }, []);
+
+  // Focus veicolo arrivato dalla Vista rapida di un'altra pagina (handoff via sessionStorage)
+  React.useEffect(() => {
+    let imei: string | null = null;
+    try {
+      imei = sessionStorage.getItem("truckly:focus-imei");
+    } catch {}
+    if (!imei) return;
+    try {
+      sessionStorage.removeItem("truckly:focus-imei");
+    } catch {}
+    let tries = 0;
+    const id = window.setInterval(() => {
+      tries += 1;
+      const fly = (window as any).trucklyFlyToVehicle;
+      const list = (window as any).trucklyVehicles;
+      const v = Array.isArray(list) ? list.find((x: any) => String(x?.imei) === imei) : null;
+      if (typeof fly === "function" && v && fly(v) !== false) {
+        window.clearInterval(id);
+      } else if (tries > 48) {
+        window.clearInterval(id); // ~12s timeout
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Replay di un'azione "da mappa" arrivata dalla WorkspacePage (handoff via sessionStorage)
+  React.useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem("truckly:pending-intent");
+    } catch {}
+    if (!raw) return;
+    try {
+      sessionStorage.removeItem("truckly:pending-intent");
+    } catch {}
+    let intent: { name?: string; detail?: any } | null = null;
+    try {
+      intent = JSON.parse(raw);
+    } catch {}
+    if (!intent?.name) return;
+    const id = window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent(intent!.name as string, intent!.detail ? { detail: intent!.detail } : undefined),
+      );
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   React.useEffect(() => {
@@ -731,20 +797,6 @@ function DashboardPage() {
     window.addEventListener("truckly:geofence-created", handler);
     return () => window.removeEventListener("truckly:geofence-created", handler);
   }, []);
-
-  React.useEffect(() => {
-    const handler = () => {
-      if (isDriverSidebarOpen && sidebarMode === "admin") {
-        setIsDriverSidebarOpen(false);
-        return;
-      }
-      setSidebarMode("admin");
-      setIsDriverSidebarOpen(true);
-      setBottomBarState((prev) => ({ ...prev, open: false }));
-    };
-    window.addEventListener("truckly:admin-open", handler);
-    return () => window.removeEventListener("truckly:admin-open", handler);
-  }, [isDriverSidebarOpen, sidebarMode]);
 
   React.useEffect(() => {
     if (bottomBarState.open) {
@@ -1331,6 +1383,7 @@ function DashboardPage() {
       ) : (
         <div className="relative h-full w-full">
           <MapContainer vehicles={vehicles} allowCustomize={effectivePrivilege === 0} />
+          <LeftToolbar />
           <QuickSidebar
             isOpen={isQuickSidebarOpen}
             onClose={() => setIsQuickSidebarOpen(false)}
@@ -1360,7 +1413,7 @@ function DashboardPage() {
           />
           {assistantOpen && (
             <div
-              className={`fixed inset-0 z-40 flex truckly-chat-overlay ${
+              className={`fixed inset-0 z-[48] flex truckly-chat-overlay ${
                 assistantCompanionMode
                   ? "items-end justify-end bg-transparent px-4 pb-4"
                   : "items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]"
@@ -1868,7 +1921,7 @@ function DashboardPage() {
             <button
               type="button"
               onClick={() => setIsQuickSidebarOpen(true)}
-              className={`fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition ${
+              className={`fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition md:hidden ${
                 bottomBarState.open
                   ? "pointer-events-none opacity-0"
                   : "hover:text-white hover:border-white/40"
@@ -1884,7 +1937,7 @@ function DashboardPage() {
             <button
               type="button"
               onClick={() => setAssistantOpen(true)}
-              className={`fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full border ${
+              className={`fixed bottom-6 right-6 md:right-[calc(1.5rem_+_var(--tk-toolbar-right,0px))] z-40 h-14 w-14 rounded-full border ${
                 mapStyle === "dark"
                   ? "border-black/10 bg-white text-orange-500 hover:text-orange-400"
                   : "border-white/10 bg-[#0a0a0a] text-orange-400 hover:text-orange-300"
@@ -1931,6 +1984,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard/workspace" element={<WorkspacePage />} />
         <Route path="/" element={<PublicLayout><HomePage /></PublicLayout>} />
         <Route path="/accesso" element={<PublicLayout><AccessRequestPage /></PublicLayout>} />
         <Route path="/demo" element={<PublicLayout><DemoPage /></PublicLayout>} />

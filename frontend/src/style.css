@@ -5,9 +5,116 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * Design tokens (allineati a erp-piplabsim).
+   * Valori OKLch come triplette grezze "L C H" → opacita' via Tailwind /<alpha>.
+   * :root = light, .dark = dark. <html class="dark"> in index.html (dark-first).
+   */
   :root {
-    color-scheme: dark;
     --truckly-nav-height: 64px;
+    --radius: 0.625rem;
+
+    /* Geometria toolbar spostabile (scritta da use-dock; fallback 0px) */
+    --tk-toolbar-left: 0px;
+    --tk-toolbar-right: 0px;
+    --tk-toolbar-top: 0px;
+    --tk-toolbar-bottom: 0px;
+
+    --background: 1 0 0;
+    --foreground: 0.145 0 0;
+    --card: 1 0 0;
+    --card-foreground: 0.145 0 0;
+    --popover: 1 0 0;
+    --popover-foreground: 0.145 0 0;
+    --primary: 0.205 0 0;
+    --primary-foreground: 0.985 0 0;
+    --secondary: 0.97 0 0;
+    --secondary-foreground: 0.205 0 0;
+    --muted: 0.97 0 0;
+    --muted-foreground: 0.556 0 0;
+    --accent: 0.97 0 0;
+    --accent-foreground: 0.205 0 0;
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 0.985 0 0;
+    --border: 0.922 0 0;
+    --input: 0.922 0 0;
+    --ring: 0.70 0.19 42;
+
+    --brand: 0.70 0.19 42;
+    --brand-foreground: 0.985 0 0;
+    --brand-2: 0.62 0.16 280;
+
+    --ok: 0.74 0.16 162;
+    --warn: 0.79 0.16 75;
+    --down: 0.63 0.24 18;
+
+    --chart-1: 0.715 0.13 215;
+    --chart-2: 0.78 0.13 175;
+    --chart-3: 0.62 0.16 280;
+    --chart-4: 0.79 0.16 75;
+    --chart-5: 0.63 0.24 18;
+
+    --sidebar: 0.985 0 0;
+    --sidebar-foreground: 0.145 0 0;
+    --sidebar-primary: 0.70 0.19 42;
+    --sidebar-primary-foreground: 0.985 0 0;
+    --sidebar-accent: 0.97 0 0;
+    --sidebar-accent-foreground: 0.205 0 0;
+    --sidebar-border: 0.922 0 0;
+    --sidebar-ring: 0.70 0.19 42;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 0.145 0 0;
+    --foreground: 0.985 0 0;
+    --card: 0.205 0 0;
+    --card-foreground: 0.985 0 0;
+    --popover: 0.205 0 0;
+    --popover-foreground: 0.985 0 0;
+    --primary: 0.922 0 0;
+    --primary-foreground: 0.205 0 0;
+    --secondary: 0.269 0 0;
+    --secondary-foreground: 0.985 0 0;
+    --muted: 0.269 0 0;
+    --muted-foreground: 0.708 0 0;
+    --accent: 0.269 0 0;
+    --accent-foreground: 0.985 0 0;
+    --destructive: 0.704 0.191 22.216;
+    --destructive-foreground: 0.985 0 0;
+    --border: 0.32 0 0;
+    --input: 0.36 0 0;
+    --ring: 0.74 0.185 47;
+
+    --brand: 0.74 0.185 47;
+    --brand-foreground: 0.145 0 0;
+    --brand-2: 0.7 0.17 285;
+
+    --ok: 0.78 0.16 162;
+    --warn: 0.83 0.16 80;
+    --down: 0.7 0.2 18;
+
+    --chart-1: 0.78 0.13 205;
+    --chart-2: 0.78 0.13 175;
+    --chart-3: 0.7 0.17 285;
+    --chart-4: 0.83 0.16 80;
+    --chart-5: 0.7 0.2 18;
+
+    --sidebar: 0.205 0 0;
+    --sidebar-foreground: 0.985 0 0;
+    --sidebar-primary: 0.74 0.185 47;
+    --sidebar-primary-foreground: 0.145 0 0;
+    --sidebar-accent: 0.269 0 0;
+    --sidebar-accent-foreground: 0.985 0 0;
+    --sidebar-border: 0.32 0 0;
+    --sidebar-ring: 0.74 0.185 47;
+
+    color-scheme: dark;
+  }
+
+  * {
+    border-color: oklch(var(--border));
   }
 
   html,
@@ -17,7 +124,8 @@
   }
 
   body {
-    @apply bg-[#0a0a0a] text-zinc-100 antialiased;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 
   input,
@@ -50,21 +158,66 @@
 
 /* Ensure dropdown menus are opaque and readable */
 [data-slot="dropdown-menu-content"] {
-  background-color: #0f0f10;
-  color: #e5e5e5;
-  border-color: #1f1f1f;
+  background-color: oklch(var(--popover));
+  color: oklch(var(--popover-foreground));
+  border-color: oklch(var(--border));
 }
 
-/* Transparent horizontal scrollbar track */
+/* ===== erp-piplabsim helper classes ===== */
+.erp-cta {
+  border-color: transparent;
+  color: white;
+  background: linear-gradient(90deg, #f15a22 0%, #ff7a1a 50%, #ff9d4d 100%);
+}
+.erp-cta:hover {
+  filter: brightness(1.08);
+}
+
+.erp-panel {
+  border-color: oklch(var(--border));
+  background: color-mix(in oklab, oklch(var(--card)) 92%, transparent);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+.erp-topbar {
+  backdrop-filter: blur(10px);
+  background: color-mix(in oklab, oklch(var(--card)) 80%, transparent);
+}
+
+.erp-shell {
+  background:
+    radial-gradient(circle at 6% 4%, rgba(6, 182, 212, 0.08), transparent 38%),
+    radial-gradient(circle at 96% 0%, rgba(124, 92, 255, 0.06), transparent 40%),
+    oklch(var(--background));
+}
+
+.erp-hairline {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%, #06b6d4 30%, #2dd4bf 50%, #7c5cff 70%, transparent 100%
+  );
+  opacity: 0.7;
+}
+
+/* Scrollbar sottile e discreta (verticale + orizzontale) */
 *::-webkit-scrollbar {
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--brand) / 0.7);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
 .truckly-scroll-x {

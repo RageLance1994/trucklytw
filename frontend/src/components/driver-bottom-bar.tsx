@@ -2,13 +2,306 @@ import React from "react";
 import { dataManager, resolveBackendBaseUrl } from "../lib/data-manager";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { API_BASE_URL } from "../config";
 import { RouteCalculator } from "./route-calculator";
+import { sanitizeSvg } from "../lib/sanitize-svg";
+import { ComboBox } from "./ui/combo-box";
+import { Button } from "./ui/button";
+import { TabSwitch } from "./ui/tab-switch";
+
+// ---- Chrome condiviso tabelle (omologato al tab "Utenti" / design system) ----
+const TABLE_INPUT =
+  "h-9 w-40 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:w-56";
+// Trigger azioni riga: "…" minimal (niente bordo/pill), come nella tabella Utenti.
+const ROW_ACTION_TRIGGER =
+  "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
+
+/** Header tabella uniforme: titolo small-caps + ricerca + azioni (refresh icona + extra). */
+function TableHeader({
+  title,
+  search,
+  onSearch,
+  searchPlaceholder = "Cerca...",
+  onRefresh,
+  refreshing,
+  children,
+}: {
+  title: string;
+  search?: string;
+  onSearch?: (v: string) => void;
+  searchPlaceholder?: string;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{title}</p>
+      <div className="flex items-center gap-2">
+        {onSearch && (
+          <input
+            value={search ?? ""}
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className={TABLE_INPUT}
+          />
+        )}
+        {children}
+        {onRefresh && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={onRefresh}
+            aria-label="Aggiorna"
+            disabled={refreshing}
+          >
+            <i className={`fa fa-refresh ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Guscio tabella: card a tutta altezza con header fisso + corpo che scrolla da solo. */
+function TableShell({
+  header,
+  children,
+}: {
+  header: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+        <div className="shrink-0 space-y-3 border-b border-border p-3 sm:p-4">{header}</div>
+        <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Tabella generica omologata: celle no-wrap, ordinamento, selettore colonne ----
+type DataColumn<T> = {
+  key: string;
+  label: string;
+  width?: string; // CSS grid track, es. "minmax(160px,1.4fr)" o "120px"
+  align?: "left" | "right";
+  sortValue?: (row: T) => string | number;
+  render: (row: T) => React.ReactNode;
+  defaultHidden?: boolean;
+};
+
+function loadVisibleCols(id: string, columns: DataColumn<any>[]): string[] {
+  const fallback = columns.filter((c) => !c.defaultHidden).map((c) => c.key);
+  try {
+    const raw = localStorage.getItem(`truckly:cols:${id}`);
+    if (!raw) return fallback;
+    const stored = JSON.parse(raw);
+    if (!Array.isArray(stored)) return fallback;
+    const valid = new Set(columns.map((c) => c.key));
+    const filtered = stored.filter((k: any) => valid.has(k));
+    return filtered.length ? filtered : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function DataTable<T>({
+  id,
+  title,
+  columns,
+  rows,
+  getRowKey,
+  renderActions,
+  actionsLabel = "Azioni",
+  search,
+  onSearch,
+  searchPlaceholder,
+  onRefresh,
+  refreshing,
+  headerActions,
+  emptyLabel = "Nessun dato disponibile.",
+  initialSort,
+  error,
+  headerBelow,
+}: {
+  id: string;
+  title: string;
+  columns: DataColumn<T>[];
+  rows: T[];
+  getRowKey: (row: T) => string;
+  renderActions?: (row: T) => React.ReactNode;
+  actionsLabel?: string;
+  search?: string;
+  onSearch?: (v: string) => void;
+  searchPlaceholder?: string;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  headerActions?: React.ReactNode;
+  emptyLabel?: string;
+  initialSort?: { key: string; dir: "asc" | "desc" };
+  error?: string | null;
+  headerBelow?: React.ReactNode;
+}) {
+  const [visible, setVisible] = React.useState<string[]>(() => loadVisibleCols(id, columns));
+  const [sort, setSort] = React.useState<{ key: string; dir: "asc" | "desc" } | null>(
+    initialSort ?? null,
+  );
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(`truckly:cols:${id}`, JSON.stringify(visible));
+    } catch {}
+  }, [id, visible]);
+
+  const cols = columns.filter((c) => visible.includes(c.key));
+  const gridTemplate = [
+    ...cols.map((c) => c.width || "minmax(0,1fr)"),
+    renderActions ? "auto" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const sortedRows = React.useMemo(() => {
+    if (!sort) return rows;
+    const col = columns.find((c) => c.key === sort.key);
+    if (!col?.sortValue) return rows;
+    const mult = sort.dir === "desc" ? -1 : 1;
+    return [...rows].sort((a, b) => {
+      const av = col.sortValue!(a);
+      const bv = col.sortValue!(b);
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * mult;
+      return String(av).localeCompare(String(bv), "it", { sensitivity: "base" }) * mult;
+    });
+  }, [rows, sort, columns]);
+
+  const toggleSort = (key: string) =>
+    setSort((prev) =>
+      prev?.key === key
+        ? prev.dir === "asc"
+          ? { key, dir: "desc" }
+          : null
+        : { key, dir: "asc" },
+    );
+  const toggleCol = (key: string) =>
+    setVisible((prev) =>
+      prev.includes(key)
+        ? prev.length > 1
+          ? prev.filter((k) => k !== key)
+          : prev
+        : columns.filter((c) => prev.includes(c.key) || c.key === key).map((c) => c.key),
+    );
+
+  return (
+    <TableShell
+      header={
+        <>
+        <TableHeader
+          title={title}
+          search={search}
+          onSearch={onSearch}
+          searchPlaceholder={searchPlaceholder}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+        >
+          {headerActions}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="icon" aria-label="Seleziona colonne" title="Colonne">
+                <i className="fa fa-table-columns" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[180px]">
+              <DropdownMenuLabel>Colonne</DropdownMenuLabel>
+              {columns.map((c) => {
+                const checked = visible.includes(c.key);
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={c.key}
+                    checked={checked}
+                    disabled={checked && visible.length <= 1}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      toggleCol(c.key);
+                    }}
+                  >
+                    {c.label}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableHeader>
+        {headerBelow}
+        {error && <p className="text-xs text-down">{error}</p>}
+        </>
+      }
+    >
+      <div
+        style={{ gridTemplateColumns: gridTemplate }}
+        className="sticky top-0 z-10 grid gap-3 bg-card px-3 pb-2 pt-1 text-[10px] uppercase tracking-wider text-muted-foreground"
+      >
+        {cols.map((c) =>
+          c.sortValue ? (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => toggleSort(c.key)}
+              className={`flex min-w-0 items-center gap-1 transition-colors hover:text-foreground ${
+                c.align === "right" ? "justify-end" : ""
+              }`}
+            >
+              <span className="truncate">{c.label}</span>
+              {sort?.key === c.key && (
+                <i
+                  className={`fa ${sort.dir === "asc" ? "fa-sort-up" : "fa-sort-down"} shrink-0`}
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+          ) : (
+            <span key={c.key} className={`truncate ${c.align === "right" ? "text-right" : ""}`}>
+              {c.label}
+            </span>
+          ),
+        )}
+        {renderActions && <span className="text-right">{actionsLabel}</span>}
+      </div>
+
+      {sortedRows.length === 0 ? (
+        <p className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+      ) : (
+        sortedRows.map((row) => (
+          <div
+            key={getRowKey(row)}
+            style={{ gridTemplateColumns: gridTemplate }}
+            className="grid items-center gap-3 border-t border-border px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-accent"
+          >
+            {cols.map((c) => (
+              <div
+                key={c.key}
+                className={`min-w-0 truncate ${c.align === "right" ? "text-right" : ""}`}
+              >
+                {c.render(row)}
+              </div>
+            ))}
+            {renderActions && <div className="flex justify-end">{renderActions(row)}</div>}
+          </div>
+        ))
+      )}
+    </TableShell>
+  );
+}
 
 type BottomBarMode = "driver" | "fuel" | "tacho" | "vehicles" | "drivers" | "navigation";
 
@@ -300,15 +593,15 @@ const normalizeVehiclePlate = (plate: VehicleTableVehicle["plate"]) => {
 const getVehicleStatusMeta = (status?: string | null) => {
   const raw = typeof status === "string" ? status.toLowerCase() : "";
   if (raw === "driving" || raw === "moving") {
-    return { label: "In marcia", className: "bg-emerald-500/20 text-emerald-200" };
+    return { label: "In marcia", className: "bg-ok/15 text-ok" };
   }
   if (raw === "working") {
-    return { label: "Lavoro", className: "bg-amber-500/20 text-amber-200" };
+    return { label: "Lavoro", className: "bg-warn/15 text-warn" };
   }
   if (raw === "resting" || raw === "stopped" || raw === "fermo") {
-    return { label: "Fermo", className: "bg-rose-500/20 text-rose-200" };
+    return { label: "Fermo", className: "bg-down/15 text-down" };
   }
-  return { label: status || "Online", className: "bg-white/10 text-white/70" };
+  return { label: status || "Online", className: "bg-accent text-muted-foreground" };
 };
 
 const LUL_REPORT_OPTIONS = [
@@ -359,27 +652,16 @@ const normalizeFuelEvents = (events: any[] = []): FuelEvent[] => {
 
 let echartsLoader: Promise<any> | null = null;
 
+// ECharts bundlato localmente (dynamic import → chunk separato, niente dipendenza da CDN).
 const loadECharts = () => {
   if (typeof window === "undefined") return Promise.resolve(null);
-  const win = window as any;
-  if (win.echarts) return Promise.resolve(win.echarts);
-  if (echartsLoader) return echartsLoader;
-  echartsLoader = new Promise((resolve, reject) => {
-    const existing = document.querySelector("script[data-echarts]");
-    if (existing) {
-      existing.addEventListener("load", () => resolve((window as any).echarts));
-      existing.addEventListener("error", reject);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js";
-    script.async = true;
-    script.defer = true;
-    script.dataset.echarts = "true";
-    script.onload = () => resolve((window as any).echarts);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
+  if (!echartsLoader) {
+    echartsLoader = import("echarts").catch((err) => {
+      console.error("[charts] echarts import failed", err);
+      echartsLoader = null; // consenti retry al prossimo render
+      return null;
+    });
+  }
   return echartsLoader;
 };
 
@@ -569,37 +851,22 @@ export function DriverBottomBar({
         : mode === "tacho"
           ? "Scarico dati"
           : "Attivita autista + tabelle";
-  const subtitle =
-      mode === "fuel"
-        ? `Veicolo attivo: ${selectedVehicleImei || "nessuno"}`
-        : mode === "navigation"
-          ? ""
-        : mode === "vehicles"
-          ? "Elenco completo dei veicoli registrati."
-        : mode === "drivers"
-          ? "Elenco completo degli autisti registrati."
-        : mode === "tacho"
-          ? "Elenco file .ddd disponibili dal servizio."
-          : `Tabella autisti e report attivita. Selezione attuale: ${
-              selectedDriverImei || "nessuna"
-            }`;
 
   return (
     <aside
-      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-var(--truckly-nav-height,64px))] min-h-[calc(100vh-var(--truckly-nav-height,64px))] border-t border-white/10 bg-[#0a0a0a] text-[#f8fafc] flex flex-col pt-[env(safe-area-inset-top)] shadow-[0_-24px_60px_rgba(0,0,0,0.45)] backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[75vh] ${
+      className={`fixed left-0 right-0 bottom-0 z-40 h-[calc(100dvh-var(--truckly-nav-height,64px))] min-h-[calc(100vh-var(--truckly-nav-height,64px))] md:h-[calc(100dvh-var(--truckly-nav-height,64px)-var(--tk-toolbar-bottom,0px))] md:min-h-[calc(100vh-var(--truckly-nav-height,64px)-var(--tk-toolbar-bottom,0px))] border-t border-border bg-background text-foreground flex flex-col pt-[env(safe-area-inset-top)] shadow-sm backdrop-blur truckly-bottom-bar transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:h-[calc(75vh-var(--tk-toolbar-bottom,0px))] ${
         isOpen ? "translate-y-0" : "hidden-bottom"
       }`}
       aria-hidden={!isOpen}
     >
-      <div className="flex items-start justify-between px-6 py-4 border-b border-white/10">
+      <div className="flex items-start justify-between px-6 py-4 border-b border-border">
         <div className="space-y-1.5">
-          <h2 className="text-lg font-semibold leading-tight text-white">{title}</h2>
-          {subtitle ? <p className="text-sm text-white/70">{subtitle}</p> : null}
+          <h2 className="text-lg font-semibold leading-tight text-foreground">{title}</h2>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-xs h-8 w-8 rounded-full border border-white/20 text-white/75 hover:text-white hover:border-white/50 transition inline-flex items-center justify-center"
+            className="text-xs h-8 w-8 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-border transition inline-flex items-center justify-center"
             aria-label="Chiudi"
           >
             <i className="fa fa-close" aria-hidden="true" />
@@ -607,7 +874,7 @@ export function DriverBottomBar({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-[#0a0a0a]">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-background">
         {mode === "fuel" ? (
           <FuelDashboard
             isOpen={isOpen}
@@ -635,7 +902,7 @@ export function DriverBottomBar({
   );
 }
 
-function VehicleTableDashboard({
+export function VehicleTableDashboard({
   vehicles,
   canEdit,
   canDelete,
@@ -653,6 +920,20 @@ function VehicleTableDashboard({
       return aLabel.localeCompare(bLabel, "it-IT", { sensitivity: "base" });
     });
   }, [vehicles]);
+
+  const [vehicleSearch, setVehicleSearch] = React.useState("");
+  const filteredRows = React.useMemo(() => {
+    const q = vehicleSearch.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((v) => {
+      const plate = normalizeVehiclePlate(v.plate);
+      const hay = [v.nickname, v.name, plate, v.imei, v.company, v.customer, ...(v.tags || [])]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, vehicleSearch]);
 
   const [assignTarget, setAssignTarget] = React.useState<VehicleTableVehicle | null>(
     null,
@@ -894,15 +1175,15 @@ function VehicleTableDashboard({
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#121212] shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <>
         {assignTarget && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
-            <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+            <div className="w-full max-w-lg rounded-lg border border-border bg-card p-5 shadow-sm">
             <div className="space-y-2">
-              <p className="text-sm uppercase tracking-[0.18em] text-white/60">
+              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
                 Assegna veicolo
               </p>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="text-lg font-semibold text-foreground">
                 {assignTarget.nickname
                   || (typeof assignTarget.plate === "string"
                     ? assignTarget.plate
@@ -910,7 +1191,7 @@ function VehicleTableDashboard({
                   || assignTarget.imei
                   || "Veicolo"}
               </h3>
-              <p className="text-sm text-white/70">
+              <p className="text-sm text-muted-foreground">
                 Seleziona l'azienda a cui assegnare questo veicolo.
               </p>
             </div>
@@ -918,7 +1199,7 @@ function VehicleTableDashboard({
               <select
                 value={assignCompanyId}
                 onChange={(e) => setAssignCompanyId(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               >
                 <option value="">
                   {assignLoading ? "Caricamento aziende..." : "Seleziona azienda"}
@@ -929,21 +1210,21 @@ function VehicleTableDashboard({
                   </option>
                 ))}
               </select>
-              {assignError && <p className="text-xs text-red-400">{assignError}</p>}
+              {assignError && <p className="text-xs text-down">{assignError}</p>}
             </div>
             <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={handleAssign}
                 disabled={!assignCompanyId || assignLoading}
-                className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="rounded-lg border border-border bg-accent px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-foreground transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {assignLoading ? "Salvataggio..." : "Conferma"}
               </button>
               <button
                 type="button"
                 onClick={() => setAssignTarget(null)}
-                className="rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition"
+                className="rounded-lg border border-border bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition"
               >
                 Annulla
               </button>
@@ -951,145 +1232,150 @@ function VehicleTableDashboard({
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">Veicoli</p>
-        <span className="text-xs text-white/50">{rows.length} veicoli</span>
-      </div>
-      <div className="px-4 pb-4">
-        {rows.length === 0 ? (
-          <div className="rounded-xl border border-white/8 bg-[#0d0d0f] px-3.5 py-3 text-sm text-white/70 shadow-inner shadow-black/40">
-            Nessun veicolo disponibile.
-          </div>
-        ) : (
-          <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
-              <span>Nome</span>
-              <span>Targa</span>
-              <span>IMEI</span>
-              <span>Stato</span>
-              <span>Azienda</span>
-              <span>Tag</span>
-              <span className="text-right">Azioni</span>
-            </div>
-            <div className="max-h-[360px] overflow-y-auto">
-              {rows.map((vehicle) => {
-                const plate = normalizeVehiclePlate(vehicle.plate);
-                const label = vehicle.nickname || vehicle.name || plate || vehicle.imei || "--";
-                const status = getVehicleStatusMeta(vehicle.status);
-                const company = vehicle.company || vehicle.customer || "--";
-                const tags = vehicle.tags?.length ? vehicle.tags : [];
-                const rowKey = resolveVehicleId(vehicle) || label;
-                return (
-                  <div
-                    key={rowKey}
-                    className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 px-3 py-2 text-xs text-white/80 border-t border-white/10"
-                  >
-                    <span className="truncate font-semibold text-white/90">{label}</span>
-                    <span className="truncate text-white/70">{plate}</span>
-                    <span className="truncate text-white/70">{vehicle.imei || "--"}</span>
-                    <span>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${status.className}`}
-                      >
-                        {status.label}
-                      </span>
-                    </span>
-                    <span className="truncate text-white/70">{company}</span>
-                    <span className="text-white/70">
-                      {tags.length ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {tags.map((tag) => (
-                            <span
-                              key={`${rowKey}-${tag}`}
-                              className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[11px] uppercase tracking-[0.14em]"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        "--"
-                      )}
-                    </span>
-                    <span className="text-right">
-                      <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="h-8 w-8 rounded-full border border-white/15 bg-white/5 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
-                              aria-label="Azioni veicolo"
-                            >
-                              <i className="fa fa-ellipsis-h" aria-hidden="true" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-[200px]">
-                            {hasDriverAvailable(vehicle) && (
-                              <DropdownMenuItem onSelect={() => openDriverReport(vehicle)}>
-                                <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
-                                Rapporti Autista
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onSelect={() => openFuelReport(vehicle)}>
-                              <i className="fa fa-tint mr-2 text-[12px]" aria-hidden="true" />
-                              Rapporti Carburante
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => openRoutesReport(vehicle)}>
-                              <i className="fa fa-road mr-2 text-[12px]" aria-hidden="true" />
-                              Rapporti percorsi
-                            </DropdownMenuItem>
-                            {canEdit && (
-                              <DropdownMenuSeparator className="bg-white/15" />
-                            )}
-                            {canEdit && (
-                              <DropdownMenuItem onSelect={() => handleEdit(vehicle)}>
-                                <i className="fa fa-pencil mr-2 text-[12px]" aria-hidden="true" />
-                                Modifica
-                              </DropdownMenuItem>
-                            )}
-                            {canEdit && (
-                              <DropdownMenuItem onSelect={() => handleEdit(vehicle, "tags")}>
-                                <i className="fa fa-tag mr-2 text-[12px]" aria-hidden="true" />
-                                Aggiungi tag
-                              </DropdownMenuItem>
-                            )}
-                            {canEdit && (
-                              <DropdownMenuItem onSelect={() => openAssign(vehicle)}>
-                                <i className="fa fa-building-o mr-2 text-[12px]" aria-hidden="true" />
-                                Assegna
-                              </DropdownMenuItem>
-                            )}
-                            {canManageOwners && (
-                              <DropdownMenuItem onSelect={() => openOwnerAssign(vehicle)}>
-                                <i className="fa fa-users mr-2 text-[12px]" aria-hidden="true" />
-                                Assegna proprietari
-                              </DropdownMenuItem>
-                            )}
-                            {canDelete && (
-                              <DropdownMenuItem
-                                onSelect={() => handleDelete(vehicle)}
-                                className="text-white/80 hover:!bg-red-500/35 hover:text-red-100"
-                              >
-                                <i className="fa fa-trash mr-2 text-[12px]" aria-hidden="true" />
-                                Elimina
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      <DataTable
+        id="vehicles"
+        title="Veicoli"
+        search={vehicleSearch}
+        onSearch={setVehicleSearch}
+        searchPlaceholder="Cerca veicolo..."
+        onRefresh={() => window.dispatchEvent(new CustomEvent("truckly:vehicles-refresh"))}
+        rows={filteredRows}
+        getRowKey={(vehicle) =>
+          String(resolveVehicleId(vehicle) || vehicle.nickname || vehicle.imei || "")
+        }
+        emptyLabel="Nessun veicolo disponibile."
+        columns={[
+          {
+            key: "name",
+            label: "Nome",
+            width: "minmax(140px,2fr)",
+            sortValue: (v) =>
+              (v.nickname || v.name || normalizeVehiclePlate(v.plate) || v.imei || "").toLowerCase(),
+            render: (v) => (
+              <span className="font-semibold text-foreground">
+                {v.nickname || v.name || normalizeVehiclePlate(v.plate) || v.imei || "--"}
+              </span>
+            ),
+          },
+          {
+            key: "plate",
+            label: "Targa",
+            width: "minmax(90px,1fr)",
+            sortValue: (v) => normalizeVehiclePlate(v.plate).toLowerCase(),
+            render: (v) => (
+              <span className="text-muted-foreground">{normalizeVehiclePlate(v.plate)}</span>
+            ),
+          },
+          {
+            key: "imei",
+            label: "IMEI",
+            width: "minmax(120px,1.2fr)",
+            render: (v) => <span className="text-muted-foreground">{v.imei || "--"}</span>,
+          },
+          {
+            key: "status",
+            label: "Stato",
+            width: "minmax(90px,1fr)",
+            sortValue: (v) => getVehicleStatusMeta(v.status).label,
+            render: (v) => {
+              const s = getVehicleStatusMeta(v.status);
+              return (
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${s.className}`}
+                >
+                  {s.label}
+                </span>
+              );
+            },
+          },
+          {
+            key: "company",
+            label: "Azienda",
+            width: "minmax(110px,1fr)",
+            sortValue: (v) => String(v.company || v.customer || "").toLowerCase(),
+            render: (v) => (
+              <span className="text-muted-foreground">{v.company || v.customer || "--"}</span>
+            ),
+          },
+          {
+            key: "tags",
+            label: "Tag",
+            width: "minmax(110px,1.2fr)",
+            render: (v) => (
+              <span className="text-muted-foreground">
+                {(v.tags?.length ? v.tags : []).join(", ") || "--"}
+              </span>
+            ),
+          },
+        ]}
+        renderActions={(vehicle) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={ROW_ACTION_TRIGGER} aria-label="Azioni veicolo">
+                <i className="fa fa-ellipsis-h" aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[200px]">
+              {hasDriverAvailable(vehicle) && (
+                <DropdownMenuItem onSelect={() => openDriverReport(vehicle)}>
+                  <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
+                  Rapporti Autista
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => openFuelReport(vehicle)}>
+                <i className="fa fa-tint mr-2 text-[12px]" aria-hidden="true" />
+                Rapporti Carburante
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openRoutesReport(vehicle)}>
+                <i className="fa fa-road mr-2 text-[12px]" aria-hidden="true" />
+                Rapporti percorsi
+              </DropdownMenuItem>
+              {canEdit && <DropdownMenuSeparator className="bg-border" />}
+              {canEdit && (
+                <DropdownMenuItem onSelect={() => handleEdit(vehicle)}>
+                  <i className="fa fa-pencil mr-2 text-[12px]" aria-hidden="true" />
+                  Modifica
+                </DropdownMenuItem>
+              )}
+              {canEdit && (
+                <DropdownMenuItem onSelect={() => handleEdit(vehicle, "tags")}>
+                  <i className="fa fa-tag mr-2 text-[12px]" aria-hidden="true" />
+                  Aggiungi tag
+                </DropdownMenuItem>
+              )}
+              {canEdit && (
+                <DropdownMenuItem onSelect={() => openAssign(vehicle)}>
+                  <i className="fa fa-building-o mr-2 text-[12px]" aria-hidden="true" />
+                  Assegna
+                </DropdownMenuItem>
+              )}
+              {canManageOwners && (
+                <DropdownMenuItem onSelect={() => openOwnerAssign(vehicle)}>
+                  <i className="fa fa-users mr-2 text-[12px]" aria-hidden="true" />
+                  Assegna proprietari
+                </DropdownMenuItem>
+              )}
+              {canDelete && (
+                <DropdownMenuItem
+                  onSelect={() => handleDelete(vehicle)}
+                  className="text-foreground hover:!bg-down/15 hover:text-down"
+                >
+                  <i className="fa fa-trash mr-2 text-[12px]" aria-hidden="true" />
+                  Elimina
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
+      />
         {ownerAssignTarget && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
-            <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0b0b0c] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+            <div className="w-full max-w-2xl rounded-lg border border-border bg-card p-5 shadow-sm">
               <div className="space-y-2">
-                <p className="text-sm uppercase tracking-[0.18em] text-white/60">
+                <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
                   Assegna proprietari
                 </p>
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className="text-lg font-semibold text-foreground">
                   {ownerAssignTarget.nickname
                     || (typeof ownerAssignTarget.plate === "string"
                       ? ownerAssignTarget.plate
@@ -1097,7 +1383,7 @@ function VehicleTableDashboard({
                     || ownerAssignTarget.imei
                     || "Veicolo"}
                 </h3>
-                <p className="text-sm text-white/70">
+                <p className="text-sm text-muted-foreground">
                   Seleziona una o più aziende proprietarie per questo veicolo.
                 </p>
               </div>
@@ -1107,11 +1393,11 @@ function VehicleTableDashboard({
                   value={ownerSearch}
                   onChange={(e) => setOwnerSearch(e.target.value)}
                   placeholder="Cerca azienda..."
-                  className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
                 />
-                <div className="max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-[#0d0d0f]">
+                <div className="max-h-72 overflow-y-auto rounded-lg border border-border bg-background">
                   {ownerLoading ? (
-                    <div className="px-3 py-3 text-xs text-white/60">
+                    <div className="px-3 py-3 text-xs text-muted-foreground">
                       Caricamento aziende...
                     </div>
                   ) : filteredOwnerOptions.length ? (
@@ -1124,8 +1410,8 @@ function VehicleTableDashboard({
                           onClick={() => toggleOwner(owner.id)}
                           className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
                             isSelected
-                              ? "bg-white/10 text-white"
-                              : "text-white/80 hover:bg-white/5"
+                              ? "bg-accent text-foreground"
+                              : "text-foreground hover:bg-accent"
                           }`}
                         >
                           <div className="min-w-0">
@@ -1134,8 +1420,8 @@ function VehicleTableDashboard({
                           <span
                             className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
                               isSelected
-                                ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200"
-                                : "border-white/20 text-white/40"
+                                ? "border-ok/50 bg-ok/15 text-ok"
+                                : "border-border text-muted-foreground"
                             }`}
                             aria-hidden="true"
                           >
@@ -1145,26 +1431,26 @@ function VehicleTableDashboard({
                       );
                     })
                   ) : (
-                    <div className="px-3 py-3 text-xs text-white/60">
+                    <div className="px-3 py-3 text-xs text-muted-foreground">
                       Nessuna azienda trovata.
                     </div>
                   )}
                 </div>
-                {ownerError && <p className="text-xs text-red-400">{ownerError}</p>}
+                {ownerError && <p className="text-xs text-down">{ownerError}</p>}
               </div>
               <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={handleOwnerAssign}
                   disabled={ownerLoading || !ownerSelectedIds.length}
-                  className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/15 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="rounded-lg border border-border bg-accent px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-foreground transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {ownerLoading ? "Salvataggio..." : "Conferma"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setOwnerAssignTarget(null)}
-                  className="rounded-lg border border-white/10 bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-white/60 hover:text-white transition"
+                  className="rounded-lg border border-border bg-transparent px-3 py-2 text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition"
                 >
                   Annulla
                 </button>
@@ -1172,12 +1458,11 @@ function VehicleTableDashboard({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </>
   );
 }
 
-function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
+export function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
   const [drivers, setDrivers] = React.useState<DriverTableRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -1217,7 +1502,7 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
     );
     window.dispatchEvent(
       new CustomEvent("truckly:bottom-bar-toggle", {
-        detail: { mode: "driver" },
+        detail: { mode: "driver", driverId: id },
       }),
     );
   };
@@ -1498,173 +1783,157 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
-            Elenco autisti
-          </p>
-          <p className="text-sm text-white/70">
-            Gestisci e consulta gli autisti registrati.
-          </p>
-        </div>
-        <div className="flex flex-1 flex-col gap-2 sm:max-w-[360px] sm:flex-row sm:items-center sm:justify-end">
-          <button
-            type="button"
-            onClick={fetchDrivers}
-            className="h-9 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80 hover:border-white/40 hover:text-white transition"
-          >
-            {loading ? "Caricamento..." : "Aggiorna"}
-          </button>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca autista..."
-            className="h-9 w-full rounded-full border border-white/10 bg-[#0d0d0f] px-4 text-sm text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30 sm:max-w-[220px]"
-          />
-        </div>
-      </div>
-
-      {error && <p className="text-xs text-red-400">{error}</p>}
-
-      <div className="rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/55">
-          <span>Autista</span>
-          <span>Cellulare</span>
-          <span>ID Carta</span>
-          <span>Azienda</span>
-          <span>Aggiornato</span>
-          <span className="text-right">Azioni</span>
-        </div>
-        <div className="divide-y divide-white/5">
-          {filtered.length ? (
-            filtered.map((driver) => {
-              const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim() || "--";
-              return (
-                <div
-                  key={driver.id || driver._id || `${name}-${driver?.tachoDriverId || ""}`}
-                  className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] gap-2 px-3 py-2 text-sm text-white/80"
-                >
-                  <span className="truncate font-medium text-white">{name}</span>
-                  <span className="truncate">{driver?.phone || "--"}</span>
-                  <span className="truncate">{driver?.tachoDriverId || "--"}</span>
-                  <span className="truncate">{driver?.companyName || "--"}</span>
-                  <span className="truncate text-white/60">{formatUpdatedAt(driver?.updatedAt)}</span>
-                  <span className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="h-8 w-8 rounded-full border border-white/15 bg-white/5 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
-                          aria-label="Azioni autista"
-                        >
-                          <i className="fa fa-ellipsis-h" aria-hidden="true" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[200px]">
-                        <DropdownMenuItem onSelect={() => openDriverSidebar(driver, true)}>
-                          <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
-                          Apri scheda autista
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => openDriverReport(driver)}>
-                          <i className="fa fa-line-chart mr-2 text-[12px]" aria-hidden="true" />
-                          Report autista
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={lulBusyDriverId === String(driver.id || driver._id || "")}
-                          onSelect={(ev) => {
-                            ev.preventDefault();
-                            openLulModal(driver);
-                          }}
-                        >
-                          <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
-                          {lulBusyDriverId === String(driver.id || driver._id || "")
-                            ? "Apro generatore..."
-                            : "Genera LUL"}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator className="bg-white/15" />
-                        <DropdownMenuItem onSelect={() => openDriverSidebar(driver, false)}>
-                          <i className="fa fa-pencil mr-2 text-[12px]" aria-hidden="true" />
-                          Modifica
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => handleDeleteDriver(driver)}
-                          className="text-white/80 hover:!bg-red-500/35 hover:text-red-100"
-                        >
-                          <i className="fa fa-trash mr-2 text-[12px]" aria-hidden="true" />
-                          Elimina
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </span>
-                </div>
-              );
-            })
-          ) : (
-            <div className="px-3 py-4 text-sm text-white/60">
-              {loading ? "Caricamento autisti..." : "Nessun autista disponibile."}
-            </div>
-          )}
-        </div>
-      </div>
-      {lulModalOpen && (
+    <>
+    <DataTable
+      id="drivers"
+      title="Autisti"
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Cerca autista..."
+      onRefresh={fetchDrivers}
+      refreshing={loading}
+      error={error}
+      rows={filtered}
+      getRowKey={(d) => String(d.id || d._id || `${d?.name}-${d?.tachoDriverId || ""}`)}
+      emptyLabel={loading ? "Caricamento autisti..." : "Nessun autista disponibile."}
+      columns={[
+        {
+          key: "name",
+          label: "Autista",
+          width: "minmax(140px,1.6fr)",
+          sortValue: (d) => `${d?.name || ""} ${d?.surname || ""}`.trim().toLowerCase(),
+          render: (d) => (
+            <span className="font-medium text-foreground">
+              {`${d?.name || ""} ${d?.surname || ""}`.trim() || "--"}
+            </span>
+          ),
+        },
+        { key: "phone", label: "Cellulare", width: "minmax(100px,1fr)", render: (d) => d?.phone || "--" },
+        {
+          key: "card",
+          label: "ID Carta",
+          width: "minmax(120px,1fr)",
+          sortValue: (d) => String(d?.tachoDriverId || ""),
+          render: (d) => d?.tachoDriverId || "--",
+        },
+        {
+          key: "company",
+          label: "Azienda",
+          width: "minmax(120px,1.2fr)",
+          sortValue: (d) => String(d?.companyName || "").toLowerCase(),
+          render: (d) => d?.companyName || "--",
+        },
+        {
+          key: "updated",
+          label: "Aggiornato",
+          width: "minmax(140px,1fr)",
+          sortValue: (d) => (d?.updatedAt ? new Date(d.updatedAt).getTime() : 0),
+          render: (d) => (
+            <span className="text-muted-foreground">{formatUpdatedAt(d?.updatedAt)}</span>
+          ),
+        },
+      ]}
+      renderActions={(driver) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={ROW_ACTION_TRIGGER} aria-label="Azioni autista">
+              <i className="fa fa-ellipsis-h" aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[200px]">
+            <DropdownMenuItem onSelect={() => openDriverSidebar(driver, true)}>
+              <i className="fa fa-id-card-o mr-2 text-[12px]" aria-hidden="true" />
+              Apri scheda autista
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openDriverReport(driver)}>
+              <i className="fa fa-line-chart mr-2 text-[12px]" aria-hidden="true" />
+              Report autista
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={lulBusyDriverId === String(driver.id || driver._id || "")}
+              onSelect={(ev) => {
+                ev.preventDefault();
+                openLulModal(driver);
+              }}
+            >
+              <i className="fa fa-file-text-o mr-2 text-[12px]" aria-hidden="true" />
+              {lulBusyDriverId === String(driver.id || driver._id || "")
+                ? "Apro generatore..."
+                : "Genera LUL"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuItem onSelect={() => openDriverSidebar(driver, false)}>
+              <i className="fa fa-pencil mr-2 text-[12px]" aria-hidden="true" />
+              Modifica
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => handleDeleteDriver(driver)}
+              className="text-foreground hover:!bg-down/15 hover:text-down"
+            >
+              <i className="fa fa-trash mr-2 text-[12px]" aria-hidden="true" />
+              Elimina
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    />
+    {lulModalOpen && (
         <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm p-4 md:p-8">
-          <div className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0b0c10] shadow-[0_25px_90px_rgba(0,0,0,0.65)]">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+          <div className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b border-border px-5 py-3">
               <div>
-                <h3 className="text-lg font-semibold text-white">Generatore LUL</h3>
-                <p className="text-xs text-white/60">Compila i parametri e verifica la preview prima di generare il PDF.</p>
+                <h3 className="text-lg font-semibold text-foreground">Generatore LUL</h3>
+                <p className="text-xs text-muted-foreground">Compila i parametri e verifica la preview prima di generare il PDF.</p>
               </div>
-              <button type="button" onClick={() => setLulModalOpen(false)} className="h-8 w-8 rounded-full border border-white/20 text-white/70 hover:border-white/40 hover:text-white" aria-label="Chiudi Generatore LUL">
+              <button type="button" onClick={() => setLulModalOpen(false)} className="h-8 w-8 rounded-full border border-border text-muted-foreground hover:border-border hover:text-foreground" aria-label="Chiudi Generatore LUL">
                 <i className="fa fa-close" aria-hidden="true" />
               </button>
             </div>
             <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[380px_1fr]">
-              <div className="space-y-4 overflow-y-auto border-r border-white/10 px-5 py-4">
+              <div className="space-y-4 overflow-y-auto border-r border-border px-5 py-4">
                 <div className="flex items-center gap-6">
-                  <label className="inline-flex items-center gap-2 text-sm text-white/85"><input type="radio" checked={lulFormat === "pdf"} onChange={() => setLulFormat("pdf")} />PDF</label>
-                  <label className="inline-flex items-center gap-2 text-sm text-white/85"><input type="radio" checked={lulFormat === "xlsx"} onChange={() => setLulFormat("xlsx")} />XLSX (Excel)</label>
+                  <label className="inline-flex items-center gap-2 text-sm text-foreground"><input type="radio" checked={lulFormat === "pdf"} onChange={() => setLulFormat("pdf")} />PDF</label>
+                  <label className="inline-flex items-center gap-2 text-sm text-foreground"><input type="radio" checked={lulFormat === "xlsx"} onChange={() => setLulFormat("xlsx")} />XLSX (Excel)</label>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs uppercase tracking-[0.12em] text-white/60">Autista</label>
+                  <label className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Autista</label>
                   <div className="relative">
-                    <input value={lulDriverSearch} onChange={(e) => { setLulDriverSearch(e.target.value); setLulSelectedDriverId(""); setShowLulDriverSuggestions(true); }} onFocus={() => setShowLulDriverSuggestions(true)} onBlur={() => setTimeout(() => setShowLulDriverSuggestions(false), 120)} placeholder="Cerca per nome, ID mongo o ID carta..." className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white" />
+                    <input value={lulDriverSearch} onChange={(e) => { setLulDriverSearch(e.target.value); setLulSelectedDriverId(""); setShowLulDriverSuggestions(true); }} onFocus={() => setShowLulDriverSuggestions(true)} onBlur={() => setTimeout(() => setShowLulDriverSuggestions(false), 120)} placeholder="Cerca per nome, ID mongo o ID carta..." className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
                     {showLulDriverSuggestions && filteredLulDrivers.length > 0 && (
-                      <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#09090c]">
+                      <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-popover">
                         {filteredLulDrivers.map((driver) => {
                           const id = String(driver?.id || driver?._id || "");
                           const label = getDriverLabel(driver);
-                          return <button key={id || label} type="button" onMouseDown={(ev) => ev.preventDefault()} onClick={() => { setLulSelectedDriverId(id); setLulDriverSearch(label); setShowLulDriverSuggestions(false); }} className="w-full px-3 py-2 text-left text-xs text-white/85 hover:bg-white/10">{label}</button>;
+                          return <button key={id || label} type="button" onMouseDown={(ev) => ev.preventDefault()} onClick={() => { setLulSelectedDriverId(id); setLulDriverSearch(label); setShowLulDriverSuggestions(false); }} className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-accent">{label}</button>;
                         })}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs uppercase tracking-[0.12em] text-white/60">Tipo di rapporto</label>
-                  <select value={lulReportCode} onChange={(e) => setLulReportCode(e.target.value)} className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white">
+                  <label className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Tipo di rapporto</label>
+                  <select value={lulReportCode} onChange={(e) => setLulReportCode(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
                     {LUL_REPORT_OPTIONS.map((opt) => <option key={opt.code} value={opt.code}>{opt.label}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs uppercase tracking-[0.12em] text-white/60">Da</label>
-                    <input type="date" value={lulStartDate} onChange={(e) => setLulStartDate(e.target.value)} className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white" />
+                    <label className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Da</label>
+                    <input type="date" value={lulStartDate} onChange={(e) => setLulStartDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs uppercase tracking-[0.12em] text-white/60">A</label>
-                    <input type="date" value={lulEndDate} onChange={(e) => setLulEndDate(e.target.value)} className="w-full rounded-lg border border-white/15 bg-[#101217] px-3 py-2 text-sm text-white" />
+                    <label className="text-xs uppercase tracking-[0.12em] text-muted-foreground">A</label>
+                    <input type="date" value={lulEndDate} onChange={(e) => setLulEndDate(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
                   </div>
                 </div>
-                {lulPreviewError && <p className="text-sm text-red-400">{lulPreviewError}</p>}
+                {lulPreviewError && <p className="text-sm text-down">{lulPreviewError}</p>}
                 <div className="flex flex-wrap gap-2 pt-2">
-                  <button type="button" onClick={() => void loadLulPreview()} disabled={lulPreviewLoading} className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-50">{lulPreviewLoading ? "Genero anteprima..." : "Aggiorna anteprima"}</button>
-                  <button type="button" onClick={generateLulOutput} className="rounded-lg border border-orange-400/30 bg-orange-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-orange-100">Genera LUL</button>
+                  <button type="button" onClick={() => void loadLulPreview()} disabled={lulPreviewLoading} className="rounded-lg border border-border bg-accent px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-foreground disabled:opacity-50">{lulPreviewLoading ? "Genero anteprima..." : "Aggiorna anteprima"}</button>
+                  <button type="button" onClick={generateLulOutput} className="rounded-lg border border-transparent bg-brand px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-brand-foreground">Genera LUL</button>
                 </div>
               </div>
-              <div className="min-h-0 bg-[#07080b] p-4">
-                <div className="h-full overflow-hidden rounded-xl border border-white/10 bg-white">
+              <div className="min-h-0 bg-background p-4">
+                <div className="h-full overflow-hidden rounded-xl border border-border bg-white">
                   {lulPreviewLoading ? <div className="flex h-full items-center justify-center text-sm text-slate-700">Caricamento preview...</div> : lulPreviewHtml ? <iframe title="Anteprima LUL" className="h-full w-full" srcDoc={lulPreviewHtml} /> : <div className="flex h-full items-center justify-center text-sm text-slate-600">Nessuna anteprima disponibile.</div>}
                 </div>
               </div>
@@ -1672,20 +1941,17 @@ function DriverTableDashboard({ isOpen }: { isOpen: boolean }) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
+export function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
   const [files, setFiles] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [accessDenied, setAccessDenied] = React.useState(false);
   const [search, setSearch] = React.useState("");
-  const [sortKey, setSortKey] = React.useState<
-    "fileName" | "source" | "reference" | "periodFrom" | "company" | "syncState" | "downloadTime"
-  >("downloadTime");
-  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+  const [sourceFilter, setSourceFilter] = React.useState<"all" | "vehicle" | "driver">("all");
 
   const fetchFiles = React.useCallback(async () => {
     setLoading(true);
@@ -1724,246 +1990,152 @@ function TachoFilesDashboard({ isOpen }: { isOpen: boolean }) {
     fetchFiles();
   }, [fetchFiles, isOpen]);
 
-  const sortBy = React.useCallback(
-    (key: "fileName" | "source" | "reference" | "periodFrom" | "company" | "syncState" | "downloadTime") => {
-      if (sortKey === key) {
-        setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-        return;
-      }
-      setSortKey(key);
-      setSortDir("asc");
-    },
-    [sortKey],
+  const filteredFiles = React.useMemo(
+    () =>
+      (Array.isArray(files) ? files : []).filter(
+        (f) => sourceFilter === "all" || f?.source === sourceFilter,
+      ),
+    [files, sourceFilter],
   );
-
-  const getSortIcon = React.useCallback(
-    (key: "fileName" | "source" | "reference" | "periodFrom" | "company" | "syncState" | "downloadTime") => {
-      if (sortKey !== key) return "fa-sort";
-      return sortDir === "asc" ? "fa-sort-up" : "fa-sort-down";
-    },
-    [sortDir, sortKey],
-  );
-
-  const sortedFiles = React.useMemo(() => {
-    const list = Array.isArray(files) ? [...files] : [];
-    const valueOf = (row: any, key: string) => {
-      if (!row) return "";
-      if (key === "source") return row?.source === "driver" ? "Autista" : "Veicolo";
-      if (key === "reference") {
-        return row?.source === "driver"
-          ? row?.driver?.driverName || row?.driver?.cardNumber || ""
-          : row?.vehicle?.number || row?.vehicle?.imei || "";
-      }
-      if (key === "company") return row?.company?.name || "";
-      if (key === "periodFrom") return toTimestamp(row?.periodFrom) || 0;
-      if (key === "downloadTime") return toTimestamp(row?.downloadTime) || 0;
-      if (key === "syncState") return row?.syncState || "pending";
-      if (key === "fileName") return row?.fileName || "";
-      return row?.[key] || "";
-    };
-    list.sort((a, b) => {
-      const av = valueOf(a, sortKey);
-      const bv = valueOf(b, sortKey);
-      let cmp = 0;
-      if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
-      else cmp = String(av).localeCompare(String(bv), "it-IT", { sensitivity: "base" });
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return list;
-  }, [files, sortDir, sortKey]);
 
   const baseUrl = resolveBackendBaseUrl();
 
   return (
-    <div className="h-full min-h-0">
-      <div className="h-full min-h-0 rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-              File disponibili
-            </p>
-            <p className="text-sm text-white/60">
-              Scarica i file .ddd per autisti e veicoli.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={fetchFiles}
-            className="h-8 rounded-full border border-white/15 bg-white/5 px-4 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-          >
-            {loading ? "Aggiorno..." : "Aggiorna"}
-          </button>
-        </div>
-
-        <div className="flex items-center justify-end">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filtra per nome file..."
-            className="w-full sm:w-56 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-white/30"
-          />
-        </div>
-
-        {accessDenied && (
-          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-            Contatta l'amministratore per accedere a questa pagina
-          </div>
-        )}
-        {!accessDenied && error && <p className="text-xs text-red-400">{error}</p>}
-
-        <div className="flex-1 min-h-[320px] rounded-xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
-          <div className="h-full overflow-auto">
-            <table className="w-full table-fixed border-separate border-spacing-0 text-xs text-white/80">
-              <colgroup>
-                <col className="w-[24%]" />
-                <col className="w-[10%]" />
-                <col className="w-[14%]" />
-                <col className="w-[18%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
-              </colgroup>
-              <thead className="sticky top-0 z-10 bg-[#0d0d0f]">
-                <tr className="text-[10px] uppercase tracking-[0.2em] text-white/55">
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("fileName")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      File <i className={`fa ${getSortIcon("fileName")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("source")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      Origine <i className={`fa ${getSortIcon("source")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("reference")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      Riferimento <i className={`fa ${getSortIcon("reference")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("periodFrom")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      Periodo <i className={`fa ${getSortIcon("periodFrom")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("company")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      Azienda <i className={`fa ${getSortIcon("company")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("syncState")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      Sync Seep <i className={`fa ${getSortIcon("syncState")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-left">
-                    <button type="button" onClick={() => sortBy("downloadTime")} className="inline-flex items-center gap-1 hover:text-white transition">
-                      Download <i className={`fa ${getSortIcon("downloadTime")} text-[10px]`} aria-hidden="true" />
-                    </button>
-                  </th>
-                  <th className="px-3 py-2 border-b border-white/10 text-right">Azioni</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedFiles.length === 0 && !loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-4 text-xs text-white/60">
-                      Nessun file disponibile.
-                    </td>
-                  </tr>
-                ) : (
-                  sortedFiles.map((file) => {
-                    const sourceLabel = file?.source === "driver" ? "Autista" : "Veicolo";
-                    const refLabel =
-                      file?.source === "driver"
-                        ? file?.driver?.driverName || file?.driver?.cardNumber || "--"
-                        : file?.vehicle?.number || file?.vehicle?.imei || "--";
-                    const periodFrom = toTimestamp(file?.periodFrom);
-                    const periodTo = toTimestamp(file?.periodTo);
-                    const periodFromLabel = periodFrom ? formatShortDateTime(periodFrom) : "--";
-                    const periodToLabel = periodTo ? formatShortDateTime(periodTo) : "--";
-                    const hasPeriod = Boolean(periodFrom || periodTo);
-                    const periodHint =
-                      file?.periodSource === "downloadTime"
-                        ? "Orario scarico"
-                        : file?.periodSource === "period"
-                          ? "Periodo attivita"
-                          : null;
-                    const companyLabel = file?.company?.name || "--";
-                    const name = file?.fileName || "file.ddd";
-                    const downloadTs = toTimestamp(file?.downloadTime);
-                    const downloadUrl = `${baseUrl}/api/tacho/files/download?source=${encodeURIComponent(
-                      file?.source || "vehicle",
-                    )}&id=${encodeURIComponent(file?.id || "")}&name=${encodeURIComponent(name)}`;
-                    return (
-                      <tr key={file?.id}>
-                        <td className="px-3 py-2 border-b border-white/10 truncate">{name}</td>
-                        <td className="px-3 py-2 border-b border-white/10 text-white/60">{sourceLabel}</td>
-                        <td className="px-3 py-2 border-b border-white/10 truncate text-white/70">{refLabel}</td>
-                        <td className="px-3 py-2 border-b border-white/10 truncate text-white/70">
-                          {hasPeriod ? (
-                            <span className="inline-flex items-center gap-2">
-                              <span>{periodFromLabel}</span>
-                              <i className="fa fa-arrow-right text-[10px] text-white/45" aria-hidden="true" />
-                              <span>{periodToLabel}</span>
-                            </span>
-                          ) : (
-                            "N/D"
-                          )}
-                          {periodHint && (
-                            <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-white/40">
-                              {periodHint}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 border-b border-white/10 truncate text-white/60">{companyLabel}</td>
-                        <td className="px-3 py-2 border-b border-white/10">
-                          <span
-                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
-                              file?.syncState === "uploaded"
-                                ? "border-emerald-400/40 text-emerald-300"
-                                : file?.syncState === "error"
-                                  ? "border-red-400/40 text-red-300"
-                                  : "border-white/20 text-white/60"
-                            }`}
-                            title={file?.error || ""}
-                          >
-                            {file?.syncState || "pending"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 border-b border-white/10 text-white/60">
-                          {downloadTs ? formatShortDateTime(downloadTs) : "N/D"}
-                        </td>
-                        <td className="px-3 py-2 border-b border-white/10 text-right">
-                          <a
-                            href={downloadUrl}
-                            className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 hover:text-white transition"
-                          >
-                            Scarica
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+    <DataTable
+      id="tacho"
+      title="Scarico dati"
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Filtra per nome file..."
+      onRefresh={fetchFiles}
+      refreshing={loading}
+      error={accessDenied ? "Contatta l'amministratore per accedere a questa pagina" : error}
+      rows={filteredFiles}
+      getRowKey={(file) => String(file?.id || "")}
+      emptyLabel="Nessun file disponibile."
+      initialSort={{ key: "downloadTime", dir: "desc" }}
+      headerBelow={
+        <TabSwitch
+          ariaLabel="Filtra per origine file"
+          value={sourceFilter}
+          onChange={(id) => setSourceFilter(id as "all" | "vehicle" | "driver")}
+          tabs={[
+            { id: "all", label: "Tutti" },
+            { id: "vehicle", label: "Veicolo" },
+            { id: "driver", label: "Autista" },
+          ]}
+        />
+      }
+      columns={[
+        {
+          key: "fileName",
+          label: "File",
+          width: "minmax(160px,2fr)",
+          sortValue: (f) => String(f?.fileName || "").toLowerCase(),
+          render: (f) => f?.fileName || "file.ddd",
+        },
+        {
+          key: "source",
+          label: "Origine",
+          width: "minmax(80px,0.8fr)",
+          sortValue: (f) => String(f?.source || ""),
+          render: (f) => (
+            <span className="text-muted-foreground">
+              {f?.source === "driver" ? "Autista" : "Veicolo"}
+            </span>
+          ),
+        },
+        {
+          key: "reference",
+          label: "Riferimento",
+          width: "minmax(110px,1.2fr)",
+          render: (f) => (
+            <span className="text-muted-foreground">
+              {f?.source === "driver"
+                ? f?.driver?.driverName || f?.driver?.cardNumber || "--"
+                : f?.vehicle?.number || f?.vehicle?.imei || "--"}
+            </span>
+          ),
+        },
+        {
+          key: "period",
+          label: "Periodo",
+          width: "minmax(150px,1.6fr)",
+          sortValue: (f) => toTimestamp(f?.periodFrom) || 0,
+          render: (f) => {
+            const pf = toTimestamp(f?.periodFrom);
+            const pt = toTimestamp(f?.periodTo);
+            if (!pf && !pt) return <span className="text-muted-foreground">N/D</span>;
+            return (
+              <span className="text-muted-foreground">
+                {pf ? formatShortDateTime(pf) : "--"} → {pt ? formatShortDateTime(pt) : "--"}
+              </span>
+            );
+          },
+        },
+        {
+          key: "company",
+          label: "Azienda",
+          width: "minmax(100px,1fr)",
+          sortValue: (f) => String(f?.company?.name || "").toLowerCase(),
+          render: (f) => <span className="text-muted-foreground">{f?.company?.name || "--"}</span>,
+        },
+        {
+          key: "syncState",
+          label: "Sync Seep",
+          width: "minmax(90px,1fr)",
+          sortValue: (f) => String(f?.syncState || ""),
+          render: (f) => (
+            <span
+              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                f?.syncState === "uploaded"
+                  ? "border-ok/50 text-ok"
+                  : f?.syncState === "error"
+                    ? "border-down/40 text-down"
+                    : "border-border text-muted-foreground"
+              }`}
+              title={f?.error || ""}
+            >
+              {f?.syncState || "pending"}
+            </span>
+          ),
+        },
+        {
+          key: "downloadTime",
+          label: "Download",
+          width: "minmax(110px,1fr)",
+          sortValue: (f) => toTimestamp(f?.downloadTime) || 0,
+          render: (f) => {
+            const ts = toTimestamp(f?.downloadTime);
+            return <span className="text-muted-foreground">{ts ? formatShortDateTime(ts) : "N/D"}</span>;
+          },
+        },
+      ]}
+      renderActions={(file) => {
+        const name = file?.fileName || "file.ddd";
+        const url = `${baseUrl}/api/tacho/files/download?source=${encodeURIComponent(
+          file?.source || "vehicle",
+        )}&id=${encodeURIComponent(file?.id || "")}&name=${encodeURIComponent(name)}`;
+        return (
+          <a href={url} className={ROW_ACTION_TRIGGER} title="Scarica file" aria-label={`Scarica ${name}`}>
+            <i className="fa fa-download" aria-hidden="true" />
+          </a>
+        );
+      }}
+    />
   );
 }
 
-function DriverDashboard({
+export function DriverDashboard({
   selectedDriverImei,
+  initialDriverId,
 }: {
   selectedDriverImei?: string | null;
+  initialDriverId?: string | null;
 }) {
   const [driverOptions, setDriverOptions] = React.useState<DriverTableRow[]>([]);
   const [driverSearch, setDriverSearch] = React.useState("");
   const [selectedDriverId, setSelectedDriverId] = React.useState("");
-  const [showDriverSuggestions, setShowDriverSuggestions] = React.useState(false);
   const [startDate, setStartDate] = React.useState("2025-10-25T00:00");
   const [endDate, setEndDate] = React.useState("2025-10-26T23:59");
   const [loading, setLoading] = React.useState(false);
@@ -2015,31 +2187,10 @@ function DriverDashboard({
     setDriverSearch(getDriverLabel(selected));
   }, [findDriverById, getDriverLabel, selectedDriverId]);
 
-  const filteredDrivers = React.useMemo(() => {
-    const query = driverSearch.trim().toLowerCase();
-    const list = Array.isArray(driverOptions) ? driverOptions : [];
-    if (!query) return list.slice(0, 8);
-    return list
-      .filter((driver) => {
-        const name = `${driver?.name || ""} ${driver?.surname || ""}`.trim().toLowerCase();
-        const mongoId = String(driver?.id || driver?._id || "").toLowerCase();
-        const cardId = String(driver?.tachoDriverId || "").toLowerCase();
-        return name.includes(query) || mongoId.includes(query) || cardId.includes(query);
-      })
-      .slice(0, 8);
-  }, [driverOptions, driverSearch]);
-
-  const selectDriver = React.useCallback(
-    (driver: DriverTableRow) => {
-      const id = String(driver?.id || driver?._id || "");
-      if (!id) return;
-      setSelectedDriverId(id);
-      setDriverSearch(getDriverLabel(driver));
-      setShowDriverSuggestions(false);
-      setError(null);
-    },
-    [getDriverLabel],
-  );
+  // Seed dal param URL (report aperto dalla tabella autisti, sopravvive al remount).
+  React.useEffect(() => {
+    if (initialDriverId) setSelectedDriverId(initialDriverId);
+  }, [initialDriverId]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -2116,7 +2267,9 @@ function DriverDashboard({
         throw new Error(txt || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      const flatDays: DayGraph[] = Array.isArray(data?.days) ? data.days : [];
+      const flatDays: DayGraph[] = Array.isArray(data?.days)
+        ? data.days.filter((d: any) => d && typeof d === "object")
+        : [];
       const resolvedDriverId = data?.driver?.resolvedSeepDriverId || "--";
       const strategy = data?.driver?.strategy || "--";
       const selectedName = `${selectedDriver?.name || ""} ${selectedDriver?.surname || ""}`.trim();
@@ -2200,84 +2353,62 @@ function DriverDashboard({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="rounded-lg border border-border bg-card p-4 space-y-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
+            <p className="text-[12px] uppercase tracking-[0.12em] text-muted-foreground">
               Grafico attivita autista
             </p>
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted-foreground">
               Report attivita e dettagli giornalieri. Contesto veicolo: {selectedDriverImei || "--"}
             </p>
             {driverResolution && (
-              <p className="text-xs text-white/55 mt-1">{driverResolution}</p>
+              <p className="text-xs text-muted-foreground mt-1">{driverResolution}</p>
             )}
           </div>
         </div>
 
-        <div className="space-y-2 relative">
-          <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
             Autista
           </label>
-          <input
-            value={driverSearch}
-            onChange={(e) => {
-              setDriverSearch(e.target.value);
-              setSelectedDriverId("");
-              setShowDriverSuggestions(true);
-            }}
-            onFocus={() => setShowDriverSuggestions(true)}
-            onBlur={() => {
-              setTimeout(() => setShowDriverSuggestions(false), 120);
-            }}
+          <ComboBox
+            value={selectedDriverId}
+            ariaLabel="Seleziona autista"
             placeholder="Cerca per nome, ID mongo o ID carta..."
-            className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+            options={driverOptions.map((d) => ({
+              value: String(d?.id || d?._id || ""),
+              label: getDriverLabel(d),
+            }))}
+            onChange={(id) => {
+              setSelectedDriverId(id);
+              const d = driverOptions.find((x) => String(x?.id || x?._id || "") === id);
+              setDriverSearch(d ? getDriverLabel(d) : "");
+            }}
           />
-          {showDriverSuggestions && filteredDrivers.length > 0 && (
-            <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-white/10 bg-[#09090c]">
-              {filteredDrivers.map((driver) => {
-                const id = String(driver?.id || driver?._id || "");
-                const label = getDriverLabel(driver);
-                return (
-                  <button
-                    key={id || label}
-                    type="button"
-                    onMouseDown={(ev) => ev.preventDefault()}
-                    onClick={() => selectDriver(driver)}
-                    className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/10 transition"
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <div className="text-[11px] text-white/50">
-            Seleziona un autista e il sistema usera automaticamente ID mongo + ID carta.
-          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
               Inizio
             </label>
             <input
               type="datetime-local"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.08em] text-white/65">
+            <label className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
               Fine
             </label>
             <input
               type="datetime-local"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
             />
           </div>
         </div>
@@ -2286,7 +2417,7 @@ function DriverDashboard({
           <button
             onClick={runReport}
             disabled={loading}
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm font-medium hover:bg-white/15 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg bg-accent border border-border px-3 py-2 text-sm font-medium hover:bg-accent transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Caricamento..." : "Aggiorna grafico"}
           </button>
@@ -2309,11 +2440,11 @@ function DriverDashboard({
               );
             }}
             disabled={loading}
-            className="rounded-lg border border-white/20 bg-[#0d0d0f] px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Genera LUL
           </button>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-down">{error}</p>}
         </div>
 
         {days.length > 0 && (
@@ -2337,10 +2468,10 @@ function DriverDashboard({
               return (
                 <div
                   key={dayKey}
-                  className="rounded-xl border border-white/10 bg-[#0d0d0f] p-3 space-y-3"
+                  className="rounded-xl border border-border bg-background p-3 space-y-3"
                 >
                   <div
-                    className="relative rounded-lg border border-white/10 bg-[#0b0d14] p-3 hover:border-white/30 transition overflow-visible"
+                    className="relative rounded-lg border border-border bg-card p-3 hover:border-border transition overflow-visible"
                     onMouseEnter={() => setHoveredDay(day)}
                     onMouseLeave={() => setHoveredDay(null)}
                     onMouseMove={(e) => {
@@ -2352,22 +2483,22 @@ function DriverDashboard({
                       });
                     }}
                   >
-                    <div className="text-xs text-white/60">{formatDateLabel(day.date)}</div>
+                    <div className="text-xs text-muted-foreground">{formatDateLabel(day.date)}</div>
                     <div
                       className="chart-surface mt-2 w-full overflow-hidden"
-                      dangerouslySetInnerHTML={{ __html: day.graph || "" }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeSvg(day.graph) }}
                     />
                     {isHovered && (
                       <div className="absolute inset-2 border-2 border-black/80 rounded-lg pointer-events-none" />
                     )}
                     {isHovered && (
                       <div
-                        className="absolute z-50 w-60 rounded-lg border border-white/10 bg-[#0a0a0a] text-[#f8fafc] shadow-xl pointer-events-none"
+                        className="absolute z-50 w-60 rounded-lg border border-border bg-background text-foreground shadow-xl pointer-events-none"
                         style={{ left, top }}
                       >
                         <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2 text-sm">
-                          <span className="font-semibold text-white/70">Attivita</span>
-                          <span className="font-semibold text-white/70 text-right">Tempo</span>
+                          <span className="font-semibold text-muted-foreground">Attivita</span>
+                          <span className="font-semibold text-muted-foreground text-right">Tempo</span>
                           <span>Guida</span>
                           <span className="text-right">{toDurationLabel(day.metrics?.totalDriving)}</span>
                           <span>Altri lavori</span>
@@ -2386,7 +2517,7 @@ function DriverDashboard({
                   </div>
 
                   {day.activities && day.activities.length > 0 && (
-                    <div className="border-t border-white/10 pt-3 space-y-2 text-sm">
+                    <div className="border-t border-border pt-3 space-y-2 text-sm">
                       <button
                         type="button"
                         onClick={() =>
@@ -2395,7 +2526,7 @@ function DriverDashboard({
                             [dayKey]: !prev[dayKey],
                           }))
                         }
-                        className="flex w-full items-center justify-between text-xs uppercase tracking-[0.08em] text-white/70 hover:text-white transition"
+                        className="flex w-full items-center justify-between text-xs uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground transition"
                       >
                         <span>Elenco attivita</span>
                         <span className="text-[10px] tracking-[0.2em]">
@@ -2407,10 +2538,10 @@ function DriverDashboard({
                           {day.activities.map((activity, idx) => (
                             <div
                               key={`${activity.startDateTime || idx}`}
-                              className="flex items-center justify-between text-white/80"
+                              className="flex items-center justify-between text-foreground"
                             >
                               <span>{activity.activityType || "Attivita"}</span>
-                              <span className="text-white/60">
+                              <span className="text-muted-foreground">
                                 {toDurationLabel(activity.duration)}
                               </span>
                             </div>
@@ -2451,7 +2582,7 @@ function DriverDashboard({
   );
 }
 
-function FuelDashboard({
+export function FuelDashboard({
   isOpen,
   selectedVehicleImei,
   selectedVehicle,
@@ -2609,6 +2740,15 @@ function FuelDashboard({
   }, [isOpen, chartFullscreen, closeFullscreenChart]);
 
   React.useEffect(() => {
+    if (!chartFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") void closeFullscreenChart();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [chartFullscreen, closeFullscreenChart]);
+
+  React.useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && chartFullscreen) {
         setChartFullscreen(false);
@@ -2663,6 +2803,20 @@ function FuelDashboard({
 
     return rows.sort((a, b) => b.start - a.start);
   }, [events, refuelings]);
+
+  const [eventQuery, setEventQuery] = React.useState("");
+  const filteredRows = React.useMemo(() => {
+    const q = eventQuery.trim().toLowerCase();
+    if (!q) return tableRows;
+    return tableRows.filter((row) => {
+      const label = row.type === "withdrawal" ? "prelievo" : "rifornimento";
+      const source = row.source === "manual" ? "manuale" : "rilevato";
+      return [label, source, formatShortDateTime(row.start), formatShortDateTime(row.end), formatLiters(row.liters)]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [tableRows, eventQuery]);
 
   const openNewModal = () => {
     const start = toTimestamp(toIso(startDate)) || Date.now();
@@ -2761,69 +2915,63 @@ function FuelDashboard({
 
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr] min-w-0">
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 space-y-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] min-w-0">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-              Grafico carburante
-            </p>
-
+      <div className="space-y-4 min-w-0">
+        <div className="rounded-lg border border-border bg-card p-4 space-y-4 shadow-sm min-w-0">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[150px] flex-1 space-y-1 sm:flex-none">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Da</label>
+            <input
+              type="datetime-local"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              aria-label="Data inizio"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50 sm:w-auto"
+            />
+          </div>
+          <div className="min-w-[150px] flex-1 space-y-1 sm:flex-none">
+            <label className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">A</label>
+            <input
+              type="datetime-local"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              aria-label="Data fine"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50 sm:w-auto"
+            />
+          </div>
+          <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
               onClick={openFullscreenChart}
-              className="relative mt-3 flex w-full items-center justify-center rounded-lg border border-orange-400/50 bg-orange-500/20 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-orange-100 transition hover:bg-orange-500/30 sm:hidden"
+              title="Mostra a tutto schermo"
+              aria-label="Mostra a tutto schermo"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-accent px-3 text-[11px] uppercase tracking-[0.18em] text-foreground hover:bg-accent transition"
             >
-              <i className="fa fa-chart-bar absolute left-3" aria-hidden="true" />
-              Mostra grafico
+              <i className="fa fa-expand" aria-hidden="true" />
+              <span className="hidden sm:inline">Tutto schermo</span>
             </button>
-          </div>
-          <div className="hidden w-full gap-3 sm:grid sm:w-auto sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] sm:items-end">
-            <div className="space-y-1 min-w-0">
-              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
-              <input
-                type="datetime-local"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-              />
-            </div>
-            <div className="space-y-1 min-w-0">
-              <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
-              <input
-                type="datetime-local"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
-              />
-            </div>
             <button
+              type="button"
               onClick={fetchFuelHistory}
               disabled={loading}
-              className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50 sm:w-auto"
+              title="Aggiorna"
+              aria-label="Aggiorna"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-accent text-foreground hover:bg-accent transition disabled:opacity-50"
             >
-              {loading ? "Carico" : "Aggiorna"}
+              <i className={`fa fa-refresh ${loading ? "fa-spin" : ""}`} aria-hidden="true" />
             </button>
           </div>
         </div>
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-down">{error}</p>}
 
         {!error && (
-          <div className="hidden rounded-xl border border-white/10 bg-[#0d0d0f] p-4 overflow-hidden relative sm:block">
+          <div className="rounded-xl border border-border bg-background p-4 overflow-hidden relative">
             {loading ? (
-              <div className="flex h-64 items-center justify-center text-sm text-white/60 sm:h-80 lg:h-[420px]">
+              <div className="flex h-64 items-center justify-center text-sm text-muted-foreground sm:h-80 lg:h-[420px]">
                 Caricamento carburante...
               </div>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={openFullscreenChart}
-                  className="absolute right-3 top-3 z-20 rounded-full border border-white/15 bg-black/60 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/80 backdrop-blur hover:text-white hover:border-white/40 transition"
-                >
-                  Mostra a tutto schermo
-                </button>
                 <FuelEChart
                   key={selectedVehicleImei || "no-vehicle"}
                   historyRaw={historyRaw}
@@ -2836,43 +2984,48 @@ function FuelDashboard({
         )}
       </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] flex flex-col min-w-0 overflow-x-hidden">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1 min-w-0">
-            <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">
-              Eventi rifornimento / prelievo
-            </p>
-            <p className="text-sm text-white/60">
-              {tableRows.length} eventi nel periodo selezionato.
-            </p>
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm flex flex-col min-w-0 overflow-x-hidden">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <i className="fa fa-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground" aria-hidden="true" />
+            <input
+              type="search"
+              value={eventQuery}
+              onChange={(e) => setEventQuery(e.target.value)}
+              placeholder="Cerca evento..."
+              aria-label="Cerca evento"
+              className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
+            />
           </div>
           <button
             type="button"
             onClick={openNewModal}
-            className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition sm:w-auto"
+            aria-label="Nuovo evento"
+            title="Nuovo evento"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-accent text-base text-foreground hover:bg-accent transition"
           >
-            Nuovo evento
+            <i className="fa fa-plus" aria-hidden="true" />
           </button>
         </div>
 
         {refuelingsError && (
-          <p className="mt-3 text-sm text-red-400">{refuelingsError}</p>
+          <p className="mt-3 text-sm text-down">{refuelingsError}</p>
         )}
 
         <div className="mt-4 max-w-full min-w-0 overflow-x-hidden">
           {loading ? (
-            <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-4 text-sm text-white/60">
+            <div className="rounded-lg border border-border bg-background px-3 py-4 text-sm text-muted-foreground">
               Caricamento eventi carburante...
             </div>
-          ) : tableRows.length === 0 ? (
-            <div className="rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-4 text-sm text-white/60">
-              Nessun evento disponibile per questo intervallo.
+          ) : filteredRows.length === 0 ? (
+            <div className="rounded-lg border border-border bg-background px-3 py-4 text-sm text-muted-foreground">
+              {eventQuery ? "Nessun evento corrisponde alla ricerca." : "Nessun evento disponibile per questo intervallo."}
             </div>
           ) : (
             <div className="block w-full max-w-full min-w-0 overflow-x-auto">
-              <table className="min-w-[760px] w-full border-separate border-spacing-0 text-sm text-white/80">
+              <table className="min-w-[760px] w-full border-separate border-spacing-0 text-sm text-foreground">
                 <thead>
-                  <tr className="text-xs uppercase tracking-[0.14em] text-white/45">
+                  <tr className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
                     <th className="text-left px-3 py-2">Tipo</th>
                     <th className="text-left px-3 py-2">Inizio</th>
                     <th className="text-left px-3 py-2">Fine</th>
@@ -2883,12 +3036,12 @@ function FuelDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {tableRows.map((row) => {
+                  {filteredRows.map((row) => {
                     const label = row.type === "withdrawal" ? "Prelievo" : "Rifornimento";
-                    const tone = row.type === "withdrawal" ? "text-red-300" : "text-emerald-300";
+                    const tone = row.type === "withdrawal" ? "text-down" : "text-ok";
                     const docs = row.refuelDoc?.attachments?.length || 0;
                     return (
-                      <tr key={row.eventId} className="border-t border-white/5">
+                      <tr key={row.eventId} className="border-t border-border">
                         <td className={`px-3 py-2 font-semibold ${tone}`}>{label}</td>
                         <td className="px-3 py-2">{formatShortDateTime(row.start)}</td>
                         <td className="px-3 py-2">{formatShortDateTime(row.end)}</td>
@@ -2902,14 +3055,14 @@ function FuelDashboard({
                             <button
                               type="button"
                               onClick={() => openEditModal(row)}
-                              className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/80 hover:text-white hover:border-white/40 transition"
+                              className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:text-foreground hover:border-border transition"
                             >
                               Dettagli
                             </button>
                             <button
                               type="button"
                               onClick={() => handleHideRow(row)}
-                              className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/60 hover:text-white hover:border-white/30 transition"
+                              className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-border transition"
                             >
                               {row.source === "manual" ? "Elimina" : "Nascondi"}
                             </button>
@@ -2926,58 +3079,51 @@ function FuelDashboard({
       </div>
       </div>
       {chartFullscreen && (
-        <div className="fixed inset-0 z-50 bg-black/95 text-white">
+        <div role="dialog" aria-modal="true" aria-label="Grafico carburante a schermo intero" className="fixed inset-0 z-50 bg-black/95 text-foreground">
           <div className="flex h-full w-full flex-col">
-            <div className="border-b border-white/10 bg-black/70 px-4 py-3 pt-[env(safe-area-inset-top)]">
+            <div className="border-b border-border bg-black/70 px-4 py-3 pt-[env(safe-area-inset-top)]">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-white/60">
-                    Grafico carburante
-                  </p>
-                  <p className="text-xs text-white/60">
-                    Modalita schermo intero. Ruota il dispositivo per avere piu spazio.
-                  </p>
-                </div>
+                <div className="min-w-0" />
                 <button
                   type="button"
                   onClick={closeFullscreenChart}
-                  className="rounded-full border border-white/20 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-white/80 hover:text-white hover:border-white/50 transition"
+                  className="rounded-full border border-border px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-foreground hover:text-foreground hover:border-border transition"
                 >
                   Chiudi
                 </button>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto] md:items-end">
                 <div className="space-y-1 min-w-0">
-                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">Da</label>
+                  <label className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Da</label>
                   <input
                     type="datetime-local"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
                   />
                 </div>
                 <div className="space-y-1 min-w-0">
-                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/50">A</label>
+                  <label className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">A</label>
                   <input
                     type="datetime-local"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
                   />
                 </div>
                 <button
                   onClick={fetchFuelHistory}
                   disabled={loading}
-                  className="h-9 w-full rounded-lg bg-white/10 border border-white/20 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 hover:bg-white/15 transition disabled:opacity-50 sm:w-auto"
+                  className="h-9 w-full rounded-lg bg-accent border border-border px-3 text-xs font-semibold uppercase tracking-[0.18em] text-foreground hover:bg-accent transition disabled:opacity-50 sm:w-auto"
                 >
                   {loading ? "Carico" : "Aggiorna"}
                 </button>
               </div>
             </div>
             <div className="flex-1 p-3">
-              <div className="h-full w-full rounded-xl border border-white/10 bg-[#0d0d0f] p-3">
+              <div className="h-full w-full rounded-xl border border-border bg-background p-3">
                 {loading ? (
-                  <div className="flex h-full items-center justify-center text-sm text-white/60">
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                     Caricamento carburante...
                   </div>
                 ) : (
@@ -3103,21 +3249,21 @@ function RefuelModal({
 
   return (
     <div className="fixed inset-0 z-50 flex h-[100svh] max-h-[100vh] items-stretch justify-center bg-black/90 px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-sm">
-      <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#121212] p-6 pb-0 shadow-[0_24px_60px_rgba(0,0,0,0.55)] max-h-[75%]">
+      <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-card p-6 pb-0 shadow-sm max-h-[75%]">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               Gestione evento
             </p>
-            <h3 className="text-lg font-semibold text-white">Rifornimento / Prelievo</h3>
-            <p className="text-sm text-white/60">
+            <h3 className="text-lg font-semibold text-foreground">Rifornimento / Prelievo</h3>
+            <p className="text-sm text-muted-foreground">
               Integra documenti, note e dati dell&apos;evento selezionato.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-white/15 h-7 w-7 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+            className="rounded-full border border-border h-7 w-7 text-xs text-muted-foreground hover:text-foreground hover:border-border transition inline-flex items-center justify-center"
             aria-label="Chiudi"
           >
             <i className="fa fa-close" aria-hidden="true" />
@@ -3132,133 +3278,133 @@ function RefuelModal({
           <div className="space-y-4 pb-6">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Tipo</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Tipo</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as "refuel" | "withdrawal")}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               >
                 <option value="refuel">Rifornimento</option>
                 <option value="withdrawal">Prelievo</option>
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Litri</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Litri</label>
               <input
                 value={litersInput}
                 onChange={(e) => setLitersInput(e.target.value)}
                 placeholder="Es. 120"
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Inizio</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Inizio</label>
               <input
                 type="datetime-local"
                 value={startInput}
                 onChange={(e) => setStartInput(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Fine</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Fine</label>
               <input
                 type="datetime-local"
                 value={endInput}
                 onChange={(e) => setEndInput(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Stazione</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Stazione</label>
               <input
                 value={station}
                 onChange={(e) => setStation(e.target.value)}
                 placeholder="Nome distributore"
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Riferimento fattura</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Riferimento fattura</label>
               <input
                 value={invoiceRef}
                 onChange={(e) => setInvoiceRef(e.target.value)}
                 placeholder="Es. FT-2026-001"
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Prezzo/L</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Prezzo/L</label>
               <input
                 value={priceInput}
                 onChange={(e) => setPriceInput(e.target.value)}
                 placeholder="Es. 1.75"
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Serbatoio 1</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Serbatoio 1</label>
               <input
                 value={tankPrimaryInput}
                 onChange={(e) => setTankPrimaryInput(e.target.value)}
                 placeholder="Litri"
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-[0.1em] text-white/60">Serbatoio 2</label>
+              <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Serbatoio 2</label>
               <input
                 value={tankSecondaryInput}
                 onChange={(e) => setTankSecondaryInput(e.target.value)}
                 placeholder="Litri"
-                className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.1em] text-white/60">Note</label>
+            <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Note</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Note aggiuntive sull'evento"
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/90 focus:outline-none focus:ring-1 focus:ring-white/30"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring/50"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs uppercase tracking-[0.1em] text-white/60">Documenti</label>
+            <label className="text-xs uppercase tracking-[0.1em] text-muted-foreground">Documenti</label>
             <input
               type="file"
               multiple
               onChange={(e) => setAttachments(Array.from(e.target.files || []))}
-              className="w-full rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-xs text-white/70 file:mr-3 file:rounded file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:text-white/80 hover:file:bg-white/20"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-accent file:px-3 file:py-1 file:text-xs file:text-foreground hover:file:bg-accent"
             />
             {attachments.length > 0 && (
-              <p className="text-xs text-white/60">{attachments.length} file selezionati</p>
+              <p className="text-xs text-muted-foreground">{attachments.length} file selezionati</p>
             )}
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-down">{error}</p>}
 
           </div>
         </form>
-        <div className="-mx-6 mt-auto border-t border-white/10 bg-[#121212] px-6 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+        <div className="-mx-6 mt-auto border-t border-border bg-card px-6 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-white/15 px-4 py-2 text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white hover:border-white/40 transition"
+              className="rounded-lg border border-border px-4 py-2 text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground hover:border-border transition"
             >
               Annulla
             </button>
@@ -3266,7 +3412,7 @@ function RefuelModal({
               type="submit"
               form="refuel-form"
               disabled={loading}
-              className="rounded-lg bg-orange-500/20 border border-orange-400/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 hover:bg-orange-500/30 transition disabled:opacity-50"
+              className="rounded-lg bg-brand border border-transparent px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-foreground hover:bg-brand/90 transition disabled:opacity-50"
             >
               {loading ? "Salvataggio..." : "Salva"}
             </button>
@@ -3315,6 +3461,8 @@ function FuelEChart({
     }
 
     const { fuel, tank1, tank2, speed } = buildFuelSeries(samples);
+    const tank2HasData =
+      Array.isArray(tank2) && tank2.some((p: any) => Number.isFinite(p?.[1]) && p[1] > 0);
     const maxCapacity =
       Number.isFinite(tankCapacity) && (tankCapacity as number) > 0
         ? (tankCapacity as number)
@@ -3396,10 +3544,11 @@ function FuelEChart({
         },
         xAxis: {
           type: "time",
-          axisLine: { lineStyle: { color: "#666" } },
-          axisLabel: { color: "#9ca3af", fontSize: compact ? 10 : 12 },
+          boundaryGap: false,
+          axisLine: { lineStyle: { color: "rgba(255,255,255,0.10)" } },
+          axisLabel: { color: "#9ca3af", fontSize: compact ? 10 : 12, hideOverlap: true },
           axisTick: { show: false },
-          splitLine: { show: true, lineStyle: { color: "rgba(148,163,184,0.12)" } },
+          splitLine: { show: false },
         },
         yAxis: [
           {
@@ -3410,13 +3559,13 @@ function FuelEChart({
             nameLocation: "end",
             nameGap: compact ? 10 : 18,
             nameTextStyle: {
-              color: "#fbbf24",
+              color: "#ff7a1a",
               fontSize: compact ? 10 : 12,
               padding: [0, 0, compact ? 4 : 8, 0],
             },
-            axisLine: { lineStyle: { color: "#fbbf24" } },
+            axisLine: { lineStyle: { color: "#ff7a1a" } },
             axisLabel: {
-              color: "#fbbf24",
+              color: "#ff7a1a",
               fontSize: compact ? 10 : 12,
               formatter: (value: number) => Math.round(value),
             },
@@ -3439,13 +3588,13 @@ function FuelEChart({
                 xAxisIndex: 0,
                 height: 16,
                 bottom: 10,
-                backgroundColor: "rgba(255,255,255,0.06)",
-                fillerColor: "rgba(251,191,36,0.15)",
-                borderColor: "rgba(255,255,255,0.1)",
+                backgroundColor: "rgba(255,255,255,0.04)",
+                fillerColor: "rgba(255,122,26,0.18)",
+                borderColor: "transparent",
                 handleIcon:
                   "M8.7,11.8v-7.6h2.6v7.6zM13,11.8v-7.6h2.6v7.6z",
                 handleSize: "120%",
-                handleStyle: { color: "#fbbf24" },
+                handleStyle: { color: "#ff7a1a" },
                 textStyle: { color: "#cbd5f5" },
               },
             ]
@@ -3453,6 +3602,8 @@ function FuelEChart({
         legend: {
           type: "scroll",
           data: ["Livello carburante", "Serbatoio 1", "Serbatoio 2", "Velocita"],
+          // Velocità OFF di default (troppo rumorosa); Serbatoio 2 solo se ha dati.
+          selected: { Velocita: false, "Serbatoio 2": tank2HasData },
           top: 8,
           left: "center",
           textStyle: { color: "#e5e7eb", fontSize: compact ? 10 : 12 },
@@ -3464,37 +3615,53 @@ function FuelEChart({
           {
             name: "Livello carburante",
             type: "line",
-            smooth: true,
+            smooth: 0.3,
             showSymbol: false,
-            lineStyle: { width: 2.4, color: "#fbbf24" },
-            itemStyle: { color: "#fbbf24" },
+            sampling: "lttb",
+            symbol: "circle",
+            symbolSize: 7,
+            emphasis: { focus: "series" },
+            lineStyle: { width: 2.6, color: "#ff7a1a" },
+            itemStyle: { color: "#ff7a1a" },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: "rgba(255,122,26,0.30)" },
+                { offset: 1, color: "rgba(255,122,26,0.02)" },
+              ]),
+            },
             data: fuel,
-            markArea: spans.length ? { data: spans } : undefined,
+            markArea: spans.length ? { silent: true, data: spans } : undefined,
           },
           {
             name: "Serbatoio 1",
             type: "line",
-            smooth: true,
+            smooth: 0.3,
             showSymbol: false,
-            lineStyle: { width: 1.6, color: "#34d399" },
+            sampling: "lttb",
+            emphasis: { focus: "series" },
+            lineStyle: { width: 1.4, color: "#34d399", type: "dashed" },
             itemStyle: { color: "#34d399" },
             data: tank1,
           },
           {
             name: "Serbatoio 2",
             type: "line",
-            smooth: true,
+            smooth: 0.3,
             showSymbol: false,
-            lineStyle: { width: 1.6, color: "#c084fc" },
+            sampling: "lttb",
+            emphasis: { focus: "series" },
+            lineStyle: { width: 1.4, color: "#c084fc", type: "dashed" },
             itemStyle: { color: "#c084fc" },
             data: tank2,
           },
           {
             name: "Velocita",
             type: "line",
-            smooth: true,
+            smooth: 0.3,
             showSymbol: false,
-            lineStyle: { width: 1.2, color: "#60a5fa" },
+            sampling: "lttb",
+            emphasis: { focus: "series" },
+            lineStyle: { width: 1.2, color: "#60a5fa", opacity: 0.75 },
             itemStyle: { color: "#60a5fa" },
             data: speed,
             yAxisIndex: 1,
@@ -3547,7 +3714,7 @@ function FuelEChart({
   if (samples.length < 10) {
     return (
       <div
-        className={`flex items-center justify-center text-sm text-white/60 ${sizeClasses} ${className || ""}`}
+        className={`flex items-center justify-center text-sm text-muted-foreground ${sizeClasses} ${className || ""}`}
       >
         Dati non disponibili, verifica o installa la sonda carburante.
       </div>
@@ -3572,19 +3739,19 @@ function TableCard({
   rows: Array<[string, string]>;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#121212] p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
       <div className="space-y-1">
-        <p className="text-[12px] uppercase tracking-[0.12em] text-white/65">{title}</p>
-        <p className="text-sm text-white/60">{subtitle}</p>
+        <p className="text-[12px] uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
       <div className="mt-3 space-y-2">
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d0d0f] px-3 py-2 text-sm text-white/80 min-w-0"
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground min-w-0"
           >
             <span className="truncate">{label}</span>
-            <span className="text-white/60 whitespace-nowrap">{value}</span>
+            <span className="text-muted-foreground whitespace-nowrap">{value}</span>
           </div>
         ))}
       </div>

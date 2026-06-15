@@ -107,6 +107,13 @@ export function CookiePolicyPage() {
       duration: "Persistente (localStorage)",
       type: "funzionale",
     },
+    {
+      name: "truckly:toolbar-dock",
+      provider: "Truckly",
+      purpose: "Salva la posizione scelta per la barra strumenti (localStorage).",
+      duration: "Persistente (localStorage)",
+      type: "funzionale",
+    },
   ];
 
   const functionalCookies: CookieRow[] = [

@@ -21,3 +21,6 @@ out/
 .DS_Store
 Thumbs.db
 
+# Local visual-review screenshots
+screenshot-claude-truckly/
+
