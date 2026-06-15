@@ -1,3 +1,4 @@
+// Deploy trigger: forza un nuovo build/deploy (Cloud Build → Cloud Run). bump 2026-06-16
 const express = require('express');
 // const livereload = require('livereload');
 // const connectLivereload = require('connect-livereload');
