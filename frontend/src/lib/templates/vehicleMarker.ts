@@ -57,16 +57,15 @@ const buildTruckIcon = (strokeColor: string) =>
   `
   );
 
-// trattore = semi / road tractor
+// trattore = motrice (road tractor): cabina cabover corta + ralla, senza rimorchio
 const buildTractorIcon = (strokeColor: string) =>
   svgWrap(
     strokeColor,
     `
-    <path d="M10 17V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12" />
-    <path d="M10 8h6l3 3v6" />
-    <path d="M19 11h-6" />
-    <circle cx="6" cy="17.5" r="2" />
-    <circle cx="16.5" cy="17.5" r="2" />
+    <path d="M19 15V8a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v7" />
+    <path d="M12 15H5v-2h3v-1h4" />
+    <circle cx="8" cy="17" r="1.9" />
+    <circle cx="15.5" cy="17" r="1.9" />
   `
   );
 

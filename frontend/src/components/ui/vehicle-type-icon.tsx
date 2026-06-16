@@ -29,13 +29,13 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="17.5" cy="17" r="1.6" />
     </>
   ),
+  // trattore stradale (motrice): cabina cabover + ralla corta, senza rimorchio
   trattore: (
     <>
-      <path d="M3 9h6v6H3z" />
-      <path d="M9 8v7" />
-      <path d="M9 11.5h12" />
-      <circle cx="6" cy="17" r="1.6" />
-      <circle cx="18" cy="17" r="1.6" />
+      <path d="M19 15V8a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v7" />
+      <path d="M12 15H5v-2h3v-1h4" />
+      <circle cx="8" cy="17" r="1.7" />
+      <circle cx="15.5" cy="17" r="1.7" />
     </>
   ),
 };
