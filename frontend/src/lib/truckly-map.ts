@@ -597,6 +597,7 @@ export class TrucklyMap {
   clearRoute(imei?: string) {
     const map = this.map;
     const removeOne = (routeImei: string) => {
+      this._clearRouteSweep(routeImei);
       const ids = this._routeLayers.get(routeImei);
       if (!ids) return;
       try {
@@ -859,6 +860,131 @@ export class TrucklyMap {
         map.setFilter(ids.casingId, filterExpr);
       }
     } catch {}
+  }
+
+  _routeSweepState(): Map<string, { sourceId: string; layerId: string; raf: number | null }> {
+    const anyThis = this as any;
+    if (!anyThis.__routeSweeps) anyThis.__routeSweeps = new Map();
+    return anyThis.__routeSweeps;
+  }
+
+  // Gradiente per la sweep-pulse: banda luminosa arancione centrata su t (0..1) lungo line-progress.
+  _sweepGradient(t: number): any {
+    const O = "255,122,26"; // brand arancione
+    const band = 0.12;
+    const raw: Array<[number, string]> = [
+      [0, `rgba(${O},0)`],
+      [t - band, `rgba(${O},0)`],
+      [t - band * 0.5, `rgba(${O},0.5)`],
+      [t, `rgba(${O},1)`],
+      [t + band * 0.5, `rgba(${O},0.5)`],
+      [t + band, `rgba(${O},0)`],
+      [1, `rgba(${O},0)`],
+    ];
+    const out: any[] = [];
+    let prev = -1;
+    for (const [o, c] of raw) {
+      let off = Math.min(1, Math.max(0, o));
+      if (off <= prev) off = Math.min(1, prev + 1e-4);
+      if (off <= prev) continue;
+      out.push(off, c);
+      prev = off;
+    }
+    return ["interpolate", ["linear"], ["line-progress"], ...out];
+  }
+
+  _clearRouteSweep(imei: string) {
+    const sweeps = this._routeSweepState();
+    const entry = sweeps.get(imei);
+    if (!entry) return;
+    if (entry.raf != null) {
+      try {
+        cancelAnimationFrame(entry.raf);
+      } catch {}
+    }
+    const map = this.map;
+    try {
+      if (map.getLayer(entry.layerId)) map.removeLayer(entry.layerId);
+    } catch {}
+    try {
+      if (map.getSource(entry.sourceId)) map.removeSource(entry.sourceId);
+    } catch {}
+    sweeps.delete(imei);
+  }
+
+  // Sweep-pulse one-shot inizio->fine (durata default 2.5s) per indicare la direzione di marcia.
+  playRouteSweep(
+    imei: string,
+    history: Array<{ gps?: any }>,
+    opts?: { durationMs?: number },
+  ) {
+    if (!imei || !Array.isArray(history) || history.length < 2) return;
+    const durationMs = Number(opts?.durationMs) > 0 ? Number(opts?.durationMs) : 2500;
+    const map = this.map;
+    this._withStyleReady(() => {
+      this._clearRouteSweep(imei);
+      const coords = history
+        .map((p) => {
+          const g = p?.gps || {};
+          const lon = Number(g.Longitude ?? g.longitude ?? g.lon);
+          const lat = Number(g.Latitude ?? g.latitude ?? g.lat);
+          return Number.isFinite(lon) && Number.isFinite(lat) ? [lon, lat] : null;
+        })
+        .filter(Boolean) as [number, number][];
+      if (coords.length < 2) return;
+      const sourceId = `route-sweep-${imei}`;
+      const layerId = `route-sweep-line-${imei}`;
+      try {
+        map.addSource(sourceId, {
+          type: "geojson",
+          lineMetrics: true,
+          data: {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: coords },
+            properties: {},
+          },
+        });
+      } catch {
+        return;
+      }
+      try {
+        map.addLayer({
+          id: layerId,
+          type: "line",
+          source: sourceId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 4, 10, 7, 14, 11, 18, 16],
+            "line-opacity": 0.9,
+            "line-gradient": this._sweepGradient(0),
+          },
+        });
+      } catch {
+        try {
+          if (map.getSource(sourceId)) map.removeSource(sourceId);
+        } catch {}
+        return;
+      }
+      const sweeps = this._routeSweepState();
+      const entry = { sourceId, layerId, raf: null as number | null };
+      sweeps.set(imei, entry);
+      let start: number | null = null;
+      const tick = (now: number) => {
+        if (start == null) start = now;
+        const t = Math.min(1, (now - start) / durationMs);
+        try {
+          if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, "line-gradient", this._sweepGradient(t));
+          }
+        } catch {}
+        if (t < 1 && sweeps.get(imei) === entry) {
+          entry.raf = requestAnimationFrame(tick);
+        } else {
+          this._clearRouteSweep(imei);
+        }
+      };
+      entry.raf = requestAnimationFrame(tick);
+    });
   }
 
   updateRouteMarker(

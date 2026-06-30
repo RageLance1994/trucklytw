@@ -251,7 +251,7 @@ export function Navbar() {
   return (
     <header
       ref={headerRef}
-      className="sticky top-0 z-50 w-full border-b border-border bg-[#0b0b0c] md:hidden"
+      className="sticky top-0 z-50 w-full border-b border-border bg-card md:hidden"
     >
       <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
         <div className="flex items-center gap-3 py-3">
@@ -273,7 +273,7 @@ export function Navbar() {
                 onKeyDown={handleKeyDown}
                 placeholder="Cerca veicolo..."
                 aria-label="Cerca veicolo"
-                className="h-10 w-full md:w-[200px] rounded-md border border-border bg-background/60 px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary"
+                className="h-10 w-full md:w-[200px] rounded-md border border-border bg-background/60 px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
 
@@ -423,7 +423,7 @@ export function Navbar() {
                       <i className="fa fa-globe mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "satellite" ? "bg-orange-400" : "opacity-0"
+                          mapStyle === "satellite" ? "bg-primary" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -442,7 +442,7 @@ export function Navbar() {
                       <i className="fa fa-map-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "base" ? "bg-orange-400" : "opacity-0"
+                          mapStyle === "base" ? "bg-primary" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -461,7 +461,7 @@ export function Navbar() {
                       <i className="fa fa-sun-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "light" ? "bg-orange-400" : "opacity-0"
+                          mapStyle === "light" ? "bg-primary" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -480,7 +480,7 @@ export function Navbar() {
                       <i className="fa fa-moon-o mr-1 text-[12px]" aria-hidden="true" />
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          mapStyle === "dark" ? "bg-orange-400" : "opacity-0"
+                          mapStyle === "dark" ? "bg-primary" : "opacity-0"
                         }`}
                         aria-hidden="true"
                       />
@@ -520,7 +520,7 @@ export function Navbar() {
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
-                              markerStyle === "pin" ? "bg-orange-400" : "opacity-0"
+                              markerStyle === "pin" ? "bg-primary" : "opacity-0"
                             }`}
                             aria-hidden="true"
                           />
@@ -536,7 +536,7 @@ export function Navbar() {
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
-                              markerStyle === "full" ? "bg-orange-400" : "opacity-0"
+                              markerStyle === "full" ? "bg-primary" : "opacity-0"
                             }`}
                             aria-hidden="true"
                           />
@@ -552,7 +552,7 @@ export function Navbar() {
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
-                              markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
+                              markerStyle === "compact" ? "bg-primary" : "opacity-0"
                             }`}
                             aria-hidden="true"
                           />
@@ -568,7 +568,7 @@ export function Navbar() {
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
-                              markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
+                              markerStyle === "plate" ? "bg-primary" : "opacity-0"
                             }`}
                             aria-hidden="true"
                           />
@@ -584,7 +584,7 @@ export function Navbar() {
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
-                              markerStyle === "name" ? "bg-orange-400" : "opacity-0"
+                              markerStyle === "name" ? "bg-primary" : "opacity-0"
                             }`}
                             aria-hidden="true"
                           />
@@ -600,7 +600,7 @@ export function Navbar() {
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
-                              markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
+                              markerStyle === "direction" ? "bg-primary" : "opacity-0"
                             }`}
                             aria-hidden="true"
                           />
@@ -644,11 +644,11 @@ export function Navbar() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="hidden md:inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-white/70 hover:text-white hover:border-white/30 transition">
+              <button className="hidden md:inline-flex items-center gap-2 rounded-full border border-border bg-accent/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground hover:border-ring/60 transition">
                 <span className="max-w-[160px] truncate">{companyName}</span>
                 <svg
                   viewBox="0 0 20 20"
-                  className="h-4 w-4 text-white/50"
+                  className="h-4 w-4 text-muted-foreground"
                   fill="currentColor"
                   aria-hidden="true"
                 >
@@ -678,7 +678,7 @@ export function Navbar() {
                 onSelect={() => {
                   window.location.href = `${API_BASE_URL}/logout`;
                 }}
-                className="text-white/80 hover:text-red-100 hover:!bg-red-500/35"
+                className="text-down hover:text-down hover:!bg-down/15"
               >
                 <i className="fa fa-sign-out mr-2 text-[12px]" aria-hidden="true" />
                 Esci
@@ -689,7 +689,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setIsMenuOpen(true)}
-            className="md:hidden h-9 w-9 rounded-md border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 transition inline-flex items-center justify-center"
+            className="md:hidden h-9 w-9 rounded-md border border-border bg-accent/40 text-muted-foreground hover:bg-accent hover:text-foreground transition inline-flex items-center justify-center"
             aria-label="Apri menu"
             aria-haspopup="dialog"
             aria-expanded={isMenuOpen}
@@ -718,31 +718,31 @@ export function Navbar() {
       )}
       <aside
         id="mobile-menu"
-        className={`fixed top-0 bottom-0 right-0 z-50 w-[86vw] max-w-sm border-l border-border bg-[#0b0b0c] text-foreground flex flex-col pt-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${
+        className={`fixed top-0 bottom-0 right-0 z-50 w-[86vw] max-w-sm border-l border-border bg-card text-foreground flex flex-col pt-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] md:hidden ${
           isMenuOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
         }`}
         inert={!isMenuOpen}
       >
-        <div className="flex items-center justify-between px-4 pb-4 border-b border-white/10">
-          <div className="text-xs font-semibold tracking-[0.28em] uppercase text-white/70">
+        <div className="flex items-center justify-between px-4 pb-4 border-b border-border">
+          <div className="text-xs font-semibold tracking-[0.28em] uppercase text-muted-foreground">
             Menu
           </div>
           <button
             type="button"
             onClick={() => setIsMenuOpen(false)}
-            className="h-8 w-8 rounded-full border border-white/20 text-xs text-white/70 hover:text-white hover:border-white/50 transition inline-flex items-center justify-center"
+            className="h-8 w-8 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-ring/60 transition inline-flex items-center justify-center"
             aria-label="Chiudi"
           >
             <i className="fa fa-close" aria-hidden="true" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 text-white">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 text-foreground">
           <details
-            className="group border-b border-white/10 pb-3"
+            className="group border-b border-border pb-3"
             open={mobileSection === "flotta"}
           >
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="flex items-center justify-between text-sm font-semibold text-foreground cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) => (current === "flotta" ? null : "flotta"));
@@ -751,16 +751,16 @@ export function Navbar() {
               Flotta
               <svg
                 viewBox="0 0 320 512"
-                className="h-3 w-3 text-white/50 transition-transform duration-200 group-open:rotate-90"
+                className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-open:rotate-90"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M96 64L256 256 96 448V64z" />
               </svg>
             </summary>
-            <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
+            <div className="mt-0 space-y-2 text-sm text-muted-foreground overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="w-full px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() => {
                   window.dispatchEvent(
                     new CustomEvent("truckly:bottom-bar-toggle", {
@@ -773,7 +773,7 @@ export function Navbar() {
                 Veicoli
               </button>
                 <button
-                  className="w-full px-2 py-1 text-left hover:text-white transition"
+                  className="w-full px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() =>
                     window.dispatchEvent(
                       new CustomEvent("truckly:bottom-bar-toggle", {
@@ -784,19 +784,19 @@ export function Navbar() {
                 >
                   Autisti
                 </button>
-              <div className="px-2 py-1 text-white/55">
+              <div className="px-2 py-1 text-muted-foreground">
                 Rotte
-                <div className="text-[11px] text-white/55">Disponibile a breve</div>
+                <div className="text-[11px] text-muted-foreground">Disponibile a breve</div>
               </div>
             </div>
           </details>
 
           <details
-            className="group border-b border-white/10 pb-3"
+            className="group border-b border-border pb-3"
             open={mobileSection === "analisi"}
           >
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="flex items-center justify-between text-sm font-semibold text-foreground cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) => (current === "analisi" ? null : "analisi"));
@@ -805,16 +805,16 @@ export function Navbar() {
               Analisi
               <svg
                 viewBox="0 0 320 512"
-                className="h-3 w-3 text-white/50 transition-transform duration-200 group-open:rotate-90"
+                className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-open:rotate-90"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M96 64L256 256 96 448V64z" />
               </svg>
             </summary>
-            <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
+            <div className="mt-0 space-y-2 text-sm text-muted-foreground overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="w-full px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() => {
                   window.dispatchEvent(
                     new CustomEvent("truckly:bottom-bar-toggle", {
@@ -826,14 +826,14 @@ export function Navbar() {
               >
                 Carburante
               </button>
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button className="w-full px-2 py-1 text-left hover:text-foreground transition">
                 Eventi
               </button>
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button className="w-full px-2 py-1 text-left hover:text-foreground transition">
                 Conformita
               </button>
               <button
-                className="w-full px-2 py-1 text-left hover:text-white transition"
+                className="w-full px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() => {
                   window.dispatchEvent(
                     new CustomEvent("truckly:bottom-bar-toggle", {
@@ -849,11 +849,11 @@ export function Navbar() {
           </details>
 
           <details
-            className="group border-b border-white/10 pb-3"
+            className="group border-b border-border pb-3"
             open={mobileSection === "mappe"}
           >
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="flex items-center justify-between text-sm font-semibold text-foreground cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) => (current === "mappe" ? null : "mappe"));
@@ -862,16 +862,16 @@ export function Navbar() {
               Mappe
               <svg
                 viewBox="0 0 320 512"
-                className="h-3 w-3 text-white/50 transition-transform duration-200 group-open:rotate-90"
+                className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-open:rotate-90"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M96 64L256 256 96 448V64z" />
               </svg>
             </summary>
-            <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
+            <div className="mt-0 space-y-2 text-sm text-muted-foreground overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
               <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -882,14 +882,14 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "base" ? "bg-orange-400" : "opacity-0"
+                    mapStyle === "base" ? "bg-primary" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
                 Base
               </button>
               <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -900,14 +900,14 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "satellite" ? "bg-orange-400" : "opacity-0"
+                    mapStyle === "satellite" ? "bg-primary" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
                 Satellite
               </button>
               <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -918,14 +918,14 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "light" ? "bg-orange-400" : "opacity-0"
+                    mapStyle === "light" ? "bg-primary" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
                 Chiaro
               </button>
               <button
-                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("truckly:map-style", {
@@ -936,89 +936,89 @@ export function Navbar() {
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    mapStyle === "dark" ? "bg-orange-400" : "opacity-0"
+                    mapStyle === "dark" ? "bg-primary" : "opacity-0"
                   }`}
                   aria-hidden="true"
                 />
                 Scuro
               </button>
 
-              <div className="pt-2 mt-2 border-t border-white/10 text-[11px] uppercase tracking-[0.2em] text-white/50">
+              <div className="pt-2 mt-2 border-t border-border text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                 Veicoli
               </div>
                 <button
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => applyMarkerStyle("pin")}
                   data-marker-style="pin"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      markerStyle === "pin" ? "bg-orange-400" : "opacity-0"
+                      markerStyle === "pin" ? "bg-primary" : "opacity-0"
                     }`}
                     aria-hidden="true"
                   />
                   Pin
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => applyMarkerStyle("full")}
                   data-marker-style="full"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      markerStyle === "full" ? "bg-orange-400" : "opacity-0"
+                      markerStyle === "full" ? "bg-primary" : "opacity-0"
                     }`}
                     aria-hidden="true"
                   />
                   Completo
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => applyMarkerStyle("compact")}
                   data-marker-style="compact"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      markerStyle === "compact" ? "bg-orange-400" : "opacity-0"
+                      markerStyle === "compact" ? "bg-primary" : "opacity-0"
                     }`}
                     aria-hidden="true"
                   />
                   Compatto
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => applyMarkerStyle("plate")}
                   data-marker-style="plate"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      markerStyle === "plate" ? "bg-orange-400" : "opacity-0"
+                      markerStyle === "plate" ? "bg-primary" : "opacity-0"
                     }`}
                     aria-hidden="true"
                   />
                   Solo targa
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => applyMarkerStyle("name")}
                   data-marker-style="name"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      markerStyle === "name" ? "bg-orange-400" : "opacity-0"
+                      markerStyle === "name" ? "bg-primary" : "opacity-0"
                     }`}
                     aria-hidden="true"
                   />
                   Targa e direzione
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-white transition"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => applyMarkerStyle("direction")}
                   data-marker-style="direction"
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      markerStyle === "direction" ? "bg-orange-400" : "opacity-0"
+                      markerStyle === "direction" ? "bg-primary" : "opacity-0"
                     }`}
                     aria-hidden="true"
                   />
@@ -1029,7 +1029,7 @@ export function Navbar() {
 
           <details className="group" open={mobileSection === "impostazioni"}>
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="flex items-center justify-between text-sm font-semibold text-foreground cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) =>
@@ -1040,17 +1040,17 @@ export function Navbar() {
               Impostazioni
               <svg
                 viewBox="0 0 320 512"
-                className="h-3 w-3 text-white/50 transition-transform duration-200 group-open:rotate-90"
+                className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-open:rotate-90"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M96 64L256 256 96 448V64z" />
               </svg>
             </summary>
-            <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
+            <div className="mt-0 space-y-2 text-sm text-muted-foreground overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
               {canManageUsers && (
                 <button
-                  className="w-full px-2 py-1 text-left hover:text-white transition"
+                  className="w-full px-2 py-1 text-left hover:text-foreground transition"
                   onClick={() => {
                     window.dispatchEvent(
                       new CustomEvent("truckly:bottom-bar-toggle", {
@@ -1063,17 +1063,17 @@ export function Navbar() {
                   Utenti
                 </button>
               )}
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button className="w-full px-2 py-1 text-left hover:text-foreground transition">
                 Integrazioni
               </button>
             </div>
           </details>
 
-          <div className="h-px bg-white/10 my-3" />
+          <div className="h-px bg-border my-3" />
 
           <details className="group" open={mobileSection === "account"}>
             <summary
-              className="flex items-center justify-between text-sm font-semibold text-white/90 cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="flex items-center justify-between text-sm font-semibold text-foreground cursor-pointer outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               onClick={(event) => {
                 event.preventDefault();
                 setMobileSection((current) =>
@@ -1084,25 +1084,25 @@ export function Navbar() {
               Account
               <svg
                 viewBox="0 0 320 512"
-                className="h-3 w-3 text-white/50 transition-transform duration-200 group-open:rotate-90"
+                className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-open:rotate-90"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M96 64L256 256 96 448V64z" />
               </svg>
             </summary>
-            <div className="mt-0 space-y-2 text-sm text-white/80 overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+            <div className="mt-0 space-y-2 text-sm text-muted-foreground overflow-hidden max-h-0 transition-[max-height] duration-200 group-open:mt-3 group-open:max-h-80">
+              <button className="w-full px-2 py-1 text-left hover:text-foreground transition">
                 Profilo
               </button>
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button className="w-full px-2 py-1 text-left hover:text-foreground transition">
                 Fatture
               </button>
-              <button className="w-full px-2 py-1 text-left hover:text-white transition">
+              <button className="w-full px-2 py-1 text-left hover:text-foreground transition">
                 Report Fiscali
               </button>
               <button
-                className="w-full px-2 py-1 text-left text-red-200 hover:text-red-100 transition"
+                className="w-full px-2 py-1 text-left text-down hover:text-down/80 transition"
                 onClick={() => {
                   window.location.href = `${API_BASE_URL}/logout`;
                 }}

@@ -58,6 +58,7 @@ type RoutePoint = {
     ignition: number;
     totalOdometer?: number | null;
     odometer?: number | null;
+    fuelLevel?: number | null;
     driver1Id?: string | null;
     tachoDriverIds?: string | null;
   };
@@ -272,6 +273,11 @@ const normalizeRouteHistory = (raw: any[] = []): RoutePoint[] => {
       );
       const totalOdometer = toFinite(io?.totalOdometer ?? io?.total_odometer);
       const odometerIo = toFinite(io?.odometer ?? io?.Odometer ?? io?.vehicleOdometer);
+      // Livello carburante per-punto in litri: CAN-bus (current_fuel/fuel_total) o sonde gia in litri (tank*).
+      const fuelLevel = toFinite(
+        io?.current_fuel ?? io?.currentFuel ?? io?.fuel_total ?? io?.fuelTotal ??
+        io?.fuel ?? io?.tank ?? io?.tank1 ?? io?.tank_1 ?? io?.tankPrimary ?? io?.tankLiters,
+      );
       return {
         timestamp: ts as number,
         gps: {
@@ -283,6 +289,7 @@ const normalizeRouteHistory = (raw: any[] = []): RoutePoint[] => {
           ignition: Number.isFinite(ignition) ? ignition : 0,
           totalOdometer,
           odometer: odometerIo,
+          fuelLevel,
           driver1Id: toDriverText(io?.driver1Id),
           tachoDriverIds: toDriverText(io?.tachoDriverIds),
         },
@@ -597,6 +604,31 @@ const toKilometersFromOdometerRaw = (value: number | null | undefined) => {
   return raw > 1_000_000 ? raw / 1000 : raw;
 };
 
+const haversineKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const lat1 = (aLat * Math.PI) / 180;
+  const lat2 = (bLat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+const routeHaversineKm = (history: RoutePoint[]) => {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  let total = 0;
+  for (let i = 1; i < history.length; i += 1) {
+    const a = history[i - 1]?.gps;
+    const b = history[i]?.gps;
+    if (!a || !b) continue;
+    if (![a.Latitude, a.Longitude, b.Latitude, b.Longitude].every(Number.isFinite)) continue;
+    total += haversineKm(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+  }
+  return total > 0 ? Number(total.toFixed(1)) : null;
+};
+
 const computeRouteDistanceKm = (history: RoutePoint[]) => {
   if (!Array.isArray(history) || history.length < 2) return null;
   const samples = history
@@ -608,12 +640,12 @@ const computeRouteDistanceKm = (history: RoutePoint[]) => {
       return toKilometersFromOdometerRaw(raw);
     })
     .filter((value) => Number.isFinite(value as number)) as number[];
-  if (samples.length < 2) return null;
-  const first = samples[0];
-  const last = samples[samples.length - 1];
-  const delta = last - first;
-  if (!Number.isFinite(delta) || delta < 0) return null;
-  return Number(delta.toFixed(1));
+  if (samples.length >= 2) {
+    const delta = samples[samples.length - 1] - samples[0];
+    if (Number.isFinite(delta) && delta >= 0) return Number(delta.toFixed(1));
+  }
+  // Fallback: somma Haversine sui punti GPS quando l'odometro manca o e incoerente.
+  return routeHaversineKm(history);
 };
 
 const resolveHeading = (history: RoutePoint[], index: number) => {
@@ -624,6 +656,79 @@ const resolveHeading = (history: RoutePoint[], index: number) => {
   const dy = (next?.gps?.Latitude ?? 0) - (prev?.gps?.Latitude ?? 0);
   if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return 0;
   return (Math.atan2(dy, dx) * 180) / Math.PI;
+};
+
+const CARDINALS = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"] as const;
+
+// resolveHeading restituisce atan2(dLat, dLng): 0 = Est, 90 = Nord (convenzione matematica).
+const headingMathToCardinal = (mathDeg: number) => {
+  const compass = (((90 - mathDeg) % 360) + 360) % 360;
+  return CARDINALS[Math.round(compass / 45) % 8];
+};
+
+const computeOverallDirection = (history: RoutePoint[]): string | null => {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  const a = history[0]?.gps;
+  const b = history[history.length - 1]?.gps;
+  if (!a || !b) return null;
+  if (![a.Latitude, a.Longitude, b.Latitude, b.Longitude].every(Number.isFinite)) return null;
+  const dx = b.Longitude - a.Longitude;
+  const dy = b.Latitude - a.Latitude;
+  if (dx === 0 && dy === 0) return null;
+  return headingMathToCardinal((Math.atan2(dy, dx) * 180) / Math.PI);
+};
+
+// Gasolio consumato (litri): (livello iniziale - finale) + rifornimenti - prelievi.
+const computeFuelConsumedLiters = (
+  history: RoutePoint[],
+  events: RouteTimelineEvent[],
+): number | null => {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  const levels = history
+    .map((p) => (Number.isFinite(p?.io?.fuelLevel as number) ? Number(p.io.fuelLevel) : null))
+    .filter((v): v is number => v != null);
+  if (levels.length < 2) return null;
+  let refuels = 0;
+  let withdrawals = 0;
+  (Array.isArray(events) ? events : []).forEach((e) => {
+    if (e.kind === "refuel" && Number.isFinite(e.liters as number)) refuels += Number(e.liters);
+    if (e.kind === "withdrawal" && Number.isFinite(e.liters as number)) withdrawals += Number(e.liters);
+  });
+  const consumed = levels[0] - levels[levels.length - 1] + refuels - withdrawals;
+  return consumed > 0 ? Number(consumed.toFixed(1)) : null;
+};
+
+const computeAvgConsumption = (
+  consumedL: number | null,
+  distanceKm: number | null,
+): number | null => {
+  if (consumedL == null || distanceKm == null || distanceKm <= 0) return null;
+  return Number(((consumedL / distanceKm) * 100).toFixed(1));
+};
+
+type LongStopsSummary = { onCount: number; onMin: number; offCount: number; offMin: number };
+
+// Soste oltre soglia (default 15 min), separate per motore acceso (pause) / spento (rest).
+const computeLongStops = (
+  events: RouteTimelineEvent[],
+  thresholdMin = 15,
+): LongStopsSummary => {
+  const summary: LongStopsSummary = { onCount: 0, onMin: 0, offCount: 0, offMin: 0 };
+  (Array.isArray(events) ? events : []).forEach((evt) => {
+    if ((evt.kind !== "pause" && evt.kind !== "rest") || !Number.isFinite(evt.durationMin as number)) return;
+    const min = Number(evt.durationMin);
+    if (min <= thresholdMin) return;
+    if (evt.kind === "pause") {
+      summary.onCount += 1;
+      summary.onMin += min;
+    } else {
+      summary.offCount += 1;
+      summary.offMin += min;
+    }
+  });
+  summary.onMin = Number(summary.onMin.toFixed(0));
+  summary.offMin = Number(summary.offMin.toFixed(0));
+  return summary;
 };
 
 const emptyParams = (): DriverMetrics => ({
@@ -1064,6 +1169,22 @@ function RoutesSidebar({
     () => computeRouteDistanceKm(normalizedHistory),
     [normalizedHistory],
   );
+  const fuelConsumedL = React.useMemo(
+    () => computeFuelConsumedLiters(normalizedHistory, timelineEvents),
+    [normalizedHistory, timelineEvents],
+  );
+  const avgConsumption = React.useMemo(
+    () => computeAvgConsumption(fuelConsumedL, routeDistanceKm),
+    [fuelConsumedL, routeDistanceKm],
+  );
+  const overallDirection = React.useMemo(
+    () => computeOverallDirection(normalizedHistory),
+    [normalizedHistory],
+  );
+  const longStops = React.useMemo(
+    () => computeLongStops(timelineEvents),
+    [timelineEvents],
+  );
   const eventTypeCounts = React.useMemo(() => {
     const counts: Record<RouteEventKind, number> = {
       pause: 0,
@@ -1202,6 +1323,18 @@ function RoutesSidebar({
       return;
     }
     (window as any).trucklyDrawRoute?.(selectedVehicleImei, normalizedHistory);
+    const first = normalizedHistory[0];
+    const last = normalizedHistory[normalizedHistory.length - 1];
+    if (first?.gps && last?.gps) {
+      (window as any).trucklySetRouteEndpoints?.({
+        start: { lat: first.gps.Latitude, lng: first.gps.Longitude },
+        end: { lat: last.gps.Latitude, lng: last.gps.Longitude },
+      });
+    }
+    // Sweep-pulse inizio->fine (2.5s) per evidenziare la direzione di marcia.
+    (window as any).trucklyPlayRouteSweep?.(selectedVehicleImei, normalizedHistory, {
+      durationMs: 2500,
+    });
   }, [isOpen, selectedVehicleImei, normalizedHistory]);
 
   React.useEffect(() => {
@@ -1353,6 +1486,10 @@ function RoutesSidebar({
   </div>
   <div class="stats">
     <div class="card"><div class="label">Km percorsi</div><div class="value">${escapeReportHtml(Number.isFinite(routeDistanceKm as number) ? `${routeDistanceKm} km` : "N/D")}</div></div>
+    <div class="card"><div class="label">Gasolio consumato</div><div class="value">${escapeReportHtml(fuelConsumedL != null ? `${fuelConsumedL} L` : "N/D")}</div></div>
+    <div class="card"><div class="label">Media consumo</div><div class="value">${escapeReportHtml(avgConsumption != null ? `${avgConsumption} L/100km` : "N/D")}</div></div>
+    <div class="card"><div class="label">Direzione marcia</div><div class="value">${escapeReportHtml(overallDirection || "N/D")}</div></div>
+    <div class="card"><div class="label">Soste &gt; 15 min</div><div class="value">${escapeReportHtml(`${longStops.onCount + longStops.offCount} (${longStops.onCount} acceso / ${longStops.offCount} spento)`)}</div></div>
     <div class="card"><div class="label">Eventi registrati</div><div class="value">${escapeReportHtml(filteredTimelineEvents.length)}</div></div>
     <div class="card"><div class="label">Generato il</div><div class="value">${escapeReportHtml(new Date().toLocaleString("it-IT"))}</div></div>
   </div>
@@ -1372,7 +1509,7 @@ function RoutesSidebar({
   </table>
 </body>
 </html>`;
-  }, [routeDistanceKm, selectedVehicleImei, startDate, endDate, filteredTimelineEvents]);
+  }, [routeDistanceKm, fuelConsumedL, avgConsumption, overallDirection, longStops, selectedVehicleImei, startDate, endDate, filteredTimelineEvents]);
 
   const openReportModal = React.useCallback(() => {
     setReportPreviewHtml(buildReportHtml());

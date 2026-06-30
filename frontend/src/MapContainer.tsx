@@ -755,6 +755,41 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       (window as any).trucklySetRouteProgress = (imei: string, position: number) => {
         mapInstanceRef.current?.setRouteProgress(imei, position);
       };
+      (window as any).trucklyPlayRouteSweep = (imei: string, history: any[], opts?: any) => {
+        mapInstanceRef.current?.playRouteSweep(imei, history, opts);
+      };
+      (window as any).trucklySetRouteEndpoints = (payload: any) => {
+        const map = mapInstanceRef.current;
+        if (!map || !payload) return;
+        const place = (kind: "start" | "end", pt: any) => {
+          const lat = toNumber(pt?.lat);
+          const lng = toNumber(pt?.lng);
+          if (!isValidCoordinate(lat, lng)) return;
+          const markerId = `route-endpoint:${kind}`;
+          const theme =
+            kind === "start"
+              ? { ring: "#22c55e", glow: "rgba(34,197,94,0.36)", icon: "fa-flag", label: "Partenza" }
+              : { ring: "#ef4444", glow: "rgba(239,68,68,0.36)", icon: "fa-flag-checkered", label: "Arrivo" };
+          const tooltip = `<div class="truckly-event-tooltip"><div style="font-weight:700;font-size:13px;color:#fff;">${theme.label}</div></div>`;
+          const html = `
+            <div class="truckly-route-endpoint-marker" style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:#0b0d11;border:2px solid ${theme.ring};box-shadow:0 10px 22px rgba(0,0,0,.48),0 0 0 3px ${theme.glow};color:#e5e7eb;">
+              <i class="fa ${theme.icon}" style="font-size:14px;line-height:1;"></i>
+            </div>
+          `;
+          map.addOrUpdateMarker({
+            id: markerId,
+            lng,
+            lat,
+            html,
+            tooltip,
+            hasPopup: !isMobileViewRef.current,
+            classlist: "custom-marker truckly-route-endpoint-wrap",
+          });
+          routeEventMarkersRef.current.add(markerId);
+        };
+        place("start", payload?.start);
+        place("end", payload?.end);
+      };
       (window as any).trucklyUpdateRouteMarker = (
         imei: string,
         point: any,
@@ -1060,6 +1095,8 @@ export function MapContainer({ vehicles, allowCustomize = false }: MapContainerP
       delete (window as any).trucklyFlyToLocation;
       delete (window as any).trucklySetRouteEventMarker;
       delete (window as any).trucklyClearRouteEventMarkers;
+      delete (window as any).trucklyPlayRouteSweep;
+      delete (window as any).trucklySetRouteEndpoints;
       mapInstanceRef.current?.destroy();
       mapInstanceRef.current = null;
     };

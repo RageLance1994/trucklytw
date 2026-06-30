@@ -1792,23 +1792,23 @@ function DashboardPage() {
           )}
           {mobileMarkerPanel.open && (
             <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
-              <div className="truckly-mobile-panel flex h-[calc((100dvh-var(--truckly-nav-height,64px))*0.618)] flex-col border-t border-white/10 bg-[#0b0b0c] shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
-                <div className="relative flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div className="truckly-mobile-panel flex h-[calc((100dvh-var(--truckly-nav-height,64px))*0.618)] flex-col border-t border-border bg-card shadow-[0_-20px_40px_rgba(0,0,0,0.45)]">
+                <div className="relative flex items-center justify-between border-b border-border px-4 py-3">
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-2">
                       {mobileNickname ? (
                         <>
-                          <span className="truncate max-w-[25%] text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                          <span className="truncate max-w-[25%] text-[12px] font-semibold uppercase tracking-[0.18em] text-foreground">
                             {mobileNickname}
                           </span>
                           {mobilePlate ? (
-                            <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                            <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-foreground">
                               | {mobilePlate}
                             </span>
                           ) : null}
                         </>
                       ) : (
-                        <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-white/80">
+                        <span className="truncate text-[12px] font-semibold uppercase tracking-[0.18em] text-foreground">
                           {mobileLabel}
                         </span>
                       )}
@@ -1823,7 +1823,7 @@ function DashboardPage() {
                     <button
                       type="button"
                       onClick={() => cycleMobileVehicle("prev")}
-                      className="h-8 w-8 rounded-full border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                      className="h-8 w-8 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-ring/60 transition inline-flex items-center justify-center"
                       aria-label="Veicolo precedente"
                     >
                       <i className="fa fa-chevron-left" aria-hidden="true" />
@@ -1831,7 +1831,7 @@ function DashboardPage() {
                     <button
                       type="button"
                       onClick={() => cycleMobileVehicle("next")}
-                      className="h-8 w-8 rounded-full border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                      className="h-8 w-8 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-ring/60 transition inline-flex items-center justify-center"
                       aria-label="Veicolo successivo"
                     >
                       <i className="fa fa-chevron-right" aria-hidden="true" />
@@ -1839,7 +1839,7 @@ function DashboardPage() {
                     <button
                       type="button"
                       onClick={() => setMobileMarkerMenuOpen((prev) => !prev)}
-                      className="h-8 w-8 rounded-full border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/40 transition inline-flex items-center justify-center"
+                      className="h-8 w-8 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-ring/60 transition inline-flex items-center justify-center"
                       aria-label="Apri menu"
                       aria-expanded={mobileMarkerMenuOpen}
                     >
@@ -1847,12 +1847,12 @@ function DashboardPage() {
                     </button>
                   </div>
                   {mobileMarkerMenuOpen && (
-                    <div className="absolute right-4 top-full z-10 mt-2 w-56 rounded-2xl border border-white/10 bg-[#0a0a0a] p-2 shadow-[0_16px_30px_rgba(0,0,0,0.45)]">
+                    <div className="absolute right-4 top-full z-10 mt-2 w-56 rounded-2xl border border-border bg-popover p-2 shadow-[0_16px_30px_rgba(0,0,0,0.45)]">
                       <div className="flex flex-col gap-2">
                         <button
                           type="button"
                           onClick={() => handleMobileMarkerAction("routes")}
-                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-accent/40 px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:border-ring/60 transition"
                         >
                           <i className="fa fa-road text-sm" aria-hidden="true" />
                           Percorsi
@@ -1860,7 +1860,7 @@ function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => handleMobileMarkerAction("navigation")}
-                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-accent/40 px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:border-ring/60 transition"
                         >
                           <i className="fa fa-location-arrow text-sm" aria-hidden="true" />
                           Navigazione
@@ -1868,7 +1868,7 @@ function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => handleMobileMarkerAction("fuel")}
-                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-accent/40 px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:border-ring/60 transition"
                         >
                           <i className="fa fa-tint text-sm" aria-hidden="true" />
                           Carburante
@@ -1876,14 +1876,14 @@ function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => handleMobileMarkerAction("driver")}
-                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-accent/40 px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:border-ring/60 transition"
                         >
                           <i className="fa fa-user text-sm" aria-hidden="true" />
                           Autista
                         </button>
                         <button
                           type="button"
-                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-accent/40 px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:border-ring/60 transition"
                         >
                           <i className="fa fa-bell text-sm" aria-hidden="true" />
                           Alert
@@ -1891,7 +1891,7 @@ function DashboardPage() {
                         <button
                           type="button"
                           onClick={() => handleMobileMarkerAction("geofence")}
-                          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/80 hover:text-white hover:border-white/30 transition"
+                          className="flex items-center gap-3 rounded-xl border border-border bg-accent/40 px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:border-ring/60 transition"
                         >
                           <i className="fa fa-bullseye text-sm" aria-hidden="true" />
                           GeoFence
@@ -1900,7 +1900,7 @@ function DashboardPage() {
                       <button
                         type="button"
                         onClick={() => setMobileMarkerPanel((prev) => ({ ...prev, open: false }))}
-                        className="mt-2 w-full rounded-xl border border-[var(--tv-red,#ef4444)] bg-[rgba(239,68,68,0.2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white hover:bg-[rgba(239,68,68,0.3)] transition inline-flex items-center justify-center gap-2"
+                        className="mt-2 w-full rounded-xl border border-down/50 bg-down/15 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-down hover:bg-down/25 transition inline-flex items-center justify-center gap-2"
                       >
                         <i className="fa fa-close" aria-hidden="true" />
                         Chiudi pannello
@@ -1908,7 +1908,7 @@ function DashboardPage() {
                     </div>
                   )}
                 </div>
-                <div className="truckly-mobile-scrollbar flex-1 overflow-y-auto px-4 py-3 text-sm text-white/90">
+                <div className="truckly-mobile-scrollbar flex-1 overflow-y-auto px-4 py-3 text-sm text-foreground">
                   <div
                     className="max-w-full"
                     dangerouslySetInnerHTML={{ __html: mobileMarkerPanel.html }}
@@ -1921,10 +1921,10 @@ function DashboardPage() {
             <button
               type="button"
               onClick={() => setIsQuickSidebarOpen(true)}
-              className={`fixed left-4 top-[5.25rem] z-40 rounded-full border border-white/15 bg-[#0a0a0a]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition md:hidden ${
+              className={`fixed left-4 top-[5.25rem] z-40 rounded-full border border-border bg-card/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground shadow-[0_16px_30px_rgba(0,0,0,0.35)] backdrop-blur transition md:hidden ${
                 bottomBarState.open
                   ? "pointer-events-none opacity-0"
-                  : "hover:text-white hover:border-white/40"
+                  : "hover:text-foreground hover:border-ring/60"
               }`}
             >
               <span className="lg:hidden" aria-hidden="true">
@@ -1939,8 +1939,8 @@ function DashboardPage() {
               onClick={() => setAssistantOpen(true)}
               className={`fixed bottom-6 right-6 md:right-[calc(1.5rem_+_var(--tk-toolbar-right,0px))] z-40 h-14 w-14 rounded-full border ${
                 mapStyle === "dark"
-                  ? "border-black/10 bg-white text-orange-500 hover:text-orange-400"
-                  : "border-white/10 bg-[#0a0a0a] text-orange-400 hover:text-orange-300"
+                  ? "border-border bg-foreground text-brand hover:text-brand/80"
+                  : "border-border bg-card text-brand hover:text-brand/80"
               } shadow-[0_18px_36px_rgba(0,0,0,0.55)] transition inline-flex items-center justify-center`}
               aria-label="Apri assistente AI"
             >
