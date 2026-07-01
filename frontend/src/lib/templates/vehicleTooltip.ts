@@ -458,16 +458,27 @@ export function renderVehicleTooltip({
   const io = device?.data?.io || device?.io || {};
   const timestamp = device?.data?.timestamp || device?.timestamp;
   const lastUpdate = timestamp ? formatDate(new Date(timestamp)) : "N/D";
-  const hasDriver = Boolean(device?.data?.io?.tachoDriverIds);
-  const resolvedDriverCardId = String(io?.tachoDriverIds?.driver1 || io?.driver1Id || "").trim();
+  // Card presence drives whether a driver is logged in. Read it ROBUSTLY: the live
+  // AVL exposes `io` as either device.data.io or device.io (see `io` above), the
+  // tacho id as a string OR an object {driver1}, and driver1CardPresence as a 0/1
+  // flag. (Previously hasDriver only checked device.data.io.tachoDriverIds, so on
+  // mobile — where io arrives as device.io and/or only driver1Id is set — it
+  // wrongly reported "no driver".)
+  const tacho = (io as Record<string, any>)?.tachoDriverIds;
+  const tachoDriver1 =
+    tacho && typeof tacho === "object" ? tacho.driver1 ?? tacho.driver_1 ?? "" : tacho ?? "";
+  const resolvedDriverCardId = String(tachoDriver1 || io?.driver1Id || "").trim();
+  const cardPresenceRaw =
+    io?.driver1CardPresence ?? io?.driver1_card_presence ?? io?.driverCardPresence;
+  const cardPresentFlag =
+    cardPresenceRaw === 1 ||
+    cardPresenceRaw === true ||
+    /^(1|true|present|inserted|si|sì)$/i.test(String(cardPresenceRaw ?? "").trim());
+  const hasDriver = cardPresentFlag || Boolean(resolvedDriverCardId);
   const resolvedDriverName = resolvedDriverCardId
     ? String(driverDirectoryByCard?.[resolvedDriverCardId] || "").trim()
     : "";
   const driverDisplay = resolvedDriverName || resolvedDriverCardId || "-";
-  const driverStatusKey = driverEvents.at(-1)?.to_state_name;
-  const driverStatus = driverStatusKey
-    ? DRIVER_STATUSES[driverStatusKey] || DRIVER_STATUSES.unlogged
-    : DRIVER_STATUSES.unlogged;
 
   const summary = fuelSummary || {};
   const litersNum = Number(summary.liters);
@@ -541,6 +552,22 @@ export function renderVehicleTooltip({
     status: liveStatus.status || status.status || "N/D",
     class: liveStatus.class || status.class || "",
   };
+
+  // Driver activity status. Prefer the real tachograph activity events when present;
+  // otherwise, if the card is inserted, derive from live motion. NEVER show
+  // "Sloggato" while a card is present — by law a moving vehicle must have the card
+  // inserted, so "scollegato" must only mean a genuinely absent card.
+  const driverEventState = driverEvents.at(-1)?.to_state_name;
+  const driverStatus =
+    driverEventState && driverEventState !== "unlogged" && DRIVER_STATUSES[driverEventState]
+      ? DRIVER_STATUSES[driverEventState]
+      : hasDriver
+        ? speedNum != null && speedNum > 5
+          ? DRIVER_STATUSES.driving
+          : ignitionNum === 1
+            ? DRIVER_STATUSES.working
+            : DRIVER_STATUSES.resting
+        : DRIVER_STATUSES.unlogged;
 
   const actions = [
     { label: "Percorsi", icon: icons.route, action: "routes" },
